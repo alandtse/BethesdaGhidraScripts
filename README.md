@@ -15,14 +15,20 @@ cd BethesdaGhidraScripts
 2. Drop your game executables into the matching folders (any combination):
 
 ```
-exes/skyrim/se/SkyrimSE.exe      Skyrim SE    (1.5.97)
-exes/skyrim/ae/SkyrimSE.exe      Skyrim AE    (1.6.1170+)
-exes/skyrim/vr/SkyrimVR.exe      Skyrim VR    (1.4.15)
-exes/f4/og/Fallout4.exe          Fallout 4 OG (1.10.163) — types only
-exes/f4/ng/Fallout4.exe          Fallout 4 NG (1.10.984)
-exes/f4/ae/Fallout4.exe          Fallout 4 AE (1.11.191)
-exes/f4/vr/Fallout4VR.exe        Fallout 4 VR (1.2.72)   — types only
+exes/skyrim/se/SkyrimSE.exe       Skyrim SE    (1.5.97)
+exes/skyrim/ae/SkyrimSE.exe       Skyrim AE    (1.6.1170+)
+exes/skyrim/vr/SkyrimVR.exe       Skyrim VR    (1.4.15)
+exes/f4/og/Fallout4.exe           Fallout 4 OG (1.10.163) — types only
+exes/f4/ng/Fallout4.exe           Fallout 4 NG (1.10.984)
+exes/f4/ae/Fallout4.exe           Fallout 4 AE (1.11.191)
+exes/f4/vr/Fallout4VR.exe         Fallout 4 VR (1.2.72)   — types only
+exes/starfield/sf/Starfield.exe   Starfield    (1.16.236) — labels + vtables
 ```
+
+Fallout New Vegas (1.4.0.525, x86) doesn't use the `exes/` drop flow — it
+piggy-backs on Ghidra's RTTI walker via the **Enrich an existing Ghidra
+project** action (menu option 9). Open or import FalloutNV.exe into any
+Ghidra project first, then point option 9 at that project.
 
 3. Run:
 
@@ -39,7 +45,7 @@ This opens an interactive menu:
 
   Tools:
     Ghidra      : 12.0.4
-    Clang       : clang version 22.1.4
+    Clang       : clang version 22.1.5
     Steamless   : OK
     Python pkgs : OK
 
@@ -47,19 +53,22 @@ This opens an interactive menu:
     f4/ae: Fallout4.exe
     skyrim/ae: SkyrimSE.exe
     skyrim/se: SkyrimSE.exe
+    starfield/sf: Starfield.exe
 
   Output:
     Import scripts : OK
     Ghidra project : OK
 
 ----------------------------------------
-  1) Install prerequisites
+  1) Install prerequisites (Python packages, Ghidra, Clang, Steamless)
   2) Update CommonLib submodules to latest
-  3) Generate import scripts
-  4) Run headless Ghidra import
-  5) Open Ghidra
-  6) Full rebuild (generate + import)
-  7) Clean Ghidra project (start fresh)
+  3) Process a specific version (per-version menu)
+  4) Generate import scripts (all detected versions)
+  5) Run headless Ghidra import
+  6) Open Ghidra
+  7) Full rebuild (generate + import all)
+  8) Clean Ghidra project (start fresh)
+  9) Enrich an existing Ghidra project (RTTI vtable pipeline)
   q) Quit
 ----------------------------------------
 ```
@@ -68,17 +77,20 @@ The status panel at the top shows what's installed and detected. Menu options:
 
 | Option | What it does |
 |--------|-------------|
-| **1** | Installs Python packages (`pdbparse`, `pyghidra`), downloads Ghidra, LLVM/Clang, and Steamless if missing. Safe to run multiple times -- skips anything already installed. |
-| **2** | Runs `git submodule update --init --recursive --remote` to pull the latest CommonLib and AddressLibraryDatabase commits. Run this when upstream CommonLib has new types or fixes. |
-| **3** | Parses CommonLib headers with clang and generates the Ghidra import scripts under `ghidrascripts/`. Requires clang (option 1 installs it). The executable version is auto-detected to select the correct address library. |
-| **4** | Runs the generated import scripts against your executables in headless Ghidra. Creates or updates the Ghidra project with all types, symbols, and signatures. Steam DRM is stripped automatically via Steamless. |
-| **5** | Opens Ghidra with the project loaded. |
-| **6** | Runs options 3 + 4 back-to-back. Use this after updating submodules or replacing an executable. |
-| **7** | Deletes the Ghidra project and state file so the next import starts from scratch. |
+| **1** | Installs Python packages (`pdbparse`, `pyghidra`, `capstone`, `numpy`), downloads Ghidra, LLVM/Clang, and Steamless if missing. Safe to run multiple times -- skips anything already installed. |
+| **2** | Runs `git submodule update --init --recursive --remote` to pull the latest CommonLib (SSE/F4/SF) and AddressLibraryDatabase commits. Run this when upstream CommonLib has new types or fixes. |
+| **3** | Per-version submenu: pick one detected version (e.g. just Skyrim VR, or just Fallout 4 OG) and run a subset of the pipeline against it -- generate only that version's script, import only its binary, etc. Useful when you don't want to rerun every game. |
+| **4** | Parses every supported CommonLib's headers with clang and generates the Ghidra import scripts under `ghidrascripts/` for **all** detected versions. Requires clang (option 1 installs it). |
+| **5** | Runs the generated import scripts against your executables in headless Ghidra. Creates or updates the Ghidra project with all types, symbols, and signatures. Steam DRM is stripped automatically via Steamless. |
+| **6** | Opens Ghidra with the project loaded. |
+| **7** | Runs options 4 + 5 back-to-back. Use this after updating submodules or replacing an executable. |
+| **8** | Deletes the Ghidra project and state file so the next import starts from scratch. |
+| **9** | Picks an existing Ghidra project (yours, not the BGS one) and runs the generic RTTI-walk vtable-naming pipeline against it. Works on any MSVC PE that Ghidra has finished auto-analyzing (x64 or x86), including binaries this repo has no CommonLib for -- Fallout New Vegas, modded engine builds, etc. Only renames functions whose name is still Ghidra's default `FUN_*` placeholder; never overwrites imported or user-set symbols. |
 
-**First-time setup:** run **1**, then **2**, then **6** (or just **6** if you
-already have clang installed). After that, **5** opens Ghidra with everything
-imported.
+**First-time setup:** run **1**, then **2**, then **7** (or just **7** if you
+already have clang installed). After that, **6** opens Ghidra with everything
+imported. For Fallout NV specifically, use **9** against your existing FNV
+project.
 
 ### Non-interactive mode
 
@@ -86,7 +98,7 @@ For CI or scripting, pass a subcommand instead of using the menu:
 
 ```bash
 python run.py setup   # option 1 + 2: install tools and update submodules
-python run.py build   # option 6: generate scripts + headless import
+python run.py build   # option 7: generate scripts + headless import
 python run.py all     # setup + build + open Ghidra
 ```
 
@@ -112,15 +124,17 @@ first run.
 
 ## Supported games
 
-| Game         | Folder           | Address library  | CommonLib                 |
-|--------------|------------------|------------------|---------------------------|
-| Skyrim SE    | `exes/skyrim/se` | `1-5-97-0`       | `powerof3/CommonLibSSE`   |
-| Skyrim AE    | `exes/skyrim/ae` | `1-6-1170-0`     | `powerof3/CommonLibSSE`   |
-| Skyrim VR    | `exes/skyrim/vr` | `1-4-15-0` (csv) | `powerof3/CommonLibSSE`   |
-| Fallout 4 OG | `exes/f4/og`     | `1-10-163-0`     | `libxse/commonlibf4`      |
-| Fallout 4 NG | `exes/f4/ng`     | `1-10-984-0`     | `libxse/commonlibf4`      |
-| Fallout 4 AE | `exes/f4/ae`     | `1-11-191-0`     | `libxse/commonlibf4`      |
-| Fallout 4 VR | `exes/f4/vr`     | `1-2-72-0` (csv) | `libxse/commonlibf4`      |
+| Game           | Folder              | Address library    | CommonLib                                         |
+|----------------|---------------------|--------------------|---------------------------------------------------|
+| Skyrim SE      | `exes/skyrim/se`    | `1-5-97-0`         | `powerof3/CommonLibSSE`                           |
+| Skyrim AE      | `exes/skyrim/ae`    | `1-6-1170-0`       | `powerof3/CommonLibSSE`                           |
+| Skyrim VR      | `exes/skyrim/vr`    | `1-4-15-0` (csv)   | `powerof3/CommonLibSSE`                           |
+| Fallout 4 OG   | `exes/f4/og`        | `1-10-163-0`       | `libxse/commonlibf4`                              |
+| Fallout 4 NG   | `exes/f4/ng`        | `1-10-984-0`       | `libxse/commonlibf4`                              |
+| Fallout 4 AE   | `exes/f4/ae`        | `1-11-191-0`       | `libxse/commonlibf4`                              |
+| Fallout 4 VR   | `exes/f4/vr`        | `1-2-72-0` (csv)   | `libxse/commonlibf4`                              |
+| Starfield      | `exes/starfield/sf` | `1-16-236-0` (V5)  | `Starfield-Reverse-Engineering/CommonLibSF`       |
+| Fallout NV     | n/a — menu option 9 | n/a                | n/a — RTTI-walk only (any pre-analyzed x86 PE)    |
 
 You don't need all of them. The script detects which executables are present
 and only generates and runs what's needed.
@@ -149,6 +163,24 @@ function names alongside the types when the script runs.
 
 The byte-sig port only runs when both AE (or NG) and the target binary are
 present in `exes/f4/`; without them, OG/VR fall back to types-only coverage.
+
+Starfield uses the `Starfield-Reverse-Engineering/CommonLibSF` headers and
+meh321's **V5** address-library binary format (flat `uint32[id]` array
+indexed by ID -- much simpler than the V1/V2 delta encoding SSE/F4 use).
+Function-name coverage on Starfield is currently bounded by what
+CommonLibSF's `IDs.h` / `IDs_RTTI.h` / `IDs_NiRTTI.h` / `IDs_VTABLE.h`
+manifests cover plus the vtable-walk pass that names virtual function
+implementations from RTTI labels -- ~2,933 named functions on a fresh
+Starfield 1.16.236.0 import, versus 299 from auto-analysis alone.
+
+Fallout NV (and any other MSVC-built game we don't have a CommonLib for)
+goes through a different path: menu option 9 runs a generic RTTI-driven
+vtable pipeline (`scripts/core/run_vtable_pipeline.py`) against an existing
+Ghidra project. It walks COL/TypeDescriptor pairs that Ghidra's own
+analyzer found, derives vtable struct layouts, and renames the virtual
+function bodies they point to -- conservatively, only if the function's
+name is still Ghidra's `FUN_*`/`thunk_FUN_*` placeholder. Works on both
+x64 and x86 binaries.
 
 ---
 
