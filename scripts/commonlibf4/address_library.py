@@ -21,9 +21,14 @@ porting from AE).
 
 from __future__ import annotations
 
+import glob
 import os
 import struct
-from typing import Dict, Optional
+import sys
+from typing import Dict, Optional, Tuple
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
+from pe_version import get_pe_version  # noqa: E402
 
 
 class F4AddressLibrary:

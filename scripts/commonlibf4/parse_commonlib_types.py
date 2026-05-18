@@ -126,7 +126,7 @@ F4_TARGETS = (
 def main():
     import json as _json
 
-    from address_library import F4AddressLibrary
+    from address_library import F4AddressLibrary, get_pe_version
     from ghidra_import_gen import (
         build_vtable_structs as _build_vtable_structs,
         inject_vtable_fields as _inject_vtable_fields,
@@ -236,10 +236,13 @@ def main():
     print(f'IDA names: {len(ida_names):,} entries')
 
     primary_rvas = {s['a'] for s in symbols if s.get('a')}
-    ida_fallback = [
-        {'n': name, 't': 'func', 'sig': '', 'a': rva, 'src': 'IDAImportNames'}
-        for rva, name in ida_names.items()
-    ]
+    ida_fallback = []
+    for rva, name in ida_names.items():
+        entry = {'n': name, 't': 'func', 'sig': '', 'a': rva, 'src': 'IDAImportNames'}
+        ae_id = ae_rva_to_id.get(rva)
+        if ae_id is not None:
+            entry['ai'] = ae_id
+        ida_fallback.append(entry)
     not_in_primary = sum(1 for s in ida_fallback if s['a'] not in primary_rvas)
     print(f'IDA fallback symbols: {len(ida_fallback):,} loaded '
           f'({not_in_primary:,} not in primary)')

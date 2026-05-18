@@ -22,7 +22,7 @@ import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
 
-from address_library import AddressLibrary
+from address_library import AddressLibrary, get_pe_version
 from pdb_symbols import load_pdb_names as load_se_pdb_names
 from ghidra_import_gen import (
     build_vtable_structs as _build_vtable_structs,
@@ -162,7 +162,7 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
     return _json.dumps(symbols, separators=(',', ':'))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]'):
+def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_map=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -210,16 +210,46 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
     _verify_anchors_or_exit(version, vtable_structs, anchors_csv)
 
     print('Generating Ghidra script...')
-    n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source)
+    n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source, address_lib_map=address_lib_map)
     print('Output: {} ({} enums, {} structs)'.format(output_path, n_enums, n_structs))
+
+
+def _detect_exe_versions():
+    """Detect SE and AE exe versions from the exes directory."""
+    exes_root = os.path.join(PROJECT_DIR, 'exes', 'skyrim')
+    se_ver = ae_ver = None
+
+    for ver_name, attr in [('se', 'se_ver'), ('ae', 'ae_ver')]:
+        ver_dir = os.path.join(exes_root, ver_name)
+        if not os.path.isdir(ver_dir):
+            continue
+        for fname in os.listdir(ver_dir):
+            if fname.lower().endswith('.exe') and 'unpacked' not in fname.lower():
+                exe_path = os.path.join(ver_dir, fname)
+                v = get_pe_version(exe_path)
+                if v:
+                    print('  Detected {} exe version: {}'.format(
+                        ver_name.upper(), '.'.join(str(x) for x in v)))
+                    if attr == 'se_ver':
+                        se_ver = v
+                    else:
+                        ae_ver = v
+                    break
+
+    return se_ver, ae_ver
 
 
 def main():
     import json as _json
 
-    # Load address databases (binary data, not source scanning)
+    # Detect exe versions for address library selection
+    print('=== Detecting exe versions ===')
+    se_ver, ae_ver = _detect_exe_versions()
+
+    # Load address databases using detected versions
     addr_lib = AddressLibrary()
-    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'))
+    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'),
+                      se_version=se_ver, ae_version=ae_ver)
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
     print('\n=== Collecting symbols via regex relocation parser ===')
@@ -344,6 +374,21 @@ def main():
     for s in symbols:
         if '__' in s['n']:
             s['n'] = re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
+
+    # Attach address-library IDs to every symbol via reverse lookup
+    se_rva_to_id = {v: k for k, v in addr_lib.se_db.items()}
+    ae_rva_to_id = {v: k for k, v in addr_lib.ae_db.items()}
+    id_count = 0
+    for s in symbols:
+        se_id = se_rva_to_id.get(s.get('s'))
+        ae_id = ae_rva_to_id.get(s.get('a'))
+        if se_id is not None:
+            s['si'] = se_id
+        if ae_id is not None:
+            s['ai'] = ae_id
+        if se_id is not None or ae_id is not None:
+            id_count += 1
+    print('Attached address-library IDs to {} of {} symbols'.format(id_count, len(symbols)))
 
     funcs = [s for s in symbols if s['t'] == 'func']
     with_sig = len([s for s in funcs if s.get('sig')])

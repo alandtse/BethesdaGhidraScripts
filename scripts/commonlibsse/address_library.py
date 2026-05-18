@@ -8,9 +8,114 @@ across all three DBs.
 
 from __future__ import annotations
 
+import glob
 import os
 import struct
-from typing import Dict
+import sys
+from typing import Dict, Optional, Tuple
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
+from pe_version import get_pe_version  # noqa: E402
+
+
+def _read_dotnet_string(f) -> str:
+    """Read a .NET BinaryWriter-style length-prefixed string."""
+    length = 0
+    shift = 0
+    while True:
+        b = struct.unpack('<B', f.read(1))[0]
+        length |= (b & 0x7F) << shift
+        shift += 7
+        if (b & 0x80) == 0:
+            break
+    return f.read(length).decode('utf-8')
+
+
+def load_relib_version(relib_path: str, target_version: Tuple[int, ...]) -> Dict[int, int]:
+    """Load ID-to-RVA mappings for a specific version from a .relib file.
+
+    Returns an empty dict if the version is not found in the database.
+    """
+    if not os.path.exists(relib_path):
+        return {}
+
+    target_tuple = tuple(target_version)
+
+    with open(relib_path, 'rb') as f:
+        fmt_version = struct.unpack('<i', f.read(4))[0]
+        _high_vid = struct.unpack('<Q', f.read(8))[0]
+        _ptr_size = struct.unpack('<i', f.read(4))[0]
+
+        has_module = struct.unpack('<B', f.read(1))[0]
+        if has_module:
+            _read_dotnet_string(f)
+
+        num_versions = struct.unpack('<i', f.read(4))[0]
+
+        for _ in range(num_versions):
+            n_components = struct.unpack('<i', f.read(4))[0]
+            ver = tuple(struct.unpack('<I', f.read(4))[0] for _ in range(n_components))
+
+            has_overwrite = struct.unpack('<B', f.read(1))[0]
+            if has_overwrite:
+                _read_dotnet_string(f)
+
+            _base_addr = struct.unpack('<q', f.read(8))[0]
+            value_count = struct.unpack('<i', f.read(4))[0]
+
+            if ver == target_tuple:
+                db = {}
+                for _ in range(value_count):
+                    k = struct.unpack('<Q', f.read(8))[0]
+                    v = struct.unpack('<I', f.read(4))[0]
+                    db[k] = v
+                return db
+
+            # Skip values for non-matching versions
+            f.seek(value_count * 12, 1)
+
+            if fmt_version >= 2:
+                hash_count = struct.unpack('<i', f.read(4))[0]
+                f.seek(hash_count * 16, 1)
+
+    return {}
+
+
+def list_relib_versions(relib_path: str) -> list:
+    """List all versions available in a .relib file."""
+    if not os.path.exists(relib_path):
+        return []
+
+    versions = []
+    with open(relib_path, 'rb') as f:
+        fmt_version = struct.unpack('<i', f.read(4))[0]
+        _high_vid = struct.unpack('<Q', f.read(8))[0]
+        _ptr_size = struct.unpack('<i', f.read(4))[0]
+
+        has_module = struct.unpack('<B', f.read(1))[0]
+        if has_module:
+            _read_dotnet_string(f)
+
+        num_versions = struct.unpack('<i', f.read(4))[0]
+
+        for _ in range(num_versions):
+            n_components = struct.unpack('<i', f.read(4))[0]
+            ver = tuple(struct.unpack('<I', f.read(4))[0] for _ in range(n_components))
+            versions.append(ver)
+
+            has_overwrite = struct.unpack('<B', f.read(1))[0]
+            if has_overwrite:
+                _read_dotnet_string(f)
+
+            _base_addr = struct.unpack('<q', f.read(8))[0]
+            value_count = struct.unpack('<i', f.read(4))[0]
+            f.seek(value_count * 12, 1)
+
+            if fmt_version >= 2:
+                hash_count = struct.unpack('<i', f.read(4))[0]
+                f.seek(hash_count * 16, 1)
+
+    return versions
 
 
 class AddressLibrary:
