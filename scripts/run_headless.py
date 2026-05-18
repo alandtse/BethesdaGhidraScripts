@@ -18,6 +18,8 @@ Layout:
   exes/f4/ng/Fallout4.exe                  -> CommonLibImport_F4_NG.py
   exes/f4/ae/Fallout4.exe                  -> CommonLibImport_F4_AE.py
   exes/f4/vr/Fallout4VR.exe                -> CommonLibImport_F4_VR.py
+  exes/starfield/sf/Starfield.exe          -> CommonLibImport_SF.py
+  exes/fnv/og/FalloutNV.exe                -> CommonLibImport_FNV.py
 
 All binaries are stored in one Ghidra project under /<game>/<version>/ folders.
 """
@@ -40,6 +42,7 @@ PROJECT_NAME = {
     'skyrim':    'SkyrimSE',
     'f4':        'Fallout4',
     'starfield': 'Starfield',
+    'fnv':       'FalloutNV',
 }
 
 SPOT_CHECKS = {
@@ -77,6 +80,18 @@ SPOT_CHECKS = {
         'labels':    ["RTTI_Actor", "VTABLE_Actor"],
         'functions': [],
         'min_named': 1000, 'min_enums': 0, 'min_structs': 0, 'min_syms': 0,
+    },
+    'fnv': {
+        # FNV uses xNVSE headers (no namespace prefix; category is
+        # /xNVSE).  176-symbol baseline -- single hand-written corpus,
+        # users can grow it via refs/fnv_names.csv overlay.  Type spot-
+        # checks are intentionally empty for v1 since xNVSE struct names
+        # may shift as the submodule updates; once the type pipeline
+        # stabilizes, restore representative checks here.
+        'types':     [],
+        'labels':    [],
+        'functions': [],
+        'min_named': 50, 'min_enums': 0, 'min_structs': 0, 'min_syms': 0,
     },
 }
 
@@ -117,6 +132,10 @@ def script_for(game: str, version: str) -> Path:
         # Single-version pipeline; <version> directory name (e.g. "sf" or
         # "1-16-236-0") is ignored at script-lookup time.
         return SCRIPTS_DIR / "CommonLibImport_SF.py"
+    if game == 'fnv':
+        # Single-version pipeline (FNV 1.4.0.525 is the only build); the
+        # <version> directory name is ignored.
+        return SCRIPTS_DIR / "CommonLibImport_FNV.py"
     return SCRIPTS_DIR / f"CommonLibImport_{version.upper()}.py"
 
 

@@ -23,12 +23,14 @@ exes/f4/ng/Fallout4.exe           Fallout 4 NG (1.10.984)
 exes/f4/ae/Fallout4.exe           Fallout 4 AE (1.11.191)
 exes/f4/vr/Fallout4VR.exe         Fallout 4 VR (1.2.72)   — types only
 exes/starfield/sf/Starfield.exe   Starfield    (1.16.236) — labels + vtables
+exes/fnv/og/FalloutNV.exe         Fallout NV   (1.4.0.525, x86) — xNVSE-sourced
 ```
 
-Fallout New Vegas (1.4.0.525, x86) doesn't use the `exes/` drop flow — it
-piggy-backs on Ghidra's RTTI walker via the **Enrich an existing Ghidra
-project** action (menu option 9). Open or import FalloutNV.exe into any
-Ghidra project first, then point option 9 at that project.
+Fallout New Vegas now flows through the same pipeline as the other versions
+(symbol source: xNVSE headers + optional `scripts/commonlibnvse/refs/fnv_names.csv`
+overlay). Menu option 9 (enrich-existing) still works against any other FNV
+project you have lying around, but option 7 (full rebuild) handles FNV
+end-to-end like Skyrim / F4 / Starfield.
 
 3. Run:
 
@@ -89,8 +91,9 @@ The status panel at the top shows what's installed and detected. Menu options:
 
 **First-time setup:** run **1**, then **2**, then **7** (or just **7** if you
 already have clang installed). After that, **6** opens Ghidra with everything
-imported. For Fallout NV specifically, use **9** against your existing FNV
-project.
+imported. Option **9** is still available as an enrich-only pass against any
+externally-prepared Ghidra project (handy when you already have a heavily-
+annotated FNV / modded-engine project somewhere else).
 
 ### Non-interactive mode
 
@@ -134,7 +137,7 @@ first run.
 | Fallout 4 AE   | `exes/f4/ae`        | `1-11-191-0`       | `libxse/commonlibf4`                              |
 | Fallout 4 VR   | `exes/f4/vr`        | `1-2-72-0` (csv)   | `libxse/commonlibf4`                              |
 | Starfield      | `exes/starfield/sf` | `1-16-236-0` (V5)  | `Starfield-Reverse-Engineering/CommonLibSF`       |
-| Fallout NV     | n/a — menu option 9 | n/a                | n/a — RTTI-walk only (any pre-analyzed x86 PE)    |
+| Fallout NV     | `exes/fnv/og`       | n/a — xNVSE hardcoded VAs | `xNVSE/NVSE` (x86) + optional `refs/fnv_names.csv` |
 
 You don't need all of them. The script detects which executables are present
 and only generates and runs what's needed.
@@ -173,14 +176,24 @@ manifests cover plus the vtable-walk pass that names virtual function
 implementations from RTTI labels -- ~2,933 named functions on a fresh
 Starfield 1.16.236.0 import, versus 299 from auto-analysis alone.
 
-Fallout NV (and any other MSVC-built game we don't have a CommonLib for)
-goes through a different path: menu option 9 runs a generic RTTI-driven
-vtable pipeline (`scripts/core/run_vtable_pipeline.py`) against an existing
-Ghidra project. It walks COL/TypeDescriptor pairs that Ghidra's own
-analyzer found, derives vtable struct layouts, and renames the virtual
-function bodies they point to -- conservatively, only if the function's
-name is still Ghidra's `FUN_*`/`thunk_FUN_*` placeholder. Works on both
-x64 and x86 binaries.
+Fallout NV uses `xNVSE/NVSE` as its symbol/type source. FNV 1.4.0.525 is
+frozen so the hardcoded virtual addresses baked into xNVSE headers
+(`DEFINE_MEMBER_FN`, typed-constant addresses, casted fn-pointer
+constants) are stable -- the scanner converts them to RVAs by subtracting
+the standard 0x00400000 image base. Type extraction runs the same libclang
+AST + record-layout pipeline as the other versions; xNVSE's game types
+live at global scope (no `RE::` namespace) so they land under category
+`/xNVSE/` rather than `/CommonLibSSE/RE/`. Names that xNVSE doesn't expose
+can be added by dropping a CSV into `scripts/commonlibnvse/refs/fnv_names.csv`
+(see `fnv_names.csv.example` for the format).
+
+For any other MSVC-built game we don't have a CommonLib for, menu option 9
+still runs the generic RTTI-driven vtable pipeline
+(`scripts/core/run_vtable_pipeline.py`) against an existing Ghidra project.
+It walks COL/TypeDescriptor pairs that Ghidra's own analyzer found, derives
+vtable struct layouts, and renames the virtual function bodies they point
+to -- conservatively, only if the function's name is still Ghidra's
+`FUN_*`/`thunk_FUN_*` placeholder. Works on both x64 and x86 binaries.
 
 ---
 

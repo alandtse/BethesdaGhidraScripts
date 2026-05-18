@@ -1,0 +1,22 @@
+# Optional CSV overlay for FNV symbols xNVSE doesn't expose.
+#
+# Copy or rename this file to `fnv_names.csv` to enable.  The address
+# scanner reads it after the xNVSE header scan; later rows override
+# earlier ones (CSV overlay takes precedence over xNVSE for the same
+# RVA).
+#
+# Columns:
+#   name   Symbol name as it should appear in Ghidra.
+#   rva    RVA into FalloutNV.exe (i.e., VA minus the 0x00400000 image
+#          base for the standard FNV 1.4.0.525 build).  Hex or decimal.
+#   kind   Either "func" or "label".  Use "func" if you want Ghidra to
+#          materialize a function at this address; "label" places only a
+#          symbol.
+#   class  Optional containing class (used to produce ClassName::Method).
+#
+# Comment lines start with '#'.  Blank lines are skipped.
+#
+# Examples:
+# name,rva,kind,class
+# PlayerCharacter_GetSingleton,0x471B40,func,
+# TESForm_LookupByID,0x83A00,func,TESForm

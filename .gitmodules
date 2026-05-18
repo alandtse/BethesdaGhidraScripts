@@ -12,3 +12,6 @@
 [submodule "extern/CommonLibSF"]
 	path = extern/CommonLibSF
 	url = https://github.com/Starfield-Reverse-Engineering/CommonLibSF.git
+[submodule "extern/xNVSE"]
+	path = extern/xNVSE
+	url = https://github.com/xNVSE/NVSE

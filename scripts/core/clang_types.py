@@ -155,9 +155,16 @@ _LITERAL_KEYWORDS = frozenset({'true', 'false', 'nullptr', 'this'})
 
 
 def _ensure_qualified(name, root_ns='RE'):
-    """Prepend root_ns:: to bare identifiers. Already-qualified names are unchanged."""
+    """Prepend root_ns:: to bare identifiers. Already-qualified names are unchanged.
+
+    ``root_ns`` may be None or empty for codebases that put their game
+    types at global scope (xNVSE/FNV).  In that case identifiers pass
+    through unchanged.
+    """
     name = name.strip()
     if not name:
+        return name
+    if not root_ns:
         return name
     if '::' in name:
         return name
@@ -958,10 +965,10 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
         layouts_by_short.setdefault(base_short, []).append((lname, ldata))
 
     # Process AST classes — merge with layout data
-    ns_prefix = root_ns + '::'
+    ns_prefix = (root_ns + '::') if root_ns else ''
     for full_name, ast in ast_classes.items():
         layout = layouts.get(full_name)
-        if not layout:
+        if not layout and ns_prefix:
             layout = layouts.get(ns_prefix + full_name)
         if not layout:
             for lname, ldata in layouts_by_short.get(ast['name'], []):
@@ -1082,7 +1089,7 @@ def _strip_outer_template(name):
 def _compute_vfuncs(structs, root_ns='RE'):
     slot_cache = {}
     vmname_cache = {}
-    ns_prefix = root_ns + '::'
+    ns_prefix = (root_ns + '::') if root_ns else ''
 
     def resolve(name):
         st = structs.get(name)
@@ -1393,7 +1400,9 @@ def _pick_virtual_method_for_addr(structs, full_name, root_ns, depth=0):
             continue
         return vm
     for base in st.get('bases', []):
-        bs = structs.get(base) or structs.get(root_ns + '::' + base)
+        bs = structs.get(base)
+        if not bs and root_ns:
+            bs = structs.get(root_ns + '::' + base)
         if bs:
             r = _pick_virtual_method_for_addr(structs, bs['full_name'], root_ns, depth + 1)
             if r:
@@ -1566,7 +1575,7 @@ def _dump_vtable_layouts(structs, header_path, parse_args, clang_binary,
         if '<' in k:
             template_defs.add(k.split('<', 1)[0])
 
-    ns_pre = root_ns + '::'
+    ns_pre = (root_ns + '::') if root_ns else ''
     candidates = []  # (cls_full, method_name)
     for k, s in structs.items():
         if not s.get('has_vtable'):
@@ -1996,7 +2005,7 @@ def _force_template_layouts(structs, header_path, parse_args, clang_binary,
         except OSError:
             pass
 
-    ns_pre = root_ns + '::'
+    ns_pre = (root_ns + '::') if root_ns else ''
     filled = 0
     for key in empty:
         ldata = (layouts.get(key)
@@ -2026,7 +2035,7 @@ def _propagate_template_methods(structs, ast_classes, root_ns='RE'):
     ``T``, which is what vtable-struct generation needs to produce typed
     ``__vftable`` pointers for instantiations.
     """
-    ns_pre = root_ns + '::'
+    ns_pre = (root_ns + '::') if root_ns else ''
     propagated = 0
     for key, st in structs.items():
         if '<' not in key:
@@ -2215,10 +2224,13 @@ def collect_types(header_path, include_path, parse_args,
 
     layouts = _parse_layouts_with_bases(layout_text, root_ns=root_namespace)
     if verbose:
-        ns_prefix = root_namespace + '::'
-        ns_layouts = {k: v for k, v in layouts.items() if k.startswith(ns_prefix)}
-        print('  Parsed {} record layouts ({} {}::)'.format(
-            len(layouts), len(ns_layouts), root_namespace))
+        if root_namespace:
+            ns_prefix = root_namespace + '::'
+            ns_layouts = {k: v for k, v in layouts.items() if k.startswith(ns_prefix)}
+            print('  Parsed {} record layouts ({} {}::)'.format(
+                len(layouts), len(ns_layouts), root_namespace))
+        else:
+            print('  Parsed {} record layouts (global scope)'.format(len(layouts)))
 
     # --- Merge AST + layouts ---
     structs = _merge_ast_and_layouts(ast_classes, layouts, include_path,
@@ -2247,7 +2259,8 @@ def collect_types(header_path, include_path, parse_args,
             print('  vtable dump pass skipped: {}'.format(_e))
 
     # --- Template instantiation types ---
-    tmpl_category = category_prefix + '/' + root_namespace
+    tmpl_category = (category_prefix + '/' + root_namespace
+                     if root_namespace else category_prefix)
     template_source = ''
     try:
         from template_types import process_template_types as _process_templates

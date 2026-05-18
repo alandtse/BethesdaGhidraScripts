@@ -175,6 +175,9 @@ def _scripts_exist(games):
     if "starfield" in games:
         if not (GHIDRA_SCRIPTS_DIR / "CommonLibImport_SF.py").is_file():
             return False
+    if "fnv" in games:
+        if not (GHIDRA_SCRIPTS_DIR / "CommonLibImport_FNV.py").is_file():
+            return False
     return True
 
 
@@ -468,6 +471,12 @@ def generate_scripts(games=None):
         subprocess.run(
             [sys.executable,
              str(SCRIPTS_DIR / "commonlibsf" / "parse_commonlib_types.py")],
+            cwd=str(REPO_DIR), check=True)
+    if "fnv" in games:
+        print("  Fallout New Vegas 1.4.0.525 (x86) ...")
+        subprocess.run(
+            [sys.executable,
+             str(SCRIPTS_DIR / "commonlibnvse" / "parse_commonlib_types.py")],
             cwd=str(REPO_DIR), check=True)
 
 
