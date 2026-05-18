@@ -9,3 +9,6 @@ __pycache__
 
 # Local audit artifacts from MCP/tool transcripts
 .audit/
+
+# Built release bundles (output of scripts/build_release_bundle.ps1)
+/release/
