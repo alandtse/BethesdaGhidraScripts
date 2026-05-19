@@ -487,6 +487,24 @@ def run_headless():
         cwd=str(REPO_DIR)).returncode
 
 
+def sf_shift_check():
+    """Post-pipeline SF shift-map check.
+
+    Idempotent: cheap no-op when the user's SF PE version already has
+    matching reference + shift artifacts.  First run on a non-1.16.236
+    build dumps vtable layouts (~30s) and builds refs/shift_sf.json
+    against the committed 1.16.236 reference; user re-runs `python
+    run.py build` to apply the slot shifts at the next script-gen pass.
+    """
+    sf_dir = EXES_ROOT / "starfield" / "sf"
+    if not sf_dir.is_dir() or not any(sf_dir.glob("*.exe")):
+        return  # No SF binary, skip entirely
+    _header("SF Shift-Map Check")
+    subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "commonlibsf" / "sf_shift_check.py")],
+        cwd=str(REPO_DIR))
+
+
 def launch_ghidra():
     _header("Launching Ghidra")
     if sys.platform == "win32":
@@ -856,6 +874,7 @@ def _version_submenu():
             generate_scripts(present)
             rc = run_headless()
             if rc == 0:
+                sf_shift_check()
                 _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
             return
         if not choice.isdigit() or not (1 <= int(choice) <= len(VERSION_CATALOG)):
@@ -875,6 +894,8 @@ def _version_submenu():
         generate_scripts({game})
         rc = run_headless()
         if rc == 0:
+            if game == "starfield":
+                sf_shift_check()
             _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
         return
 
@@ -907,6 +928,7 @@ def _run_menu():
         elif choice == "5":
             rc = run_headless()
             if rc == 0:
+                sf_shift_check()
                 _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
         elif choice == "6":
             launch_ghidra()
@@ -916,6 +938,7 @@ def _run_menu():
             generate_scripts(games)
             rc = run_headless()
             if rc == 0:
+                sf_shift_check()
                 _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
         elif choice == "8":
             clean_project()
@@ -948,6 +971,7 @@ def _cmd_build():
     generate_scripts(games)
     rc = run_headless()
     if rc == 0:
+        sf_shift_check()
         _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
     sys.exit(rc)
 
@@ -961,6 +985,7 @@ def _cmd_all():
     generate_scripts(games)
     rc = run_headless()
     if rc == 0:
+        sf_shift_check()
         _save_state(_get_submodule_hashes(), _get_exe_fingerprints())
     launch_ghidra()
     sys.exit(rc)

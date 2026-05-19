@@ -188,6 +188,28 @@ append-only ID convention keeps those resolutions stable across the
 1.16.x line -- only ID-namespace-changing patches (1.15 → 1.16 was one)
 break compatibility.
 
+**Auto-generated shift maps for non-1.16.236 builds.**  After a successful
+SF import, `run.py` invokes
+`scripts/commonlibsf/sf_shift_check.py`, which:
+
+1. Reads the detected PE version against the canonical 1.16.236 anchor.
+2. Dumps the freshly-imported binary's per-class vtable layouts via a
+   small pyghidra script (`scripts/commonlibsf/dump_vtable_layouts.py`,
+   in-process — no MCP, ~30 seconds for a full SF binary).
+3. Diffs the dump against the committed 1.16.236 reference layout at
+   `scripts/commonlibsf/refs/sf_1-16-236-0_vtables.csv.gz` and writes
+   `refs/shift_sf.json` when the target diverges.
+4. Tells the user to re-run `python run.py build` so
+   `parse_commonlib_types.py` picks up the shift map on the next pass
+   and emits vtable structs whose slot names line up with the target
+   binary's layout.
+
+If you're on a build that doesn't have a pre-shipped shift map (e.g.
+1.16.242 today), please share the dumped
+`scripts/commonlibsf/refs/sf_<version>_vtables.csv.gz` in a GitHub
+issue so the next release can ship a pre-built shift map for everyone
+else on that version.
+
 Fallout NV uses `xNVSE/NVSE` as its symbol/type source. FNV 1.4.0.525 is
 frozen so the hardcoded virtual addresses baked into xNVSE headers
 (`DEFINE_MEMBER_FN`, typed-constant addresses, casted fn-pointer

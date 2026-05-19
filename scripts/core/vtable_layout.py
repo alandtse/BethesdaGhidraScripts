@@ -89,12 +89,31 @@ def _parse_hex_or_dec(s: str) -> int:
     return int(s, 16) if s.lower().startswith('0x') else int(s)
 
 
+def _open_csv_read(path: str):
+    """Transparent gzip support: ``.csv.gz`` is auto-decompressed."""
+    if path.endswith('.gz'):
+        import gzip
+        return gzip.open(path, 'rt', encoding='utf-8', newline='')
+    return open(path, newline='', encoding='utf-8')
+
+
+def _open_csv_write(path: str):
+    if path.endswith('.gz'):
+        import gzip
+        return gzip.open(path, 'wt', encoding='utf-8', newline='')
+    return open(path, 'w', newline='', encoding='utf-8')
+
+
 def load_csv(path: str, binary_label: str) -> BinaryLayout:
-    """Load a per-binary vtable layout CSV.  Missing file -> empty layout."""
+    """Load a per-binary vtable layout CSV.  Missing file -> empty layout.
+
+    Transparently handles ``.csv.gz`` (gzip-compressed) inputs -- the SF
+    reference layout commits compressed since the raw form is ~45 MB.
+    """
     layout = BinaryLayout(binary_label=binary_label, binary_path=path)
     if not os.path.isfile(path):
         return layout
-    with open(path, newline='', encoding='utf-8') as f:
+    with _open_csv_read(path) as f:
         reader = csv.DictReader(f)
         for row in reader:
             cls = (row.get('class') or '').strip()
@@ -117,10 +136,13 @@ def load_csv(path: str, binary_label: str) -> BinaryLayout:
 
 
 def save_csv(layout: BinaryLayout, path: str) -> int:
-    """Write a per-binary layout to CSV.  Returns row count."""
+    """Write a per-binary layout to CSV.  Returns row count.
+
+    ``.csv.gz`` paths are written as gzip-compressed CSV.
+    """
     os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
     rows = 0
-    with open(path, 'w', newline='', encoding='utf-8') as f:
+    with _open_csv_write(path) as f:
         writer = csv.writer(f)
         writer.writerow(['class', 'vtable_addr', 'slot', 'func_addr', 'func_name', 'fingerprint'])
         for cls_name in sorted(layout.classes):
