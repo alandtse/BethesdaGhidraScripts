@@ -27,12 +27,34 @@ COMMONLIB_INCLUDE = os.path.join(PROJECT_DIR, 'extern', 'CommonLibSF', 'include'
 STARFIELD_H = os.path.join(COMMONLIB_INCLUDE, 'RE', 'Starfield.h')
 RE_INCLUDE  = os.path.join(COMMONLIB_INCLUDE, 'RE')
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, 'ghidrascripts')
+EXES_DIR    = os.path.join(PROJECT_DIR, 'exes', 'starfield', 'sf')
 
 sys.path.insert(0, os.path.join(SCRIPT_DIR))
 sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
 
 from address_library import AddressLibrary
 from ids_parser import collect_all as collect_id_symbols
+from pe_version import get_pe_version
+
+
+def _detect_sf_version():
+    """Return the PE version tuple of the first Starfield.exe in EXES_DIR.
+
+    Returns None when no exe is present or when the version can't be parsed.
+    Steam-DRM-packed binaries are handled by pe_version's FileVersion-string
+    fallback (VS_FIXEDFILEINFO is scrambled by SteamStub).
+    """
+    if not os.path.isdir(EXES_DIR):
+        return None
+    for fname in sorted(os.listdir(EXES_DIR)):
+        if not fname.lower().endswith('.exe'):
+            continue
+        if 'unpacked' in fname.lower():
+            continue
+        v = get_pe_version(os.path.join(EXES_DIR, fname))
+        if v:
+            return v
+    return None
 
 
 def _make_symbols(funcs, labels):
@@ -139,14 +161,28 @@ def main():
             STARFIELD_H))
         sys.exit(1)
 
-    # 1. Address library
-    addr_lib = AddressLibrary()
-    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'))
-    if not addr_lib.sf_db:
-        print('ERROR: Starfield address library not loaded.  Expected '
-              '`addresslibrary/starfield/versionlib-1-16-236-0.bin`.')
+    # 1. Address library -- match the bin to the installed Starfield.exe.
+    sf_version = _detect_sf_version()
+    if sf_version is None:
+        print('ERROR: Could not detect Starfield.exe version in {}.  '
+              'Drop a Starfield.exe in that directory.'.format(EXES_DIR))
         sys.exit(1)
-    print('Address library entries: {:,}'.format(len(addr_lib.sf_db)))
+    print('Detected Starfield.exe version: {}'.format(
+        '.'.join(str(x) for x in sf_version)))
+
+    addr_lib = AddressLibrary()
+    try:
+        addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'),
+                          pe_version=sf_version)
+    except FileNotFoundError as e:
+        print('ERROR: {}'.format(e))
+        sys.exit(1)
+    if not addr_lib.sf_db:
+        print('ERROR: Starfield address library loaded zero entries.')
+        sys.exit(1)
+    print('Address library: versionlib-{}.bin ({:,} entries)'.format(
+        '-'.join(str(x) for x in (addr_lib.sf_version or sf_version)),
+        len(addr_lib.sf_db)))
 
     # 2. Manifest symbol scan
     func_syms, label_syms = collect_id_symbols(RE_INCLUDE, addr_lib, verbose=True)

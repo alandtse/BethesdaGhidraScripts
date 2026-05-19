@@ -26,7 +26,13 @@ def get_pe_version(exe_path: str) -> Optional[Tuple[int, ...]]:
             ms = struct.unpack_from('<I', data, pos + 8)[0]
             ls = struct.unpack_from('<I', data, pos + 12)[0]
             ver = (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
-            if ver[0] > 0 and ver != (1, 0, 0, 0):
+            # Reject implausible majors: SteamStub-packed binaries leave
+            # VS_FIXEDFILEINFO scrambled (Starfield 1.16.236 sees ver[0]
+            # around 16523), but the FileVersion string in the resource
+            # section stays readable.  Bethesda games are 1.x/2.x, so an
+            # upper bound of 100 is plenty of headroom for real builds and
+            # cleanly rejects the scrambled values.
+            if 0 < ver[0] < 100 and ver != (1, 0, 0, 0):
                 return ver
         except struct.error:
             pass

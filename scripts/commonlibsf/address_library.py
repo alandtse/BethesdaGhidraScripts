@@ -1,16 +1,34 @@
 """Starfield address library database loader.
 
-Single-version (1.16.236.0 at the time of writing): the canonical
-meh321-format binary that the community ships under
-``SFSE/Plugins/versionlib-1-16-236-0.bin``.  Format is identical to the SSE
-and F4 .bin layouts -- only the path differs.
+Auto-selects the matching ``addresslibrary/starfield/versionlib-X-Y-Z-W.bin``
+for the caller's PE version.  Drop in a new bin for a future SF patch and
+the loader picks it up without code changes.  Format is meh321's V5 (flat
+``uint32[id]`` array indexed by ID); V1/V2 binaries are also accepted.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import struct
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
+
+
+_VERSIONLIB_RE = re.compile(r'^versionlib-(\d+-\d+-\d+-\d+)\.bin$')
+
+
+def _ver_to_filename(ver: Tuple[int, ...]) -> str:
+    parts = list(ver)
+    while len(parts) < 4:
+        parts.append(0)
+    return '-'.join(str(x) for x in parts[:4])
+
+
+def _ver_to_label(ver: Tuple[int, ...]) -> str:
+    parts = list(ver)
+    while len(parts) < 4:
+        parts.append(0)
+    return '.'.join(str(x) for x in parts[:4])
 
 
 class AddressLibrary:
@@ -18,6 +36,7 @@ class AddressLibrary:
 
     def __init__(self):
         self.sf_db: Dict[int, int] = {}
+        self.sf_version: Optional[Tuple[int, int, int, int]] = None
 
     def load_bin(self, file_path: str) -> Dict[int, int]:
         """Read a Starfield versionlib .bin file.
@@ -90,6 +109,65 @@ class AddressLibrary:
             db[id_val] = off_val; pvid = id_val; poffset = off_val
         return db
 
-    def load_all(self, base_path: str, version: str = '1-16-236-0') -> None:
+    @staticmethod
+    def available_versions(base_path: str) -> List[Tuple[int, int, int, int]]:
+        """Scan addresslibrary/starfield/ for versionlib-X-Y-Z-W.bin files.
+
+        Returns sorted list of version tuples for every well-named bin found.
+        """
         sf_dir = os.path.join(base_path, 'starfield')
-        self.sf_db = self.load_bin(os.path.join(sf_dir, f'versionlib-{version}.bin'))
+        if not os.path.isdir(sf_dir):
+            return []
+        versions: List[Tuple[int, int, int, int]] = []
+        for fname in os.listdir(sf_dir):
+            m = _VERSIONLIB_RE.match(fname)
+            if not m:
+                continue
+            parts = tuple(int(x) for x in m.group(1).split('-'))
+            if len(parts) == 4:
+                versions.append(parts)  # type: ignore[arg-type]
+        return sorted(versions)
+
+    def load_all(self, base_path: str,
+                 pe_version: Optional[Tuple[int, ...]] = None) -> None:
+        """Load the SF versionlib matching ``pe_version``.
+
+        ``pe_version`` is the tuple returned by ``get_pe_version`` on the
+        Starfield binary; the loader resolves it to
+        ``versionlib-X-Y-Z-W.bin`` in ``base_path/starfield/``.  If the
+        matching bin is missing, raises ``FileNotFoundError`` listing every
+        version present so the caller can surface a clear error.
+
+        Passing ``pe_version=None`` is treated as "auto-pick the newest
+        bin present" -- a soft fallback for callers that don't have an
+        exe to probe (e.g. one-off offline tooling).  Production pipeline
+        callers should always pass the detected PE version through.
+        """
+        sf_dir = os.path.join(base_path, 'starfield')
+        available = self.available_versions(base_path)
+
+        if pe_version is None:
+            if not available:
+                raise FileNotFoundError(
+                    'No Starfield versionlib bins found in {}.  Expected at '
+                    'least one versionlib-X-Y-Z-W.bin file.'.format(sf_dir))
+            chosen = available[-1]
+        else:
+            target = tuple(pe_version)
+            while len(target) < 4:
+                target = target + (0,)
+            target = target[:4]
+            if target not in available:
+                avail_str = ', '.join(_ver_to_label(v) for v in available) or '(none)'
+                raise FileNotFoundError(
+                    'No address library for Starfield {} in {}.  '
+                    'Available versions: {}.  Drop the matching '
+                    'versionlib-{}.bin into addresslibrary/starfield/.'.format(
+                        _ver_to_label(target), sf_dir, avail_str,
+                        _ver_to_filename(target)))
+            chosen = target  # type: ignore[assignment]
+
+        path = os.path.join(sf_dir, 'versionlib-{}.bin'.format(_ver_to_filename(chosen)))
+        self.sf_db = self.load_bin(path)
+        if self.sf_db:
+            self.sf_version = chosen  # type: ignore[assignment]

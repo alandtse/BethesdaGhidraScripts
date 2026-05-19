@@ -64,7 +64,7 @@ VERSION_CATALOG = [
     ("f4ae",  "f4",        "Fallout 4 AE 1.11.191","f4/ae",        "CommonLibImport_F4_AE.py", "upstream"),
     ("f4vr",  "f4",        "Fallout 4 VR 1.2.72",  "f4/vr",        "CommonLibImport_F4_VR.py", "fork"),
     ("fnv",   "fnv",       "Fallout NV 1.4.0.525", "fnv/og",       "CommonLibImport_FNV.py",   "fork"),
-    ("sf",    "starfield", "Starfield 1.16.236",   "starfield/sf", "CommonLibImport_SF.py",    "fork"),
+    ("sf",    "starfield", "Starfield 1.16.236 / 1.16.242", "starfield/sf", "CommonLibImport_SF.py",    "fork"),
 ]
 
 API_HEADERS = {
@@ -467,7 +467,7 @@ def generate_scripts(games=None):
                 [sys.executable, str(bytesig_port)],
                 cwd=str(REPO_DIR), check=False)
     if "starfield" in games:
-        print("  Starfield 1.16.236 ...")
+        print("  Starfield (auto-detect 1.16.x) ...")
         subprocess.run(
             [sys.executable,
              str(SCRIPTS_DIR / "commonlibsf" / "parse_commonlib_types.py")],

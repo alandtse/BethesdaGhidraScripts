@@ -13,6 +13,7 @@ Output: scripts/commonlibsf/refs/sf116_commonlib_names.csv
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import re
@@ -27,6 +28,10 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 from address_library import AddressLibrary
 
 IDS_DIR       = Path(r"C:/Development/Cell Offset Generator Starfield/external/CommonLibSF/include/RE")
+# Targets 1.16.236 by name (the "sf116_*" refs CSV namespace was authored
+# against that build).  Override with --versionlib to point at a different
+# bin -- e.g. for 1.16.242, pass
+# ``--versionlib addresslibrary/starfield/versionlib-1-16-242-0.bin``.
 VERSIONLIB    = _REPO_DIR / "addresslibrary" / "starfield" / "versionlib-1-16-236-0.bin"
 OUT_CSV       = _SCRIPT_DIR / "refs" / "sf116_commonlib_names.csv"
 
@@ -100,9 +105,14 @@ def parse_ids_header(path: Path, kind: str) -> List[Tuple[int, str, str]]:
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--versionlib', default=str(VERSIONLIB),
+                    help='Path to versionlib-X-Y-Z-W.bin (default: {})'.format(VERSIONLIB))
+    args = ap.parse_args()
+
     al = AddressLibrary()
-    db = al.load_bin(str(VERSIONLIB))
-    print(f"Loaded versionlib: {len(db)} ID->RVA mappings")
+    db = al.load_bin(args.versionlib)
+    print(f"Loaded versionlib {Path(args.versionlib).name}: {len(db)} ID->RVA mappings")
 
     sources = [
         (IDS_DIR / "IDs.h", "func"),
