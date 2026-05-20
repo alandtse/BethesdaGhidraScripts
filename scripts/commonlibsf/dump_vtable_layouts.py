@@ -66,19 +66,45 @@ def _parse_args():
 
 
 def _find_program(project, program_name):
-    root = project.getProjectData().getRootFolder()
+    """Walk the project tree for a program file matching ``program_name``.
 
-    def walk(folder):
+    Falls back to a Steamless-unpacked variant when the exact name isn't
+    found.  ``Starfield.exe`` may live in the BGS pipeline project as
+    ``Starfield.unpacked.exe`` (or similar) when Steamless stripped DRM
+    before import.  Without this fallback the caller silently fails to
+    locate the binary and the vtable dump produces no output.
+    """
+    root = project.getProjectData().getRootFolder()
+    stem = program_name.rsplit('.', 1)[0]
+    candidates = (
+        program_name,
+        stem + '.unpacked.exe',
+        stem + '_unpacked.exe',
+        stem + '.unpacked',
+        stem,
+    )
+
+    def walk(folder, predicate):
         for f in folder.getFiles():
-            if f.getName() == program_name:
+            if predicate(f.getName()):
                 return f
         for sub in folder.getFolders():
-            r = walk(sub)
+            r = walk(sub, predicate)
             if r is not None:
                 return r
         return None
 
-    return walk(root)
+    # Exact match first
+    for cand in candidates:
+        f = walk(root, lambda n, c=cand: n == c)
+        if f is not None:
+            return f
+
+    # Last-ditch prefix match -- any file under the project starting with
+    # the stem and ending with ``.exe``.  Catches Steamless variants the
+    # explicit list above missed.
+    f = walk(root, lambda n: n.startswith(stem) and n.lower().endswith('.exe'))
+    return f
 
 
 def _enumerate_vtables(program):

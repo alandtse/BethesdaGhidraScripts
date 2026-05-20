@@ -236,6 +236,11 @@ def main():
     print(f'IDA names: {len(ida_names):,} entries')
 
     primary_rvas = {s['a'] for s in symbols if s.get('a')}
+    # Inverse AE address-library map (RVA -> ID) for back-referencing IDA-named
+    # functions to a stable CommonLibF4 ID where one exists.  Built from
+    # addr_lib.ae_db ({id: rva}) so a CommonLib upgrade that renumbers IDs
+    # invalidates the cache automatically.
+    ae_rva_to_id = {rva: id_val for id_val, rva in addr_lib.ae_db.items()}
     ida_fallback = []
     for rva, name in ida_names.items():
         entry = {'n': name, 't': 'func', 'sig': '', 'a': rva, 'src': 'IDAImportNames'}

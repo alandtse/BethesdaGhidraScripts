@@ -825,6 +825,97 @@ def _enrich_menu():
     _header(f"RTTI vtable pipeline: {label} {program_path}")
     subprocess.run(args, check=False)
 
+    # Opt-in: reconcile stale CommonLib-style vtable slot names against
+    # today's AST.  Only useful when a prior CommonLibImport_*.py was
+    # applied to this project (otherwise everything is FUN_* placeholders
+    # and the main import pass would do the job).  Off by default since
+    # it rewrites existing names.
+    _offer_vtable_reconciler(pdir, pname, program_path)
+
+
+def _offer_vtable_reconciler(pdir, pname, program_path):
+    """Opt-in pass: rewrite stale CommonLib-style vtable slot names.
+
+    Lists available generated import scripts and lets the user pick which
+    one's AST-derived VTABLES to reconcile against.  Skipped by default.
+    """
+    available = sorted(GHIDRA_SCRIPTS_DIR.glob('CommonLibImport_*.py'))
+    if not available:
+        return  # No generated scripts -- nothing to reconcile against
+    print()
+    print("-" * 60)
+    print("  Reconcile stale CommonLib vtable slot names? (opt-in)")
+    print("-" * 60)
+    print("  Overwrites function names that look like stale CommonLib")
+    print("  labels disagreeing with today's AST (e.g. an older buggy")
+    print("  emission named slot 9 with slot 10's method name).  Leaves")
+    print("  FUN_*/sub_* placeholders and non-CommonLib-style names alone.")
+    print()
+    try:
+        ans = input("  Run reconciler? (y/N) > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if ans != 'y':
+        return
+
+    # Pick the import script whose VTABLES should be the source of truth.
+    program_name = Path(program_path).name
+    suggested = None
+    name_lower = program_name.lower()
+    if 'starfield' in name_lower:
+        suggested = 'CommonLibImport_SF.py'
+    elif 'fallout4vr' in name_lower:
+        suggested = 'CommonLibImport_F4_VR.py'
+    elif 'fallout4' in name_lower:
+        suggested = 'CommonLibImport_F4_AE.py'  # most common; user can override
+    elif 'skyrimse' in name_lower:
+        suggested = 'CommonLibImport_AE.py'
+    elif 'skyrimvr' in name_lower:
+        suggested = 'CommonLibImport_VR.py'
+    elif 'falloutnv' in name_lower:
+        suggested = 'CommonLibImport_FNV.py'
+
+    print()
+    print("  Available CommonLibImport scripts:")
+    for i, p in enumerate(available, 1):
+        marker = '  *' if suggested and p.name == suggested else '   '
+        print(f"    {i:>2}){marker} {p.name}")
+    try:
+        sel = input("  script # (Enter for *) > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if not sel:
+        chosen = next((p for p in available if p.name == suggested), None)
+        if chosen is None:
+            print("  No suggestion matched; aborting reconciler.")
+            return
+    elif sel.isdigit() and 1 <= int(sel) <= len(available):
+        chosen = available[int(sel) - 1]
+    else:
+        print("  Invalid choice; aborting.")
+        return
+
+    # Ask for dry-run first (lower-impact default)
+    try:
+        dry_ans = input("  Dry-run first? (Y/n) > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    dry_run = dry_ans != 'n'
+
+    cmd = [sys.executable,
+           str(SCRIPTS_DIR / 'core' / 'vtable_name_reconciler.py'),
+           '--project-dir',  pdir,
+           '--project-name', pname,
+           '--program',      program_name,
+           '--import-script', str(chosen)]
+    if dry_run:
+        cmd.append('--dry-run')
+    _header(f"Vtable name reconciler ({chosen.name}{' [DRY-RUN]' if dry_run else ''})")
+    subprocess.run(cmd, check=False)
+
 
 def _show_menu():
     print()
