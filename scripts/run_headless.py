@@ -296,20 +296,21 @@ def _disable_noisy_analyzers(program):
     on every import.  Demangler Microsoft sometimes fails to apply MFC dtor
     symbols to existing-code addresses; we don't ship MFC, so the warnings
     are unactionable.
+
+    Ghidra 12.1 removed ``SubOptions.getName(String)`` (no overloads, only
+    the no-arg form remains); the old "look up display name per key" check
+    crashes the entire script-apply step there.  We skip the lookup --
+    ``setBoolean`` on a non-existent option is a no-op for analyzers not
+    registered yet, and the try/except keeps unexpected backend changes
+    from blowing up the import.
     """
     from ghidra.program.model.listing import Program
     opts = program.getOptions(Program.ANALYSIS_PROPERTIES)
     for name in ("PDB Universal", "Demangler Microsoft"):
-        if name in [opts.getName(p) for p in opts.getOptionNames()]:
+        try:
             opts.setBoolean(name, False)
-        else:
-            # Some Ghidra versions key the option by exact display name with
-            # no class lookup; setBoolean is a no-op if the analyzer isn't
-            # registered yet (initial import path).  Try it unconditionally.
-            try:
-                opts.setBoolean(name, False)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
 
 def _run_one(project, game, version, binary, script_path, monitor):

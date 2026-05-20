@@ -107,6 +107,36 @@ def _find_program(project, program_name):
     return f
 
 
+def _enumerate_vtables_via_rtti(program):
+    """RTTI-walk fallback when no VTABLE_*/::vftable symbols exist.
+
+    Reuses ``scan_rtti_vtables`` from ``run_vtable_pipeline``: parses MSVC
+    RTTI structures directly from program memory and yields
+    {vtable_va: class_name}.  Returns the same tuple shape as
+    ``_enumerate_vtables`` so the caller is drop-in compatible.
+
+    Used when neither CommonLib's ``VTABLE_<Class>`` flat labels nor
+    Ghidra-RTTI's ``<Class>::vftable`` namespace symbols are present in
+    the project -- e.g. the binary was imported but ``CommonLibImport_*.py``
+    was never successfully applied, and the user only ran auto-analysis
+    or our generic RTTI vtable pipeline (option 9, which renames vfunc
+    targets but doesn't create vtable-address labels).
+    """
+    from run_vtable_pipeline import scan_rtti_vtables
+    out = []
+    for vaddr, class_name in scan_rtti_vtables(program).items():
+        # Use the LEAF class name (split off namespace) so the layout CSV
+        # is keyed consistently with the VTABLE_<X> / <X>::vftable paths
+        # above.  Our committed 1.16.236 reference uses 'Actor', not
+        # 'RE::Actor'; matching both sides through build_shift_map needs
+        # the same key shape.  RTTI walk doesn't distinguish primary vs
+        # secondary vtables at this level (idx=0); that's a future
+        # enrichment.
+        layout_key = class_name.split('::')[-1]
+        out.append((layout_key, vaddr, 0, class_name + '::vftable'))
+    return out
+
+
 def _enumerate_vtables(program):
     """Return [(class_name, vtable_addr_int, primary_or_secondary_index, sym_name)].
 
@@ -302,12 +332,20 @@ def main():
         consumer = java.lang.Object()
         program = domain_file.getDomainObject(consumer, False, False, monitor)
         try:
-            print('Enumerating VTABLE_* symbols...')
+            print('Enumerating VTABLE_* / ::vftable symbols...')
             t0 = time.time()
             entries = _enumerate_vtables(program)
-            print('  found {} vtable symbols ({:.1f}s)'.format(len(entries), time.time() - t0))
+            print('  found {} labeled vtables ({:.1f}s)'.format(len(entries), time.time() - t0))
             if not entries:
-                print('ERROR: no VTABLE_* symbols found.  Apply CommonLibImport_SF.py first.')
+                print('  No labels found; falling back to direct RTTI walk ...')
+                t1 = time.time()
+                entries = _enumerate_vtables_via_rtti(program)
+                print('  RTTI walk: found {} vtables ({:.1f}s)'.format(
+                    len(entries), time.time() - t1))
+            if not entries:
+                print('ERROR: no vtables found via labels OR RTTI walk.  Check that')
+                print('       the program has been auto-analyzed; bare imports')
+                print('       (no analysis) have no RTTI structures to find.')
                 sys.exit(1)
 
             print('Computing vtable bounds...')
