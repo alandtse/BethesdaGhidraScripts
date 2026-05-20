@@ -1082,7 +1082,49 @@ def _cmd_all():
     sys.exit(rc)
 
 
+def _enable_log_tee():
+    """Tee stdout+stderr to .last_run.log via FD-level redirect so subprocess
+    output (clang, pyghidra, headless import) is captured too.  Original
+    streams stay on the terminal; the log is truncated each invocation.
+    """
+    import threading
+    log_path = REPO_DIR / ".last_run.log"
+    try:
+        log_file = open(log_path, "wb")
+    except OSError:
+        return  # No-op if the repo is read-only / log path inaccessible.
+
+    try:
+        orig_stdout = os.dup(1)
+        orig_stderr = os.dup(2)
+        out_r, out_w = os.pipe()
+        err_r, err_w = os.pipe()
+        os.dup2(out_w, 1); os.close(out_w)
+        os.dup2(err_w, 2); os.close(err_w)
+        sys.stdout = os.fdopen(1, "w", buffering=1, encoding="utf-8", errors="replace")
+        sys.stderr = os.fdopen(2, "w", buffering=1, encoding="utf-8", errors="replace")
+    except OSError:
+        log_file.close()
+        return
+
+    def _pump(read_fd, term_fd):
+        try:
+            while True:
+                chunk = os.read(read_fd, 4096)
+                if not chunk:
+                    break
+                os.write(term_fd, chunk)
+                log_file.write(chunk)
+                log_file.flush()
+        except Exception:
+            pass
+
+    threading.Thread(target=_pump, args=(out_r, orig_stdout), daemon=True).start()
+    threading.Thread(target=_pump, args=(err_r, orig_stderr), daemon=True).start()
+
+
 def main():
+    _enable_log_tee()
     args = sys.argv[1:]
     if not args:
         _run_menu()
