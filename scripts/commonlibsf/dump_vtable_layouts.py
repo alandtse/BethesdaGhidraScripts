@@ -252,17 +252,26 @@ def _read_slot_pointers(program, vaddr_int, end_addr_int):
     Terminates on the first slot whose pointer:
       - is null
       - is outside the image (x64, image base 0x140000000)
-      - doesn't resolve to a known function via the function manager
-        (catches over-read into adjacent data once Ghidra's analysis is
-        good enough to mark vfuncs as functions)
-    Also capped at ``MAX_SLOTS_PER_VTABLE`` regardless of terminator -- the
-    next-VTABLE-symbol heuristic doesn't bound tightly when sections have
-    sparse vtable clustering, so we cap to avoid running off into pointer-
-    shaped data after the real vtable ends.
+      - points into NON-executable memory (not in .text)
+
+    Earlier versions required Ghidra to already have a function defined
+    at the slot target.  That under-reads catastrophically on projects
+    where auto-analysis didn't create functions for every vfunc target
+    yet (e.g. the RTTI-pipeline path with ~11k "create fail" targets):
+    one missing function at slot 0 would discard the entire vtable, and
+    major Bethesda classes ended up with 0 slots in the dump.  Checking
+    only "lands in executable memory" lets over-read tails reach the
+    next vtable's COL (which lives in .rdata, not .text) and stop
+    cleanly, while preserving slots that are valid function pointers
+    even if Ghidra hasn't analyzed them yet.
+
+    Also capped at ``MAX_SLOTS_PER_VTABLE`` regardless of terminator --
+    the next-VTABLE-symbol heuristic doesn't bound tightly when sections
+    have sparse vtable clustering, so we cap to avoid running off into
+    pointer-shaped data after the real vtable ends.
     """
     mem = program.getMemory()
     af = program.getAddressFactory().getDefaultAddressSpace()
-    fm = program.getFunctionManager()
     out = []
     cur = vaddr_int
     max_end = min(end_addr_int, vaddr_int + MAX_SLOTS_PER_VTABLE * 8)
@@ -276,9 +285,8 @@ def _read_slot_pointers(program, vaddr_int, end_addr_int):
         if ptr < 0x140000000 or ptr > 0x200000000:
             break
         ptr_addr = af.getAddress(ptr & 0xFFFFFFFFFFFFFFFF)
-        # Require the slot to point at (or into) a known function.  Avoids
-        # over-reading into the next vtable header / RTTI structures.
-        if fm.getFunctionAt(ptr_addr) is None and fm.getFunctionContaining(ptr_addr) is None:
+        block = mem.getBlock(ptr_addr)
+        if block is None or not block.isExecute():
             break
         out.append(ptr & 0xFFFFFFFFFFFFFFFF)
         cur += 8
