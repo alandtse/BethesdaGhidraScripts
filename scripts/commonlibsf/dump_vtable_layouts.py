@@ -190,59 +190,33 @@ def _enumerate_vtables(program):
     return out
 
 
-def _get_typed_vtable_length(program, vaddr_int):
-    """Return byte length of the vftable struct type applied at vaddr.
-
-    When Ghidra's RTTI analyzer or CommonLib's import script has typed a
-    vtable as a ``<Class>__vftable`` / ``::vftable`` struct, the struct's
-    getLength() is the exact byte count of the vtable -- the most reliable
-    slot bound, since it doesn't depend on adjacent ``VTABLE_*`` symbol
-    placement (gaps fool the next-symbol heuristic when intervening
-    vtables don't have symbols).  Returns None for untyped vtables.
-    """
-    af = program.getAddressFactory().getDefaultAddressSpace()
-    listing = program.getListing()
-    data = listing.getDataAt(af.getAddress(vaddr_int))
-    if data is None:
-        return None
-    dt = data.getDataType()
-    if dt is None:
-        return None
-    name = (dt.getName() or '').lower()
-    if 'vftable' not in name and 'vtbl' not in name:
-        return None
-    length = dt.getLength()
-    if length is None or length <= 0:
-        return None
-    return length
-
-
 def _vtable_terminator_map(program, vtable_entries):
-    """For each vtable address, find the address where the vtable ends.
+    """Per-vtable upper bound for slot reads -- the containing memory
+    block's end (with the MAX_SLOTS cap applied later in _read_slot_pointers).
 
-    Resolution priority:
-      1. ``<Class>__vftable`` struct length at the vtable address (most
-         reliable -- Ghidra knows the exact slot count).
-      2. Next ``VTABLE_*`` symbol address in the same memory block (loose
-         but bounds the over-read for typed-less vtables).
-      3. Memory block end (final fallback for isolated vtables).
+    Both prior heuristics were wrong on real Starfield projects:
+
+      - Ghidra-applied struct length (``<Class>::vftable``) is often
+        2 slots wide (Ghidra only records vfuncs it cross-referenced) ->
+        truncates Actor/TESForm/PlayerCharacter to 2-3 slots.
+      - Next ``VTABLE_*`` symbol address is also often only 16-24 bytes
+        away because CommonLib/Ghidra place intra-vtable labels (multi-
+        inheritance subobject markers) inside the same vtable -> same
+        truncation.
+
+    Rely on _read_slot_pointers' .text check instead: vfunc slots all
+    point into .text, the next vtable's COL pointer sits in .rdata, so
+    the slot check terminates cleanly at the real vtable boundary.
     """
     mem = program.getMemory()
     af = program.getAddressFactory().getDefaultAddressSpace()
-    addrs = sorted({e[1] for e in vtable_entries})
     end_by_addr = {}
-    for i, a in enumerate(addrs):
-        typed_len = _get_typed_vtable_length(program, a)
-        if typed_len is not None:
-            end_by_addr[a] = a + typed_len
-            continue
-        block = mem.getBlock(af.getAddress(a))
+    for cls, vaddr, idx, sym in vtable_entries:
+        block = mem.getBlock(af.getAddress(vaddr))
         if block is None:
-            end_by_addr[a] = a + 8 * 256
-            continue
-        block_end = block.getEnd().getOffset() + 1
-        next_a = addrs[i + 1] if i + 1 < len(addrs) else block_end
-        end_by_addr[a] = min(next_a, block_end)
+            end_by_addr[vaddr] = vaddr + 8 * MAX_SLOTS_PER_VTABLE
+        else:
+            end_by_addr[vaddr] = block.getEnd().getOffset() + 1
     return end_by_addr
 
 
