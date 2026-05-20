@@ -115,6 +115,15 @@ def _try_clang_types(verbose=True):
 
         stub_dir   = os.path.join(os.path.dirname(SCRIPT_DIR), 'core', '_clang_stubs')
         parse_args = _setup_include_paths(COMMONLIB_INCLUDE, stub_dir)
+        # libxse/commonlibsf split out the REL/ and REX/ headers into a
+        # nested commonlib-shared submodule (same shape as F4 already uses).
+        # The old SR-E/Starfield-Reverse-Engineering tree had them inline
+        # under include/, so adding -I unconditionally is harmless if the
+        # nested submodule isn't present (clang ignores missing dirs).
+        shared_include = os.path.join(PROJECT_DIR, 'extern', 'CommonLibSF',
+                                      'lib', 'commonlib-shared', 'include')
+        if os.path.isdir(shared_include):
+            parse_args = ['-I' + shared_include] + parse_args
         # CommonLibSF uses C++23 features.  -std=c++23 is widely supported by
         # recent clang; older clang falls back to c++latest.
         parse_args = ['-std=c++23'] + parse_args

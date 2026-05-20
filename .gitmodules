@@ -11,7 +11,8 @@
 	branch = main
 [submodule "extern/CommonLibSF"]
 	path = extern/CommonLibSF
-	url = https://github.com/Starfield-Reverse-Engineering/CommonLibSF.git
+	url = https://github.com/libxse/commonlibsf.git
+	branch = main
 [submodule "extern/xNVSE"]
 	path = extern/xNVSE
 	url = https://github.com/xNVSE/NVSE
