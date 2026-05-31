@@ -265,6 +265,29 @@ def _load_source_file_names(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
+    """Parse global_label_names.csv (``0xRVA|qname|votes|mangled``).
+
+    Sources: xref-set-similarity pairing (match_globals_via_xrefs.py).
+    These are DATA addresses, named as ``label`` symbols.
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 3)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
 def build_fallback_symbols() -> List[dict]:
     """Return the merged fallback symbol list for the FNV pipeline."""
     nvse_syms     = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
@@ -273,9 +296,11 @@ def build_fallback_symbols() -> List[dict]:
     string_anch   = _load_string_anchored(REFS_DIR / 'fnv_string_anchored.csv')
     string_xref   = _load_string_xref_names(REFS_DIR / 'fnv_string_xref_names.csv')
     src_file      = _load_source_file_names(REFS_DIR / 'fnv_source_file_names.csv')
+    globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
 
     # Address -> (name, source).  Earlier source wins on collision.
     by_addr: Dict[int, Tuple[str, str]] = {}
+    label_addrs: Dict[int, Tuple[str, str]] = {}  # data symbols (forced label)
     for rva, name in nvse_syms:
         by_addr.setdefault(rva, (name, 'nvse_known'))
     for rva, name in xbox_vt:
@@ -288,11 +313,24 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'source_file'))
     for rva, name in pdb_syms:
         by_addr.setdefault(rva, (name, 'xbox_pdb_matched'))
+    # Globals are DATA addresses -- never collide with function RVAs from
+    # the sources above.  Tracked separately so they're always emitted as
+    # labels, regardless of the looks-like-label heuristic.
+    for rva, name in globals_:
+        label_addrs.setdefault(rva, (name, 'global_label'))
     out = []
     for rva, (name, src) in by_addr.items():
         out.append({
             'n': name,
             't': 'label' if _looks_like_label(name) else 'func',
+            'sig': '',
+            'a': rva,
+            'src': src,
+        })
+    for rva, (name, src) in label_addrs.items():
+        out.append({
+            'n': name,
+            't': 'label',
             'sig': '',
             'a': rva,
             'src': src,
