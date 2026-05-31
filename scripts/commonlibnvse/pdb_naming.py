@@ -199,17 +199,93 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     return out
 
 
+def _load_string_anchored(path: Path) -> List[Tuple[int, str]]:
+    """Parse string_anchored.csv (``0xRVA|qualified name|<src>``).
+
+    Sources: self-naming string anchors (string_anchor_lift.py).
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 2)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
+def _load_string_xref_names(path: Path) -> List[Tuple[int, str]]:
+    """Parse string_xref_names.csv (``0xRVA|qname|tier|votes|mangled``).
+
+    Sources: string-xref greedy bipartite matching (match_string_xrefs.py).
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 4)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
+def _load_source_file_names(path: Path) -> List[Tuple[int, str]]:
+    """Parse source_file_names.csv (``0xRVA|qname|cpp_basename|mangled``).
+
+    Sources: per-compiland positional matching (source_file_cluster_lift.py).
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 3)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
 def build_fallback_symbols() -> List[dict]:
     """Return the merged fallback symbol list for the FNV pipeline."""
-    nvse_syms = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
-    pdb_syms  = _load_matched_vtable_methods(REFS_DIR / 'fnv_pdb_matched_classes.txt')
-    xbox_vt   = _load_xbox_vtable_methods()
+    nvse_syms     = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
+    pdb_syms      = _load_matched_vtable_methods(REFS_DIR / 'fnv_pdb_matched_classes.txt')
+    xbox_vt       = _load_xbox_vtable_methods()
+    string_anch   = _load_string_anchored(REFS_DIR / 'fnv_string_anchored.csv')
+    string_xref   = _load_string_xref_names(REFS_DIR / 'fnv_string_xref_names.csv')
+    src_file      = _load_source_file_names(REFS_DIR / 'fnv_source_file_names.csv')
+
     # Address -> (name, source).  Earlier source wins on collision.
     by_addr: Dict[int, Tuple[str, str]] = {}
     for rva, name in nvse_syms:
         by_addr.setdefault(rva, (name, 'nvse_known'))
     for rva, name in xbox_vt:
         by_addr.setdefault(rva, (name, 'xbox_vtable'))
+    for rva, name in string_anch:
+        by_addr.setdefault(rva, (name, 'string_anchor'))
+    for rva, name in string_xref:
+        by_addr.setdefault(rva, (name, 'string_xref'))
+    for rva, name in src_file:
+        by_addr.setdefault(rva, (name, 'source_file'))
     for rva, name in pdb_syms:
         by_addr.setdefault(rva, (name, 'xbox_pdb_matched'))
     out = []
