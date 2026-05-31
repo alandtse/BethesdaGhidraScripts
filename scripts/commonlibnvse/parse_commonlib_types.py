@@ -186,6 +186,18 @@ def main():
     print('\nSymbols: {} total ({} funcs, {} labels)'.format(
         len(symbols), n_func, n_label))
 
+    # 3b. PDB-derived fallback symbols (NVSE-known + Xbox dev-kit PDB).
+    # Primary xNVSE wins on address collision; fallbacks only fill gaps.
+    primary_addrs = {s['a'] for s in symbols if s.get('a')}
+    from pdb_naming import build_fallback_symbols
+    fb_all = build_fallback_symbols()
+    fallback_symbols = [s for s in fb_all if s['a'] not in primary_addrs]
+    n_fb_func  = sum(1 for s in fallback_symbols if s['t'] == 'func')
+    n_fb_label = sum(1 for s in fallback_symbols if s['t'] == 'label')
+    print('Fallback symbols (PDB / NVSE-known, new only): {} total ({} funcs, {} labels)'.format(
+        len(fallback_symbols), n_fb_func, n_fb_label))
+    fallback_symbols_json = _json.dumps(fallback_symbols, separators=(',', ':'))
+
     # 4. Vtable anchor verification (only if we successfully parsed
     # vtables -- labels-only run skips this).
     if vtable_structs:
@@ -207,7 +219,7 @@ def main():
         output_path,
         version='fnv',
         symbols_json=symbols_json,
-        fallback_symbols_json='[]',
+        fallback_symbols_json=fallback_symbols_json,
         template_source=template_source,
         project_name='xNVSE',
     )
