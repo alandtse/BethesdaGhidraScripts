@@ -36,6 +36,7 @@ IMAGE_BASE = 0x00400000
 PC_STRINGS         = Path(r'C:\GhidraProjects\scripts\fnv_pc_strings.txt')
 PC_STRING_XREFS    = Path(r'C:\GhidraProjects\scripts\fnv_pc_string_xrefs.txt')
 PDB_PUBLICS        = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_publics.txt')
+PDB_FUNCS_JSON     = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_funcs.json')
 
 sys.path.insert(0, str(SCRIPT_DIR.parent / 'core'))
 from pdb_symbols import undecorate  # noqa: E402
@@ -197,25 +198,34 @@ def main():
     print(f'  .cpp paths with PC xrefs: {n_paths_with_xrefs}')
     print(f'  distinct .cpp basenames: {len(cpp_to_pc_rvas)}')
 
-    print(f'Loading Xbox PDB publics...')
-    publics = load_publics(PDB_PUBLICS)
-    print(f'  {len(publics):,} publics (non-vtable)')
-
-    # Demangle + group by class
-    print('Demangling + grouping by class...')
+    # Prefer pretty-dump JSON (precise per-class function lists with VAs)
+    # over publics (heuristic demangle + class-prefix split).
     class_to_funcs: Dict[str, List[Tuple[int, str, str]]] = {}
-    for rva, mangled in publics:
-        try:
-            demangled = undecorate(mangled)
-        except Exception:
-            continue
-        qname = to_qualified(demangled)
-        cls = class_of(qname)
-        if not cls:
-            continue
-        class_to_funcs.setdefault(cls, []).append((rva, qname, mangled))
-
-    print(f'  classes: {len(class_to_funcs):,}')
+    if PDB_FUNCS_JSON.is_file():
+        import json
+        print(f'Loading {PDB_FUNCS_JSON.name} (pretty-dump funcs)...')
+        data = json.loads(PDB_FUNCS_JSON.read_text(encoding='utf-8'))
+        for cls, fns in data.items():
+            for fn in fns:
+                class_to_funcs.setdefault(cls, []).append(
+                    (fn['va'], fn['name'], fn.get('sig', fn['name'])))
+        print(f'  classes (from pretty): {len(class_to_funcs):,}')
+    else:
+        print(f'Loading Xbox PDB publics (fallback)...')
+        publics = load_publics(PDB_PUBLICS)
+        print(f'  {len(publics):,} publics (non-vtable)')
+        print('Demangling + grouping by class...')
+        for rva, mangled in publics:
+            try:
+                demangled = undecorate(mangled)
+            except Exception:
+                continue
+            qname = to_qualified(demangled)
+            cls = class_of(qname)
+            if not cls:
+                continue
+            class_to_funcs.setdefault(cls, []).append((rva, qname, mangled))
+        print(f'  classes: {len(class_to_funcs):,}')
 
     print('Loading already-known RVAs to exclude from positional assignment...')
     known_rvas = load_existing_fallback_addrs()
