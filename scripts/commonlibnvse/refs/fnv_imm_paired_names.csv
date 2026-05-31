@@ -1,0 +1,15 @@
+# imm-paired names: 0x<rva>|<qname>|0x<imm>|<mangled>
+0x000118C8|ExtraDataList::Save|0x44525058|?Save@ExtraDataList@@QAAXXZ
+0x0011FCA1|TESObjectWEAP::Save|0x32494D57|?Save@TESObjectWEAP@@UAAXXZ
+0x00136574|TESObjectLAND::Save|0x4C4D4E56|?Save@TESObjectLAND@@UAAXXZ
+0x00223070|hkpWorld::hkpWorld|0xF0DE4355|??0hkpWorld@@QAA@ABVhkpWorldCinfo@@I@Z
+0x002231A0|HavokError::HavokError|0x309314D9|??0HavokError@@QAA@XZ
+0x00223370|hkMultiThreadCheck::unmarkForWriteImpl|0x717C3B1D|?unmarkForWriteImpl@hkMultiThreadCheck@@IAAXXZ
+0x0051C132|D3DXShader::Compiler::CheckDependencies|0x000010B1|?CheckDependencies@Compiler@D3DXShader@@QAAXPAVBlock@2@PAVInstruction@2@@Z
+0x005FE960|Tile::LoadTextTable|0x0000138F|?LoadTextTable@Tile@@SAXXZ
+0x0072B550|CTreeEngine::SaveFlareInfo|0x00003E84|?SaveFlareInfo@CTreeEngine@@QBAXAAVCTreeFileAccess@@@Z
+0x007CE319|XCOMPRESS::build_global_tables|0x0B0B0000|?build_global_tables@XCOMPRESS@@YAXPAUt_decoder_context@1@@Z
+0x008E4330|hkaSkeletonMapperUtils::createMapping|0x54E4323E|?createMapping@hkaSkeletonMapperUtils@@SAXABUParams@1@AAVhkaSkeletonMapperData@@1@Z
+0x00A01DC0|hkObjectCopier::saveBody|0x641E3E03|?saveBody@hkObjectCopier@@AAAHPBXABVhkClass@@AAVhkOArchive@@1@Z
+0x00A0D5D0|hkMonitorStreamColorTable::setupDefaultColorTable|0xFF9370DB|?setupDefaultColorTable@hkMonitorStreamColorTable@@QAAXXZ
+0x00B3C150|D3D::DisassembleShader|0x06400000|?DisassembleShader@D3D@@YAXPAKKK@Z

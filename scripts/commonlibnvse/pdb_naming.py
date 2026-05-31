@@ -117,7 +117,9 @@ def _load_matched_vtable_methods(path: Path) -> List[Tuple[int, str]]:
 
 
 _PC_VT_HDR = re.compile(r'^VTABLE\|0x([0-9A-Fa-f]+)\|([^|]+)\|(\d+)\s+vfuncs\s*$')
-_PC_VT_ROW = re.compile(r'^\s+VFUNC\|0x([0-9A-Fa-f]+)\|[\w:]+::vf(?:unc_)?(\d+)\s*$')
+# Class name in slot rows can include templated chars (?$@<>) and digits,
+# so match anything up to the literal ``::vf`` / ``::vfunc_`` suffix.
+_PC_VT_ROW = re.compile(r'^\s+VFUNC\|0x([0-9A-Fa-f]+)\|.+?::vf(?:unc_)?(\d+)\s*$')
 
 
 def _strip_args(demangled: str) -> str:
@@ -147,9 +149,14 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     demangled name) and fnv_pc_vtables.txt (PC slot RVA -> generic vfN),
     pair them positionally: PC slot N's RVA gets named after Xbox slot N's
     method.  Returns [(rva, "Class::method"), ...].
+
+    Also consumes fnv_pc_vtables_rtti_extra.txt when present -- those
+    are RTTI-discovered vtables that Ghidra missed (templated types,
+    etc.).
     """
     xbox_path = REFS_DIR / 'fnv_xbox_vtables.json'
     pc_path   = REFS_DIR / 'fnv_pc_vtables.txt'
+    pc_extra  = REFS_DIR / 'fnv_pc_vtables_rtti_extra.txt'
     if not xbox_path.is_file() or not pc_path.is_file():
         return []
 
@@ -158,17 +165,23 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     # Parse PC vtables: per class, ordered list of (slot_index, slot_rva).
     pc_slots: Dict[str, List[Tuple[int, int]]] = {}
     cur_cls = None
-    for line in pc_path.read_text(encoding='utf-8', errors='replace').splitlines():
-        m = _PC_VT_HDR.match(line)
-        if m:
-            cur_cls = m.group(2).strip()
-            pc_slots.setdefault(cur_cls, [])
-            continue
-        m = _PC_VT_ROW.match(line)
-        if m and cur_cls is not None:
-            va = int(m.group(1), 16)
-            slot = int(m.group(2))
-            pc_slots[cur_cls].append((slot, va))
+    def _parse_pc(text: str):
+        nonlocal cur_cls
+        for line in text.splitlines():
+            m = _PC_VT_HDR.match(line)
+            if m:
+                cur_cls = m.group(2).strip()
+                pc_slots.setdefault(cur_cls, [])
+                continue
+            m = _PC_VT_ROW.match(line)
+            if m and cur_cls is not None:
+                va = int(m.group(1), 16)
+                slot = int(m.group(2))
+                pc_slots[cur_cls].append((slot, va))
+
+    _parse_pc(pc_path.read_text(encoding='utf-8', errors='replace'))
+    if pc_extra.is_file():
+        _parse_pc(pc_extra.read_text(encoding='utf-8', errors='replace'))
 
     out: List[Tuple[int, str]] = []
     for cls, xb_slots in xbox.items():
@@ -265,6 +278,29 @@ def _load_source_file_names(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_imm_paired_names(path: Path) -> List[Tuple[int, str]]:
+    """Parse imm_paired_names.csv (``0xRVA|qname|0xIMM|mangled``).
+
+    Sources: rare-immediate fingerprint pairing
+    (extract_xbox_rare_immediates.py).
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 3)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
 def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
     """Parse global_label_names.csv (``0xRVA|qname|votes|mangled``).
 
@@ -296,6 +332,7 @@ def build_fallback_symbols() -> List[dict]:
     string_anch   = _load_string_anchored(REFS_DIR / 'fnv_string_anchored.csv')
     string_xref   = _load_string_xref_names(REFS_DIR / 'fnv_string_xref_names.csv')
     src_file      = _load_source_file_names(REFS_DIR / 'fnv_source_file_names.csv')
+    imm_pairs     = _load_imm_paired_names(REFS_DIR / 'fnv_imm_paired_names.csv')
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
 
     # Address -> (name, source).  Earlier source wins on collision.
@@ -311,6 +348,8 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'string_xref'))
     for rva, name in src_file:
         by_addr.setdefault(rva, (name, 'source_file'))
+    for rva, name in imm_pairs:
+        by_addr.setdefault(rva, (name, 'imm_paired'))
     for rva, name in pdb_syms:
         by_addr.setdefault(rva, (name, 'xbox_pdb_matched'))
     # Globals are DATA addresses -- never collide with function RVAs from

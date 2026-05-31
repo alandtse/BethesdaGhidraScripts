@@ -177,6 +177,46 @@ def main():
     # 2. Type extraction via libclang (best-effort)
     enums, structs, vtable_structs, template_source = _try_clang_types(verbose=True)
 
+    # 2b. PDB-derived type layouts -- merge into structs.  When clang
+    # provides a REAL layout (size>0 with non-vftable fields), it wins
+    # (xNVSE knows methods + RE-style namespacing).  When clang is empty
+    # (xNVSE never documented that type), PDB fills it in.
+    pdb_types_json = r'C:\GhidraProjects\scripts\Fallout_Debug_types.json'
+    if os.path.isfile(pdb_types_json):
+        try:
+            from pdb_types_to_pipeline import convert_pdb_types
+            from pathlib import Path
+            pdb_structs, n_skip, n_field = convert_pdb_types(Path(pdb_types_json))
+            n_added = 0
+            n_upgraded = 0
+            for cls, st in pdb_structs.items():
+                existing = structs.get(cls)
+                if existing is None:
+                    structs[cls] = st
+                    n_added += 1
+                    continue
+                # Existing clang entry -- check if it has REAL field data
+                ex_fields = existing.get('fields', [])
+                non_vft = [f for f in ex_fields
+                           if not f.get('name', '').startswith('__vftable')]
+                if existing.get('size', 0) == 0 or not non_vft:
+                    # Empty clang stub -- upgrade with PDB layout, but keep
+                    # clang's class methods + vtable info if any
+                    upgraded = dict(st)
+                    upgraded['vmethods']         = existing.get('vmethods', {})
+                    upgraded['methods']          = existing.get('methods', {})
+                    upgraded['has_vtable']       = existing.get('has_vtable', False)
+                    upgraded['bases']            = existing.get('bases', [])
+                    upgraded['_overload_aliases'] = existing.get('_overload_aliases', {})
+                    structs[cls] = upgraded
+                    n_upgraded += 1
+            print('PDB types merged: {} new + {} upgraded (skipped: {} '
+                  'empty/anon, {} fields total in source)'.format(
+                  n_added, n_upgraded, n_skip, n_field))
+        except Exception as e:
+            print('WARNING: PDB type merge failed: {}: {}'.format(
+                type(e).__name__, e))
+
     # 3. Assemble SYMBOLS array
     symbols      = _make_symbols(func_syms, label_syms)
     symbols_json = _json.dumps(symbols, separators=(',', ':'))
