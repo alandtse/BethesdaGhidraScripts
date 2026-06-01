@@ -69,6 +69,36 @@ def load_existing_names() -> Dict[int, str]:
     return {s['a']: s['n'] for s in build_fallback_symbols() if s.get('a')}
 
 
+sys.path.insert(0, str(SCRIPT_DIR.parent / 'core'))
+from pdb_symbols import undecorate as _undecorate  # noqa: E402
+
+
+def _demangle_class(cls: str) -> str:
+    """Convert RTTI-extracted mangled class names to PDB-pretty form.
+
+    Our vtable extraction stores classes in raw form between ``??_7`` and
+    the first ``@@`` (e.g. ``?$SettingT@VGameSettingCollection`` for the
+    templated ``SettingT<GameSettingCollection>``).  Templated classes
+    need an EXTRA ``@@`` to terminate their args before the vftable
+    marker, otherwise dbghelp returns the input unchanged.
+    """
+    if not cls or ('?$' not in cls and '@' not in cls.replace('::', '')):
+        return cls
+    # Templated names need an extra @@ before the vftable suffix to
+    # terminate their template-arg list.
+    suffix = '@@@@6B@' if cls.startswith('?$') else '@@6B@'
+    mangled = f'??_7{cls}{suffix}'
+    try:
+        d = _undecorate(mangled)
+    except Exception:
+        return cls
+    # Demangled form: ``[const ]Class::`vftable'`` -- pull the Class out.
+    m = re.match(r"(?:const\s+)?(.+?)::`vftable'", d)
+    if m:
+        return m.group(1)
+    return cls
+
+
 def _sanitize_class_for_ctor(cls: str) -> str:
     """``BSSimpleArray<X,1024>`` -> ``BSSimpleArray`` (bare class).
     Constructors use the bare class name as the method name in MSVC.
@@ -143,12 +173,20 @@ def main():
             # so the LATEST byte offset's vtable is the primary class.
             vt = vts_sorted[-1][1]
             multi_picked += 1
-        cls = vtables.get(vt, '')
-        if not cls:
+        raw_cls = vtables.get(vt, '')
+        if not raw_cls:
             continue
-        bare = _sanitize_class_for_ctor(cls)
-        if bare:
-            matches.append((rva, f'{cls}::{bare}', vt))
+        # Demangle templated forms (``?$SettingT@VGameSettingCollection``
+        # -> ``SettingT<GameSettingCollection>``) to match PDB sigs.
+        cls = _demangle_class(raw_cls)
+        # MSVC PDB emits constructor methods with the FULL class name
+        # (including template args) repeated as the method name:
+        #   ``SettingT<GameSettingCollection>::SettingT<GameSettingCollection>``
+        # For nested classes (``Class::Inner``) use just the last
+        # segment as the method name.
+        last_seg = cls.rsplit('::', 1)[-1]
+        if last_seg:
+            matches.append((rva, f'{cls}::{last_seg}', vt))
 
     print(f'  named candidates: {len(matches):,}')
     print(f'  skipped (already named): {skipped_named:,}')
