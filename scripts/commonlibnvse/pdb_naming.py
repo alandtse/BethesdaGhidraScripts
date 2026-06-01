@@ -191,6 +191,35 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     _sys.path.insert(0, str((SCRIPT_DIR.parent / 'core').resolve()))
     from pdb_symbols import undecorate
 
+    def _qname_from_demangled(d: str, cls_fallback: str, slot_i: int) -> str:
+        """Extract ``Class::method`` from a demangled MSVC name, handling
+        the awkward cases: backticked special methods, ``\`vector
+        deleting destructor'``, plain ``_purecall``, etc."""
+        # Plain C runtime placeholders -- keep cls + slot for traceability
+        if d in ('_purecall', '__purecall', '__abi_winrt_thunk') or '__cdecl' in d and '::' not in d:
+            return f'{cls_fallback}::vf{slot_i:03d}_{d.lstrip("_")}'
+        # MSVC special methods: ``Class::`vector deleting destructor'``
+        # -> ``Class::vector_deleting_destructor``
+        m_bt = re.search(r"`([^']+)'", d)
+        if m_bt:
+            spec = m_bt.group(1).replace(' ', '_')
+            head = d[:m_bt.start()].rstrip(':').rstrip()
+            # Strip leading return type + calling conv
+            head = re.sub(r'^\s*\w[\w\s\*&]*\s+', '', head)
+            head = head.split('(')[0].rstrip()
+            if head.endswith('::'):
+                head = head[:-2]
+            if head:
+                return f'{head}::{spec}'
+            return f'{cls_fallback}::vf{slot_i:03d}_{spec}'
+        # Standard case: strip args + return type
+        s = _strip_args(d)
+        toks = s.split()
+        qname = toks[-1] if toks else s
+        if qname and '::' in qname:
+            return qname
+        return f'{cls_fallback}::vf{slot_i:03d}'
+
     out: List[Tuple[int, str]] = []
     for cls, xb_slots in xbox.items():
         pc = pc_slots.get(cls)
@@ -211,11 +240,7 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
                     method_full = undecorate(mangled)
                 except Exception:
                     pass
-            method_full = _strip_args(method_full)
-            tokens = method_full.split()
-            qname = tokens[-1] if tokens else method_full
-            if not qname or '::' not in qname:
-                qname = f'{cls}::vf{i:03d}'
+            qname = _qname_from_demangled(method_full, cls, i)
             slot_rva = pc[i][1] - FNV_IMAGE_BASE
             out.append((slot_rva, qname))
     return out

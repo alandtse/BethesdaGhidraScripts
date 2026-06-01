@@ -147,8 +147,10 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
     if t.endswith('*') or t.endswith('&'):
         return 'ptr'
 
-    # Function-pointer-ish (T (*)(args))
-    if '(*)' in t or '(__cdecl*' in t or '(__thiscall*' in t or '(__stdcall*' in t:
+    # Function-pointer-ish: ``T (*)(args)``, ``T (__cdecl *name)(args)``,
+    # ``T (__thiscall *)(args)``, etc.  Any ``(`` followed by an optional
+    # calling-conv keyword + a ``*`` is a function pointer signature.
+    if re.search(r'\(\s*(?:__\w+\s+)?\*\s*\w*\)?\s*\(', t):
         return 'ptr'
 
     # Array: ``<inner>[N]``
@@ -158,9 +160,10 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
         count = int(m.group(2))
         elem_size = field_size // count if count > 0 else 0
         inner_pipeline = _convert_one(inner, elem_size, known_structs, known_enums)
-        # arr:T:N expects T to be a simple token (no further :)
-        if ':' in inner_pipeline:
-            # Inner is itself complex (e.g. bytes:8) -- fall back to raw bytes
+        # ghidra_import_gen.resolve_type uses rfind(':') to split off the
+        # count, so ``arr:struct:Foo<Bar>:N`` works.  Only fall back when
+        # the inner type ITSELF is already a bytes:N or arr:... form.
+        if inner_pipeline.startswith('bytes:') or inner_pipeline.startswith('arr:'):
             return f'bytes:{field_size}'
         return f'arr:{inner_pipeline}:{count}'
 
@@ -200,18 +203,35 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
     return f'bytes:{field_size}' if field_size > 0 else 'u8'
 
 
+def _type_specificity(t: str) -> int:
+    """Higher = more informative.  Used to break ties in same-offset
+    same-size dedup so we never silently downgrade a named type to
+    a raw byte buffer."""
+    if t.startswith('struct:'): return 4
+    if t.startswith('enum:'):   return 3
+    if t.startswith('arr:'):    return 2
+    if t.startswith('bytes:'):  return 0
+    if t in ('u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64',
+              'f32', 'f64', 'bool', 'ptr'):
+        return 1
+    return 1  # unknown -- treat as primitive-ish
+
+
 def _dedup_field_ranges(fields):
     """Drop fields whose byte range is strictly contained in another field's
     range (nested-struct expansions slipped past the indent filter).
     For same-offset+same-size pairs (anonymous unions / typedef aliases),
-    prefer entries whose type is ``struct:...`` (more informative), else
-    the larger-size entry, else the first seen.
+    keep the entry whose type is most specific (struct > enum > primitive
+    > bytes) so we never silently downgrade to raw bytes.
     """
     if not fields:
         return fields
     # Sort: by offset ascending, then size DESCENDING so larger parent comes
-    # before its inner expansion (which we'll then drop as "contained").
-    sorted_f = sorted(fields, key=lambda f: (f['offset'], -f['size']))
+    # before its inner expansion (which we'll then drop as "contained"),
+    # then by type-specificity descending so the more informative type wins
+    # the same-range tie.
+    sorted_f = sorted(fields, key=lambda f: (f['offset'], -f['size'],
+                                              -_type_specificity(f['type'])))
     kept = []
     for f in sorted_f:
         f_end = f['offset'] + f['size']
@@ -220,16 +240,12 @@ def _dedup_field_ranges(fields):
             k_end = k['offset'] + k['size']
             if k['offset'] > f['offset'] or k_end < f_end:
                 continue
-            # k's range covers f's range fully
             if k['offset'] == f['offset'] and k['size'] == f['size']:
-                # Same range -- union or typedef alias.  Keep k.
-                # But if f is struct:... and k is a primitive, swap.
-                if f['type'].startswith('struct:') \
-                   and not k['type'].startswith('struct:'):
+                # Same range -- swap if f is more specific.
+                if _type_specificity(f['type']) > _type_specificity(k['type']):
                     kept[kept.index(k)] = f
                 absorbed = True
                 break
-            # Strictly contained (k bigger than f)
             absorbed = True
             break
         if not absorbed:
@@ -305,7 +321,8 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
                 inner_type = _convert_one(fld['type'],
                                           fsize // count if count > 0 else 0,
                                           known_structs, known_enums)
-                if count > 0 and ':' not in inner_type:
+                if count > 0 and not inner_type.startswith('bytes:') \
+                   and not inner_type.startswith('arr:'):
                     ftype = f'arr:{inner_type}:{count}'
                 else:
                     ftype = f'bytes:{fsize}' if fsize > 0 else 'u8'
