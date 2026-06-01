@@ -346,6 +346,28 @@ def _load_imm_paired_names(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_constructor_names(path: Path) -> List[Tuple[int, str]]:
+    """Parse constructor_names.csv (``0xRVA|Class::Class|0xvtable_va``).
+
+    Sources: vtable-VA byte-scan (find_fnv_constructors.py).
+    """
+    out = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln or ln.startswith('#'):
+            continue
+        p = ln.split('|', 2)
+        if len(p) < 2:
+            continue
+        try:
+            rva = int(p[0], 16)
+        except ValueError:
+            continue
+        out.append((rva, p[1].strip()))
+    return out
+
+
 def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
     """Parse global_label_names.csv (``0xRVA|qname|votes|mangled``).
 
@@ -482,6 +504,8 @@ def build_fallback_symbols() -> List[dict]:
     string_xref   = _load_string_xref_names(REFS_DIR / 'fnv_string_xref_names.csv')
     src_file      = _load_source_file_names(REFS_DIR / 'fnv_source_file_names.csv')
     imm_pairs     = _load_imm_paired_names(REFS_DIR / 'fnv_imm_paired_names.csv')
+    constructors  = _load_constructor_names(REFS_DIR / 'fnv_constructor_names.csv')
+    thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
 
     # Address -> (name, source).  Earlier source wins on collision.
@@ -499,6 +523,10 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'source_file'))
     for rva, name in imm_pairs:
         by_addr.setdefault(rva, (name, 'imm_paired'))
+    for rva, name in constructors:
+        by_addr.setdefault(rva, (name, 'ctor_byte_scan'))
+    for rva, name in thunks:
+        by_addr.setdefault(rva, (name, 'thunk_jmp'))
     for rva, name in pdb_syms:
         by_addr.setdefault(rva, (name, 'xbox_pdb_matched'))
     # Globals are DATA addresses -- never collide with function RVAs from
@@ -533,6 +561,14 @@ def build_fallback_symbols() -> List[dict]:
         from pdb_sig_to_structured import parse_sig
     except Exception:
         parse_sig = None
+
+    # DIA-derived per-function locals (authoritative param names + types)
+    try:
+        from pdb_locals_apply import sd_from_dia, annotate_comment, load_locals
+        _ = load_locals()  # warm cache
+    except Exception:
+        sd_from_dia = None
+        annotate_comment = None
 
     def _alias_lookups(name: str) -> List[str]:
         """Yield alternate qualified-name forms to try for sig lookup.
@@ -569,6 +605,8 @@ def build_fallback_symbols() -> List[dict]:
     n_sigs_by_rva  = 0
     n_sigs_by_alias = 0
     n_sd_attached  = 0
+    n_sd_from_dia  = 0
+    n_locals_anno  = 0
     for rva, (name, src) in by_addr.items():
         is_label = _looks_like_label(name)
         sig = ''
@@ -599,12 +637,32 @@ def build_fallback_symbols() -> List[dict]:
         # Structured-sig form: ghidra_import_gen applies via
         # FunctionDefinitionDataType (more reliable than the raw-sig path
         # which goes through CParserUtils.parseSignature).
-        if sig and parse_sig is not None:
+        # 1) Prefer DIA-derived sig (authoritative param names + types).
+        if sd is None and sd_from_dia is not None:
+            try:
+                d_sd = sd_from_dia(name, sig, _types_known, _enums_known, _typedefs)
+                if d_sd is not None:
+                    sd = d_sd
+                    n_sd_from_dia += 1
+                    n_sd_attached += 1
+            except Exception:
+                pass
+        # 2) Fall back to parsing the raw sig text.
+        if sd is None and sig and parse_sig is not None:
             try:
                 parsed = parse_sig(sig, _types_known, _enums_known, _typedefs)
                 if parsed is not None:
                     sd = parsed
                     n_sd_attached += 1
+            except Exception:
+                pass
+        # 3) Annotate src with locals if DIA has them
+        if annotate_comment is not None:
+            try:
+                anno = annotate_comment(name)
+                if anno:
+                    src = f'{src} | {anno}'
+                    n_locals_anno += 1
             except Exception:
                 pass
         entry = {
@@ -637,7 +695,11 @@ def build_fallback_symbols() -> List[dict]:
         n_with_cmp = sum(1 for r in by_addr if r in compiland_index)
         print(f'  Attached compiland (.obj) tags to {n_with_cmp:,} symbols')
     if n_sd_attached:
-        print(f'  Attached structured sigs to {n_sd_attached:,} symbols')
+        print(f'  Attached structured sigs: {n_sd_from_dia:,} via DIA + '
+              f'{n_sd_attached - n_sd_from_dia:,} via raw-sig parse '
+              f'(total {n_sd_attached:,})')
+    if n_locals_anno:
+        print(f'  Annotated {n_locals_anno:,} symbols with DIA param/local names')
     return out
 
 
