@@ -183,29 +183,38 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     if pc_extra.is_file():
         _parse_pc(pc_extra.read_text(encoding='utf-8', errors='replace'))
 
+    # Demangle on-the-fly via dbghelp -- when extract_xbox_vtables.py was
+    # built llvm-undname.exe wasn't on this box so the JSON's ``d`` field
+    # was just the mangled string.  Re-undecorate here so we get real
+    # method names (and they'll match the PDB sig index downstream).
+    import sys as _sys
+    _sys.path.insert(0, str((SCRIPT_DIR.parent / 'core').resolve()))
+    from pdb_symbols import undecorate
+
     out: List[Tuple[int, str]] = []
     for cls, xb_slots in xbox.items():
         pc = pc_slots.get(cls)
         if not pc:
             continue
         pc.sort(key=lambda x: x[0])
-        # Pair up to the shorter of the two; cap=PC was already applied
-        # at extraction time, so counts usually match.
         n = min(len(xb_slots), len(pc))
         for i in range(n):
             entry = xb_slots[i]
             method_full = entry.get('d') or entry.get('m', '')
+            mangled     = entry.get('m', '')
             if not method_full or method_full.startswith('__unnamed_'):
                 continue
-            # Demangled looks like ``return_type Class::method(args) qual``
-            # or ``Class::method``.  Strip args + return type.
+            # If the "demangled" form is actually still mangled (i.e.
+            # extraction time didn't have llvm-undname), demangle now.
+            if method_full == mangled and mangled.startswith('?'):
+                try:
+                    method_full = undecorate(mangled)
+                except Exception:
+                    pass
             method_full = _strip_args(method_full)
-            # Drop leading return-type words; keep last ``::``-segment with prefix
-            # so we end up with ``Class::method`` (or ``A::B::method``).
             tokens = method_full.split()
             qname = tokens[-1] if tokens else method_full
             if not qname or '::' not in qname:
-                # Fallback: prefix with class explicitly
                 qname = f'{cls}::vf{i:03d}'
             slot_rva = pc[i][1] - FNV_IMAGE_BASE
             out.append((slot_rva, qname))
@@ -324,6 +333,15 @@ def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_pdb_sig_index():
+    """Lazy import + load the qualified-name -> C signature index."""
+    try:
+        from pdb_signatures import load_sigs
+        return load_sigs(Path(r'C:\GhidraProjects\scripts\Fallout_Debug_funcs.json'))
+    except Exception:
+        return {}
+
+
 def build_fallback_symbols() -> List[dict]:
     """Return the merged fallback symbol list for the FNV pipeline."""
     nvse_syms     = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
@@ -357,12 +375,19 @@ def build_fallback_symbols() -> List[dict]:
     # labels, regardless of the looks-like-label heuristic.
     for rva, name in globals_:
         label_addrs.setdefault(rva, (name, 'global_label'))
+    sig_index = _load_pdb_sig_index()
+
     out = []
+    n_sigs_attached = 0
     for rva, (name, src) in by_addr.items():
+        is_label = _looks_like_label(name)
+        sig = '' if is_label else sig_index.get(name, '')
+        if sig:
+            n_sigs_attached += 1
         out.append({
             'n': name,
-            't': 'label' if _looks_like_label(name) else 'func',
-            'sig': '',
+            't': 'label' if is_label else 'func',
+            'sig': sig,
             'a': rva,
             'src': src,
         })
@@ -374,6 +399,9 @@ def build_fallback_symbols() -> List[dict]:
             'a': rva,
             'src': src,
         })
+    if sig_index:
+        print(f'  Attached PDB signatures to {n_sigs_attached:,} '
+              f'fallback symbols (of {len(by_addr):,} candidates)')
     return out
 
 

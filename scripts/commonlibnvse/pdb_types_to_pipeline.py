@@ -129,9 +129,17 @@ def _strip_qualifiers(t: str) -> str:
     return t.strip()
 
 
-def _convert_one(type_str: str, field_size: int, known_structs: Set[str]) -> str:
+def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
+                  known_enums: Set[str] = None) -> str:
     """Convert a single PDB type string to pipeline format."""
+    if known_enums is None:
+        known_enums = set()
     t = _strip_qualifiers(type_str)
+    # PDB often prefixes class/struct/enum on field types
+    for prefix in ('enum ', 'class ', 'struct ', 'union '):
+        if t.startswith(prefix):
+            t = t[len(prefix):].strip()
+            break
     if not t:
         return f'bytes:{field_size}' if field_size > 0 else 'u8'
 
@@ -149,7 +157,7 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str]) -> str
         inner = m.group(1).rstrip()
         count = int(m.group(2))
         elem_size = field_size // count if count > 0 else 0
-        inner_pipeline = _convert_one(inner, elem_size, known_structs)
+        inner_pipeline = _convert_one(inner, elem_size, known_structs, known_enums)
         # arr:T:N expects T to be a simple token (no further :)
         if ':' in inner_pipeline:
             # Inner is itself complex (e.g. bytes:8) -- fall back to raw bytes
@@ -169,6 +177,10 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str]) -> str
     # Anonymous/nested type -> raw bytes
     if '<unnamed' in t or '<anonymous' in t or '::<unnamed-' in t:
         return f'bytes:{field_size}' if field_size > 0 else 'u8'
+
+    # Known enum reference?
+    if t in known_enums:
+        return f'enum:{t.replace("::", "_")}'
 
     # Known struct reference?  Use the FULL name only when an entry with
     # that exact name exists -- emitting ``struct:Foo<X>`` when only ``Foo``
@@ -225,7 +237,7 @@ def _dedup_field_ranges(fields):
     return kept
 
 
-def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
+def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str, dict]:
     """Convert a parsed pretty-dump types JSON to a structs dict ready to
     merge with the clang-AST-derived structs in parse_commonlib_types.py.
 
@@ -233,6 +245,15 @@ def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
     look like compiler-internal anonymous tags (``<unnamed-tag>``).
     """
     data = json.loads(json_path.read_text(encoding='utf-8'))
+
+    # Optional enum index -- when present, field types matching an enum
+    # name are emitted as ``enum:Name`` instead of falling to bytes:N.
+    known_enums: Set[str] = set()
+    if enums_json_path and enums_json_path.is_file():
+        en_data = json.loads(enums_json_path.read_text(encoding='utf-8'))
+        for cls in en_data:
+            known_enums.add(cls)
+            known_enums.add(cls.replace('::', '_'))
 
     def _normalize_name(cls: str) -> str:
         """``Class::Inner`` -> ``Class_Inner`` so Ghidra DTM gets a single
@@ -283,14 +304,14 @@ def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
                 count = int(am.group(2))
                 inner_type = _convert_one(fld['type'],
                                           fsize // count if count > 0 else 0,
-                                          known_structs)
+                                          known_structs, known_enums)
                 if count > 0 and ':' not in inner_type:
                     ftype = f'arr:{inner_type}:{count}'
                 else:
                     ftype = f'bytes:{fsize}' if fsize > 0 else 'u8'
                 fname = base_name
             else:
-                ftype = _convert_one(fld['type'], fsize, known_structs)
+                ftype = _convert_one(fld['type'], fsize, known_structs, known_enums)
             out_fields.append({
                 'name':   fname,
                 'offset': fld['off'],

@@ -177,6 +177,27 @@ def main():
     # 2. Type extraction via libclang (best-effort)
     enums, structs, vtable_structs, template_source = _try_clang_types(verbose=True)
 
+    # 2a. PDB-derived enums (3.4k of them; clang produces ~40).  Merge
+    # WITHOUT clobbering xNVSE enums.
+    pdb_enums_json = r'C:\GhidraProjects\scripts\Fallout_Debug_enums.json'
+    if os.path.isfile(pdb_enums_json):
+        try:
+            import json as _j
+            pdb_enums = _j.loads(open(pdb_enums_json, encoding='utf-8').read())
+            n_added = 0
+            for cls, en in pdb_enums.items():
+                if cls in enums:
+                    continue
+                # Convert ``values`` lists back to tuples (json normalizes)
+                en['values'] = [tuple(v) for v in en.get('values', [])]
+                enums[cls] = en
+                n_added += 1
+            print('PDB enums merged: {} added ({} members)'.format(
+                  n_added, sum(len(e['values']) for e in pdb_enums.values())))
+        except Exception as e:
+            print('WARNING: PDB enum merge failed: {}: {}'.format(
+                type(e).__name__, e))
+
     # 2b. PDB-derived type layouts -- merge into structs.  When clang
     # provides a REAL layout (size>0 with non-vftable fields), it wins
     # (xNVSE knows methods + RE-style namespacing).  When clang is empty
@@ -186,7 +207,9 @@ def main():
         try:
             from pdb_types_to_pipeline import convert_pdb_types
             from pathlib import Path
-            pdb_structs, n_skip, n_field = convert_pdb_types(Path(pdb_types_json))
+            pdb_structs, n_skip, n_field = convert_pdb_types(
+                Path(pdb_types_json),
+                Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None)
             n_added = 0
             n_upgraded = 0
             for cls, st in pdb_structs.items():
