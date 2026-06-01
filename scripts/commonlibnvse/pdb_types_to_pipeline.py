@@ -170,16 +170,59 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str]) -> str
     if '<unnamed' in t or '<anonymous' in t or '::<unnamed-' in t:
         return f'bytes:{field_size}' if field_size > 0 else 'u8'
 
-    # Known struct reference?
+    # Known struct reference?  Use the FULL name only when an entry with
+    # that exact name exists -- emitting ``struct:Foo<X>`` when only ``Foo``
+    # is defined creates a dangling ref that Ghidra resolves to nothing.
+    # For templated lookups, fall back to bytes:size (preserves layout).
     if t in known_structs:
-        return f'struct:{t}'
-    # Drop templated suffix (Foo<T> -> Foo) for matching
+        # Emit normalized form (`::` -> `_`) so it matches the struct
+        # definition's ``name`` field after _normalize_name().
+        return f'struct:{t.replace("::", "_")}'
     base = t.split('<', 1)[0].rstrip()
-    if base in known_structs:
-        return f'struct:{t}'
+    if base in known_structs and '<' not in t:
+        # Bare class with extra qualifiers (e.g. ``const Foo``) -- safe
+        return f'struct:{base.replace("::", "_")}'
 
-    # Enum-ish: typeless lookup -> fall back to raw bytes of declared size
+    # Templated instantiation we don't have a layout for, OR unknown
+    # type entirely.  Raw bytes preserve the field's declared size.
     return f'bytes:{field_size}' if field_size > 0 else 'u8'
+
+
+def _dedup_field_ranges(fields):
+    """Drop fields whose byte range is strictly contained in another field's
+    range (nested-struct expansions slipped past the indent filter).
+    For same-offset+same-size pairs (anonymous unions / typedef aliases),
+    prefer entries whose type is ``struct:...`` (more informative), else
+    the larger-size entry, else the first seen.
+    """
+    if not fields:
+        return fields
+    # Sort: by offset ascending, then size DESCENDING so larger parent comes
+    # before its inner expansion (which we'll then drop as "contained").
+    sorted_f = sorted(fields, key=lambda f: (f['offset'], -f['size']))
+    kept = []
+    for f in sorted_f:
+        f_end = f['offset'] + f['size']
+        absorbed = False
+        for k in kept:
+            k_end = k['offset'] + k['size']
+            if k['offset'] > f['offset'] or k_end < f_end:
+                continue
+            # k's range covers f's range fully
+            if k['offset'] == f['offset'] and k['size'] == f['size']:
+                # Same range -- union or typedef alias.  Keep k.
+                # But if f is struct:... and k is a primitive, swap.
+                if f['type'].startswith('struct:') \
+                   and not k['type'].startswith('struct:'):
+                    kept[kept.index(k)] = f
+                absorbed = True
+                break
+            # Strictly contained (k bigger than f)
+            absorbed = True
+            break
+        if not absorbed:
+            kept.append(f)
+    return kept
 
 
 def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
@@ -191,8 +234,16 @@ def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
     """
     data = json.loads(json_path.read_text(encoding='utf-8'))
 
+    def _normalize_name(cls: str) -> str:
+        """``Class::Inner`` -> ``Class_Inner`` so Ghidra DTM gets a single
+        unique key (otherwise nested types from many parents collapse to
+        the same short name and refs go dangling)."""
+        return cls.replace('::', '_')
+
     # First pass: collect names of structs we'll emit, so type strings can
-    # reference them via ``struct:Name``.
+    # reference them via ``struct:Name``.  We register BOTH the original
+    # ``Class::Inner`` form (which the field strings use) AND the
+    # normalized form, so the converter can rewrite refs at emit time.
     known_structs: Set[str] = set()
     for cls, entry in data.items():
         if entry.get('size', 0) == 0:
@@ -202,6 +253,7 @@ def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
         if '<unnamed' in cls or '<anonymous' in cls:
             continue
         known_structs.add(cls)
+        known_structs.add(_normalize_name(cls))
         # Also expose the bare class name (no template args) for matching
         bare = cls.split('<', 1)[0].rstrip()
         known_structs.add(bare)
@@ -246,8 +298,13 @@ def convert_pdb_types(json_path: Path) -> Dict[str, dict]:
                 'type':   ftype,
             })
             n_fields_total += 1
+        # Dedup nested-struct expansions + same-offset union members
+        out_fields = _dedup_field_ranges(out_fields)
+        # Use NORMALIZED name (`::` -> `_`) so the entry surfaces in
+        # Ghidra DTM under the same key that field refs use.
+        norm = _normalize_name(cls)
         structs[cls] = {
-            'name':              cls.split('::')[-1],
+            'name':              norm,
             'full_name':         cls,
             'size':              size,
             'category':          '/xNVSE/PDB',

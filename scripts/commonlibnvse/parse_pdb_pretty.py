@@ -40,8 +40,12 @@ _FUNC_LINE = re.compile(
 )
 
 # data +0xOFF [sizeof=N] <type> <name>
+# We capture the indent so we can reject lines that belong to a NESTED
+# struct expansion -- pretty-dump emits inner struct fields at deeper
+# indent, and folding them into the parent at literal offsets creates
+# bogus field overlaps.
 _DATA_LINE = re.compile(
-    r'^\s+data\s+\+0x(?P<off>[0-9A-Fa-f]+)\s+'
+    r'^(?P<indent>\s+)data\s+\+0x(?P<off>[0-9A-Fa-f]+)\s+'
     r'\[sizeof=(?P<size>\d+)\]\s+'
     r'(?P<rest>.+)\s*$'
 )
@@ -84,7 +88,8 @@ def main():
     cur_class = None
     cur_class_size = 0
     cur_class_fields = []
-    cur_indent = -1
+    cur_indent = -1            # outer struct header indent
+    cur_outer_data_indent = -1 # indent of the first data line under this class
 
     with in_path.open('r', encoding='utf-8', errors='replace') as f:
         for ln in f:
@@ -100,6 +105,7 @@ def main():
                 cur_class_size = int(m.group('size'))
                 cur_class_fields = []
                 cur_indent = len(m.group('indent'))
+                cur_outer_data_indent = -1   # established on first data line
                 continue
 
             if cur_class is None:
@@ -120,6 +126,14 @@ def main():
 
             md = _DATA_LINE.match(ln)
             if md:
+                ind = len(md.group('indent'))
+                # First data line under this class sets the "outer" indent.
+                # Subsequent lines deeper than this are nested-struct
+                # expansions -- skip them to avoid bogus field overlaps.
+                if cur_outer_data_indent == -1:
+                    cur_outer_data_indent = ind
+                elif ind > cur_outer_data_indent:
+                    continue
                 rest = md.group('rest').strip()
                 # ``<type> <name>`` -- type may contain spaces (e.g. ``unsigned long``)
                 # Best-effort split on last token = name
