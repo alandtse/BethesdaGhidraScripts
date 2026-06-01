@@ -506,8 +506,10 @@ def build_fallback_symbols() -> List[dict]:
     imm_pairs     = _load_imm_paired_names(REFS_DIR / 'fnv_imm_paired_names.csv')
     constructors  = _load_constructor_names(REFS_DIR / 'fnv_constructor_names.csv')
     ghidra_ctors  = _load_constructor_names(REFS_DIR / 'fnv_ghidra_ctor_names.csv')
+    ghidra_dtors  = _load_constructor_names(REFS_DIR / 'fnv_ghidra_dtor_names.csv')
     thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
+    ghidra_globs  = _load_global_labels(REFS_DIR / 'fnv_ghidra_global_names.csv')
 
     # Address -> (name, source).  Earlier source wins on collision.
     by_addr: Dict[int, Tuple[str, str]] = {}
@@ -528,6 +530,8 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'ctor_byte_scan'))
     for rva, name in ghidra_ctors:
         by_addr.setdefault(rva, (name, 'ctor_ghidra_xref'))
+    for rva, name in ghidra_dtors:
+        by_addr.setdefault(rva, (name, 'dtor_ghidra_inferred'))
     for rva, name in thunks:
         by_addr.setdefault(rva, (name, 'thunk_jmp'))
     for rva, name in pdb_syms:
@@ -537,6 +541,8 @@ def build_fallback_symbols() -> List[dict]:
     # labels, regardless of the looks-like-label heuristic.
     for rva, name in globals_:
         label_addrs.setdefault(rva, (name, 'global_label'))
+    for rva, name in ghidra_globs:
+        label_addrs.setdefault(rva, (name, 'global_ghidra_pair'))
     sig_index = _load_pdb_sig_index()
     rva_sig_index = _build_rva_to_sig_index(sig_index)
     compiland_index = _load_pdb_compiland_index()
