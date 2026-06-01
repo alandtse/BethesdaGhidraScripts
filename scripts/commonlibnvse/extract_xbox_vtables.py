@@ -107,6 +107,17 @@ def is_primary_vftable(mangled: str, cls: str) -> bool:
     return mangled.endswith('6B@') and '@@6B@' in mangled
 
 
+def is_secondary_vftable(mangled: str) -> bool:
+    """MSVC secondary vftable: ``??_7Class@@6B<BaseName>@@@`` (multi-inheritance)."""
+    if not mangled.startswith('??_7'):
+        return False
+    if mangled.endswith('@@6B@'):
+        return False
+    # Has ``@@6B`` followed by a base subobject identifier
+    idx = mangled.find('@@6B')
+    return idx > 0 and mangled.endswith('@@@')
+
+
 def vftable_class_name(mangled: str) -> str:
     """Extract the class name from ``??_7Class@@6B[Base]@@@``.
 
@@ -117,6 +128,24 @@ def vftable_class_name(mangled: str) -> str:
     body = mangled[4:]
     end = body.find('@@')
     return body[:end] if end > 0 else ''
+
+
+def vftable_base_name(mangled: str) -> str:
+    """For a secondary vftable ``??_7Class@@6BBase@@@``, extract ``Base``.
+    Returns '' for primary vtables.
+    """
+    if not is_secondary_vftable(mangled):
+        return ''
+    idx = mangled.find('@@6B')
+    if idx < 0:
+        return ''
+    # Trim the trailing ``@@@`` (or ``@@``)
+    base_part = mangled[idx + 4:]
+    if base_part.endswith('@@@'):
+        return base_part[:-3]
+    if base_part.endswith('@@'):
+        return base_part[:-2]
+    return base_part
 
 
 def demangle_batch(mangled_list, batch=100):
@@ -188,9 +217,11 @@ def main():
     publics = load_publics(publics_path)
     print(f'  {len(publics)} symbols (deduped by RVA)')
 
-    # Primary vtable symbols (``??_7Class@@6B@``) — our extraction targets.
+    # Primary vtable symbols (``??_7Class@@6B@``) — our main extraction targets.
+    # ALSO extract secondary vtables (``??_7Class@@6BBase@@@``) for
+    # multi-inheritance classes -- those keep ~30% more naming surface.
     primary_vts = []
-    # ALL vtable symbols (incl. secondary ``??_7C@@6BBase@@@``) for bounds.
+    secondary_vts = []
     all_vt_rvas = []
     for rva, mangled in publics.items():
         if not mangled.startswith('??_7'):
@@ -200,23 +231,38 @@ def main():
             cls = vftable_class_name(mangled)
             if cls:
                 primary_vts.append((rva, cls, mangled))
+        elif is_secondary_vftable(mangled):
+            cls = vftable_class_name(mangled)
+            base = vftable_base_name(mangled)
+            if cls and base:
+                # Composite key encodes "Class's view of Base" --
+                # downstream matching can pair against PC FNV vtables
+                # via the same composite (we'll emit them with the
+                # ``Class::Base`` joined key).
+                secondary_vts.append((rva, f'{cls}::{base}', mangled))
     primary_vts.sort()
+    secondary_vts.sort()
     all_vt_rvas.sort()
-    print(f'  primary vtables: {len(primary_vts)}  (all vtable symbols: {len(all_vt_rvas)})')
+    print(f'  primary vtables: {len(primary_vts)}  secondary: {len(secondary_vts)} '
+          f'(all vtable symbols: {len(all_vt_rvas)})')
 
-    # For each primary vtable, the bound is the NEXT vtable symbol of ANY kind
-    # (primary or secondary).  Secondary vtables sit between primary ones in
-    # multi-inheritance classes; without them as bounds, reads spill across.
+    # For each vtable (primary OR secondary), the bound is the NEXT vtable
+    # symbol of ANY kind.  Both primary and secondary are bounded by their
+    # neighbor; without that, reads spill across into adjacent vtables.
     next_vt = {}
     import bisect
-    for rva, _, _ in primary_vts:
+    for rva, _, _ in (primary_vts + secondary_vts):
         i = bisect.bisect_right(all_vt_rvas, rva)
         next_vt[rva] = all_vt_rvas[i] if i < len(all_vt_rvas) else rva + 0x10000
 
-    # Build vtable layouts: read pointers from EXE, resolve names
+    # Build vtable layouts: read pointers from EXE, resolve names.
+    # We extract BOTH primary and secondary vtables -- they're keyed
+    # differently in the JSON so downstream matching can pair both
+    # against PC FNV's RTTI-found vtables.
+    all_vts = primary_vts + secondary_vts
     layouts = {}
     n_classes_named = n_total_slots = n_unnamed_slots = 0
-    for rva, cls, mangled in primary_vts:
+    for rva, cls, mangled in all_vts:
         off = rva_to_off(sects, rva)
         if off is None:
             continue

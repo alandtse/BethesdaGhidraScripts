@@ -231,29 +231,59 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
             return qname
         return f'{cls_fallback}::vf{slot_i:03d}'
 
+    # Group Xbox keys by bare class.  Secondary vtables have the form
+    # ``Class::Base`` (multi-inheritance subobject); we need to pair
+    # them against PC FNV's MULTIPLE vtables for the same class.
+    xbox_by_class: Dict[str, List[Tuple[str, list]]] = {}
+    for key, slots in xbox.items():
+        if key.startswith('?$') or '::' not in key:
+            xbox_by_class.setdefault(key, []).append(('', slots))
+        else:
+            base, base_label = key.split('::', 1)
+            xbox_by_class.setdefault(base, []).append((base_label, slots))
+
+    def _emit_slot(xb_slot, pc_slot_va, cls, slot_idx, out_list):
+        method_full = xb_slot.get('d') or xb_slot.get('m', '')
+        mangled     = xb_slot.get('m', '')
+        if not method_full or method_full.startswith('__unnamed_'):
+            return
+        if method_full == mangled and mangled.startswith('?'):
+            try:
+                method_full = undecorate(mangled)
+            except Exception:
+                pass
+        qname = _qname_from_demangled(method_full, cls, slot_idx)
+        out_list.append((pc_slot_va - FNV_IMAGE_BASE, qname))
+
     out: List[Tuple[int, str]] = []
-    for cls, xb_slots in xbox.items():
+    for cls, vt_list in xbox_by_class.items():
         pc = pc_slots.get(cls)
         if not pc:
             continue
         pc.sort(key=lambda x: x[0])
-        n = min(len(xb_slots), len(pc))
-        for i in range(n):
-            entry = xb_slots[i]
-            method_full = entry.get('d') or entry.get('m', '')
-            mangled     = entry.get('m', '')
-            if not method_full or method_full.startswith('__unnamed_'):
-                continue
-            # If the "demangled" form is actually still mangled (i.e.
-            # extraction time didn't have llvm-undname), demangle now.
-            if method_full == mangled and mangled.startswith('?'):
-                try:
-                    method_full = undecorate(mangled)
-                except Exception:
-                    pass
-            qname = _qname_from_demangled(method_full, cls, i)
-            slot_rva = pc[i][1] - FNV_IMAGE_BASE
-            out.append((slot_rva, qname))
+
+        if len(vt_list) == 1:
+            _, xb_slots = vt_list[0]
+            n = min(len(xb_slots), len(pc))
+            for i in range(n):
+                _emit_slot(xb_slots[i], pc[i][1], cls, i, out)
+        else:
+            # Multi-inherit: Xbox has primary + secondaries.  PC has
+            # multiple consecutive vtables in .rdata for the same class.
+            # The Xbox primary is identified by base_label == ''.  Sort
+            # secondaries by Xbox emission order (preserving original
+            # JSON order is best-effort).  Match each Xbox vtable to a
+            # PC segment by consuming PC slots in order.
+            xb_sorted = sorted(vt_list, key=lambda x: 0 if x[0] == '' else 1)
+            pc_offset = 0
+            for base_label, xb_slots in xb_sorted:
+                n = len(xb_slots)
+                if pc_offset + n > len(pc):
+                    break
+                segment = pc[pc_offset:pc_offset + n]
+                for i, entry in enumerate(xb_slots):
+                    _emit_slot(entry, segment[i][1], cls, i, out)
+                pc_offset += n
     return out
 
 
@@ -498,6 +528,8 @@ def _build_rva_to_sig_index(sig_by_qname: Dict[str, str]) -> Dict[int, str]:
 def build_fallback_symbols() -> List[dict]:
     """Return the merged fallback symbol list for the FNV pipeline."""
     nvse_syms     = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
+    jip_syms      = _load_nvse_known(REFS_DIR / 'fnv_jip_addresses.txt')
+    commonlib     = _load_constructor_names(REFS_DIR / 'fnv_commonlib_vtable_methods.csv')
     pdb_syms      = _load_matched_vtable_methods(REFS_DIR / 'fnv_pdb_matched_classes.txt')
     xbox_vt       = _load_xbox_vtable_methods()
     string_anch   = _load_string_anchored(REFS_DIR / 'fnv_string_anchored.csv')
@@ -517,6 +549,10 @@ def build_fallback_symbols() -> List[dict]:
     label_addrs: Dict[int, Tuple[str, str]] = {}  # data symbols (forced label)
     for rva, name in nvse_syms:
         by_addr.setdefault(rva, (name, 'nvse_known'))
+    for rva, name in jip_syms:
+        by_addr.setdefault(rva, (name, 'jip_known'))
+    for rva, name in commonlib:
+        by_addr.setdefault(rva, (name, 'commonlib_vtable'))
     for rva, name in xbox_vt:
         by_addr.setdefault(rva, (name, 'xbox_vtable'))
     for rva, name in string_anch:
