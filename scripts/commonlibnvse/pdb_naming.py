@@ -507,6 +507,7 @@ def build_fallback_symbols() -> List[dict]:
     constructors  = _load_constructor_names(REFS_DIR / 'fnv_constructor_names.csv')
     ghidra_ctors  = _load_constructor_names(REFS_DIR / 'fnv_ghidra_ctor_names.csv')
     ghidra_dtors  = _load_constructor_names(REFS_DIR / 'fnv_ghidra_dtor_names.csv')
+    cgalign       = _load_constructor_names(REFS_DIR / 'fnv_callgraph_names.csv')
     thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
     ghidra_globs  = _load_global_labels(REFS_DIR / 'fnv_ghidra_global_names.csv')
@@ -532,6 +533,8 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'ctor_ghidra_xref'))
     for rva, name in ghidra_dtors:
         by_addr.setdefault(rva, (name, 'dtor_ghidra_inferred'))
+    for rva, name in cgalign:
+        by_addr.setdefault(rva, (name, 'callgraph_align'))
     for rva, name in thunks:
         by_addr.setdefault(rva, (name, 'thunk_jmp'))
     for rva, name in pdb_syms:
