@@ -505,6 +505,7 @@ def build_fallback_symbols() -> List[dict]:
     src_file      = _load_source_file_names(REFS_DIR / 'fnv_source_file_names.csv')
     imm_pairs     = _load_imm_paired_names(REFS_DIR / 'fnv_imm_paired_names.csv')
     constructors  = _load_constructor_names(REFS_DIR / 'fnv_constructor_names.csv')
+    ghidra_ctors  = _load_constructor_names(REFS_DIR / 'fnv_ghidra_ctor_names.csv')
     thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
 
@@ -525,6 +526,8 @@ def build_fallback_symbols() -> List[dict]:
         by_addr.setdefault(rva, (name, 'imm_paired'))
     for rva, name in constructors:
         by_addr.setdefault(rva, (name, 'ctor_byte_scan'))
+    for rva, name in ghidra_ctors:
+        by_addr.setdefault(rva, (name, 'ctor_ghidra_xref'))
     for rva, name in thunks:
         by_addr.setdefault(rva, (name, 'thunk_jmp'))
     for rva, name in pdb_syms:
