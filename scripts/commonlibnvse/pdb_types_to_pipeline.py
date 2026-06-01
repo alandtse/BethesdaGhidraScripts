@@ -324,14 +324,15 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
         # Use NORMALIZED name (`::` -> `_`) so the entry surfaces in
         # Ghidra DTM under the same key that field refs use.
         norm = _normalize_name(cls)
+        bases = entry.get('bases', []) or []
         structs[cls] = {
             'name':              norm,
             'full_name':         cls,
             'size':              size,
             'category':          '/xNVSE/PDB',
             'fields':            out_fields,
-            'bases':             [],
-            'pdb_bases':         [],
+            'bases':             [b for b in bases],
+            'pdb_bases':         [b for b in bases],
             'has_vtable':        False,
             'vmethods':          {},
             'methods':           {},

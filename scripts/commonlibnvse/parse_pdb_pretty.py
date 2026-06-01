@@ -50,6 +50,19 @@ _DATA_LINE = re.compile(
     r'(?P<rest>.+)\s*$'
 )
 
+# ``: public Foo, protected Bar { ...`` continuation line right after a
+# class header.  Captures the entire base-list section.
+_BASE_LIST = re.compile(
+    r'^\s+:\s+(?P<bases>(?:(?:public|protected|private|virtual\s+\w+)\s+'
+    r'[^,{}\s][^,{}\n]*?(?:,\s*)?)+)\s*\{?\s*$'
+)
+
+# Outermost ``base +0xOFF [sizeof=N] BaseClass`` line under a class.
+_BASE_LINE = re.compile(
+    r'^(?P<indent>\s+)base\s+\+0x(?P<off>[0-9A-Fa-f]+)\s+'
+    r'\[sizeof=(?P<size>\d+)\]\s+(?P<name>\S.+?)\s*$'
+)
+
 
 def _extract_qname(sig: str) -> str:
     """``static? <ret> __cdecl Class::method(args)`` -> ``Class::method``."""
@@ -88,27 +101,58 @@ def main():
     cur_class = None
     cur_class_size = 0
     cur_class_fields = []
+    cur_class_bases  = []
     cur_indent = -1            # outer struct header indent
     cur_outer_data_indent = -1 # indent of the first data line under this class
+    cur_outer_base_indent = -1 # indent of the first base line (immediate bases)
 
     with in_path.open('r', encoding='utf-8', errors='replace') as f:
         for ln in f:
             m = _TYPE_HDR.match(ln)
             if m:
                 # Flush previous class
-                if cur_class is not None and cur_class_fields:
+                if cur_class is not None and (cur_class_fields or cur_class_bases):
                     types_by_class[cur_class] = {
                         'size':   cur_class_size,
                         'fields': cur_class_fields,
+                        'bases':  cur_class_bases,
                     }
                 cur_class = m.group('name').strip()
                 cur_class_size = int(m.group('size'))
                 cur_class_fields = []
+                cur_class_bases  = []
                 cur_indent = len(m.group('indent'))
                 cur_outer_data_indent = -1   # established on first data line
+                cur_outer_base_indent = -1   # established on first base line
                 continue
 
             if cur_class is None:
+                continue
+
+            # Continuation: ``: public Base, protected OtherBase {``
+            mbl = _BASE_LIST.match(ln)
+            if mbl and not cur_class_bases:
+                raw = mbl.group('bases')
+                for part in raw.split(','):
+                    p = part.strip()
+                    # Strip access specifier (public/protected/private/virtual)
+                    p = re.sub(r'^(public|protected|private|virtual\s+\w+)\s+',
+                               '', p)
+                    p = p.strip().rstrip('{').strip()
+                    if p and p not in cur_class_bases:
+                        cur_class_bases.append(p)
+                continue
+
+            # ``base +0xOFF [sizeof=N] BaseClass`` -- immediate bases only
+            mbi = _BASE_LINE.match(ln)
+            if mbi:
+                ind = len(mbi.group('indent'))
+                if cur_outer_base_indent == -1:
+                    cur_outer_base_indent = ind
+                if ind == cur_outer_base_indent:
+                    base_name = mbi.group('name').strip()
+                    if base_name not in cur_class_bases:
+                        cur_class_bases.append(base_name)
                 continue
 
             mf = _FUNC_LINE.match(ln)
@@ -135,6 +179,16 @@ def main():
                 elif ind > cur_outer_data_indent:
                     continue
                 rest = md.group('rest').strip()
+                # Detect bitfield syntax: ``<type> <name> : <width>``.  We
+                # don't model individual bits; just preserve the underlying
+                # primitive at that byte offset (dedup-by-range will keep
+                # the FIRST bitfield member per offset, which is fine
+                # because Ghidra would show the byte as the primitive too).
+                bitfield_width = 0
+                m_bf = re.search(r'\s*:\s*(\d+)\s*$', rest)
+                if m_bf:
+                    bitfield_width = int(m_bf.group(1))
+                    rest = rest[:m_bf.start()].strip()
                 # ``<type> <name>`` -- type may contain spaces (e.g. ``unsigned long``)
                 # Best-effort split on last token = name
                 rest_tokens = rest.split()
@@ -146,13 +200,15 @@ def main():
                         'size': int(md.group('size')),
                         'type': type_,
                         'name': name,
+                        **({'bf_width': bitfield_width} if bitfield_width else {}),
                     })
                 continue
 
-    if cur_class is not None and cur_class_fields:
+    if cur_class is not None and (cur_class_fields or cur_class_bases):
         types_by_class[cur_class] = {
             'size':   cur_class_size,
             'fields': cur_class_fields,
+            'bases':  cur_class_bases,
         }
 
     n_funcs = sum(len(v) for v in funcs_by_class.values())
