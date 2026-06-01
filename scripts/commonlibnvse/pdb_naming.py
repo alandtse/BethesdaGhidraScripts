@@ -369,6 +369,60 @@ def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_pdb_compiland_index():
+    """Load Xbox VA -> compiland-basename map and build PC RVA -> compiland
+    via the xbox_vtable + string_xref pairings (the two sources where we
+    know both sides of the PC<->Xbox correspondence)."""
+    import json as _j
+    out: Dict[int, str] = {}
+    cmp_path = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_modules.json')
+    if not cmp_path.is_file():
+        return out
+    va_to_cmp = _j.loads(cmp_path.read_text(encoding='utf-8'))
+    # Convert string keys (json) to int
+    va_to_cmp = {int(k): v for k, v in va_to_cmp.items()}
+
+    # PC RVA -> name -> (Xbox VA via funcs.json) -> compiland
+    funcs_path = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_funcs.json')
+    name_to_xbox_va: Dict[str, int] = {}
+    if funcs_path.is_file():
+        for _cls, fns in _j.loads(funcs_path.read_text(encoding='utf-8')).items():
+            for fn in fns:
+                qname = fn.get('name')
+                va    = fn.get('va')
+                if qname and va and qname not in name_to_xbox_va:
+                    name_to_xbox_va[qname] = va
+
+    # 1. xbox_vtable pairs (PC RVA -> qualified name)
+    for rva, name in _load_xbox_vtable_methods():
+        xb_va = name_to_xbox_va.get(name)
+        if xb_va is not None:
+            cmp = va_to_cmp.get(xb_va)
+            if cmp:
+                out.setdefault(rva, cmp)
+
+    # 2. string_xref CSV
+    p = REFS_DIR / 'fnv_string_xref_names.csv'
+    if p.is_file():
+        for ln in p.read_text(encoding='utf-8', errors='replace').splitlines():
+            if not ln or ln.startswith('#'):
+                continue
+            parts = ln.split('|', 4)
+            if len(parts) < 2:
+                continue
+            try:
+                rva = int(parts[0], 16)
+            except ValueError:
+                continue
+            name = parts[1].strip()
+            xb_va = name_to_xbox_va.get(name)
+            if xb_va is not None:
+                cmp = va_to_cmp.get(xb_va)
+                if cmp:
+                    out.setdefault(rva, cmp)
+    return out
+
+
 def _load_pdb_sig_index():
     """Lazy import + load the qualified-name -> C signature index.
 
@@ -454,6 +508,7 @@ def build_fallback_symbols() -> List[dict]:
         label_addrs.setdefault(rva, (name, 'global_label'))
     sig_index = _load_pdb_sig_index()
     rva_sig_index = _build_rva_to_sig_index(sig_index)
+    compiland_index = _load_pdb_compiland_index()
 
     def _alias_lookups(name: str) -> List[str]:
         """Yield alternate qualified-name forms to try for sig lookup.
@@ -509,6 +564,12 @@ def build_fallback_symbols() -> List[dict]:
                     sig = rva_sig_index.get(rva, '')
                     if sig:
                         n_sigs_by_rva += 1
+        # Attach compiland (source .obj basename) into the src field so
+        # ghidra_import_gen surfaces it via the existing ``Source: ...``
+        # plate-comment path -- no shared-code changes needed.
+        cmp = compiland_index.get(rva, '')
+        if cmp:
+            src = f'{src} / {cmp}'
         out.append({
             'n': name,
             't': 'label' if is_label else 'func',
@@ -517,6 +578,9 @@ def build_fallback_symbols() -> List[dict]:
             'src': src,
         })
     for rva, (name, src) in label_addrs.items():
+        cmp = compiland_index.get(rva, '')
+        if cmp:
+            src = f'{src} / {cmp}'
         out.append({
             'n': name,
             't': 'label',
@@ -529,6 +593,9 @@ def build_fallback_symbols() -> List[dict]:
               f'{n_sigs_by_alias:,} by alias + '
               f'{n_sigs_by_rva:,} by RVA fallback '
               f'(of {len(by_addr):,} candidates)')
+    if compiland_index:
+        n_with_cmp = sum(1 for r in by_addr if r in compiland_index)
+        print(f'  Attached compiland (.obj) tags to {n_with_cmp:,} symbols')
     return out
 
 

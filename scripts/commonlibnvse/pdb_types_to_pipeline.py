@@ -107,6 +107,17 @@ _PRIMITIVES = {
 }
 
 
+def normalize_struct_name(cls: str) -> str:
+    """Public helper: mirror the nested _normalize_name in convert_pdb_types
+    so callers outside the function can produce matching keys."""
+    s = cls.replace('::', '_')
+    s = s.replace('<', '_').replace('>', '_')
+    s = s.replace('-', '_')
+    while '__' in s:
+        s = s.replace('__', '_')
+    return s.strip('_')
+
+
 # Sizes for primitives, used when emitting bytes:N fallback
 _PRIMITIVE_SIZES = {
     'bool': 1, 'i8': 1, 'u8': 1,
@@ -190,13 +201,10 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
     # is defined creates a dangling ref that Ghidra resolves to nothing.
     # For templated lookups, fall back to bytes:size (preserves layout).
     if t in known_structs:
-        # Emit normalized form (`::` -> `_`) so it matches the struct
-        # definition's ``name`` field after _normalize_name().
-        return f'struct:{t.replace("::", "_")}'
+        return f'struct:{normalize_struct_name(t)}'
     base = t.split('<', 1)[0].rstrip()
     if base in known_structs and '<' not in t:
-        # Bare class with extra qualifiers (e.g. ``const Foo``) -- safe
-        return f'struct:{base.replace("::", "_")}'
+        return f'struct:{normalize_struct_name(base)}'
 
     # Templated instantiation we don't have a layout for, OR unknown
     # type entirely.  Raw bytes preserve the field's declared size.
@@ -274,8 +282,18 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
     def _normalize_name(cls: str) -> str:
         """``Class::Inner`` -> ``Class_Inner`` so Ghidra DTM gets a single
         unique key (otherwise nested types from many parents collapse to
-        the same short name and refs go dangling)."""
-        return cls.replace('::', '_')
+        the same short name and refs go dangling).
+
+        Also sanitize ``<unnamed-tag>``-style PDB-internal labels to
+        plain identifiers so they survive Ghidra's struct-name validator.
+        """
+        s = cls.replace('::', '_')
+        s = s.replace('<', '_').replace('>', '_')
+        s = s.replace('-', '_')
+        # Collapse double-underscores
+        while '__' in s:
+            s = s.replace('__', '_')
+        return s.strip('_')
 
     # First pass: collect names of structs we'll emit, so type strings can
     # reference them via ``struct:Name``.  We register BOTH the original
@@ -287,8 +305,10 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
             continue
         if not entry.get('fields'):
             continue
-        if '<unnamed' in cls or '<anonymous' in cls:
-            continue
+        # Anonymous types keep their full ``<unnamed-tag>`` PDB name as
+        # the JSON key (so field refs that use that string can still
+        # find them), but the EMITTED struct definition uses the
+        # normalized synthetic name (Ghidra rejects ``<>`` in names).
         known_structs.add(cls)
         known_structs.add(_normalize_name(cls))
         # Also expose the bare class name (no template args) for matching
@@ -300,9 +320,6 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
     n_skipped = 0
     for cls, entry in data.items():
         if entry.get('size', 0) == 0 or not entry.get('fields'):
-            n_skipped += 1
-            continue
-        if '<unnamed' in cls or '<anonymous' in cls:
             n_skipped += 1
             continue
         size = entry['size']
