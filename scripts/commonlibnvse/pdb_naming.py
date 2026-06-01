@@ -455,9 +455,40 @@ def build_fallback_symbols() -> List[dict]:
     sig_index = _load_pdb_sig_index()
     rva_sig_index = _build_rva_to_sig_index(sig_index)
 
+    def _alias_lookups(name: str) -> List[str]:
+        """Yield alternate qualified-name forms to try for sig lookup.
+
+        Bridges the gap between vtable-slot names (compiler-generated
+        wrappers) and the user-defined methods the PDB sig index actually
+        catalogs:
+          - ``Class::scalar_deleting_destructor`` -> ``Class::~Class``
+          - ``Class::vector_deleting_destructor`` -> ``Class::~Class``
+          - ``Class<T>::scalar_deleting_destructor`` -> ``Class<T>::~Class``
+            (handles templated class names too)
+        """
+        alts = []
+        for suffix in ('::scalar_deleting_destructor',
+                       '::vector_deleting_destructor'):
+            if name.endswith(suffix):
+                cls_full = name[:-len(suffix)]
+                # MSVC PDB pretty emits destructors in two flavors:
+                #   - ``Class::~Class`` (non-templated)
+                #   - ``Class<T>::~Class<T>`` (templated, repeats template args)
+                # Try both.
+                last_seg = cls_full.rsplit('::', 1)[-1]
+                bare = last_seg.split('<', 1)[0]
+                if bare:
+                    alts.append(f'{cls_full}::~{bare}')
+                # Templated: append the FULL last segment (incl. template args)
+                if '<' in last_seg:
+                    alts.append(f'{cls_full}::~{last_seg}')
+                break
+        return alts
+
     out = []
     n_sigs_by_name = 0
     n_sigs_by_rva  = 0
+    n_sigs_by_alias = 0
     for rva, (name, src) in by_addr.items():
         is_label = _looks_like_label(name)
         sig = ''
@@ -466,11 +497,18 @@ def build_fallback_symbols() -> List[dict]:
             if sig:
                 n_sigs_by_name += 1
             else:
-                # Fallback: try by RVA (catches nvse_known whose name
-                # form doesn't match the PDB qualified form)
-                sig = rva_sig_index.get(rva, '')
-                if sig:
-                    n_sigs_by_rva += 1
+                # Try alias forms (destructor wrappers -> user dtor)
+                for alt in _alias_lookups(name):
+                    if alt in sig_index:
+                        sig = sig_index[alt]
+                        n_sigs_by_alias += 1
+                        break
+                if not sig:
+                    # Fallback: try by RVA (catches nvse_known whose name
+                    # form doesn't match the PDB qualified form)
+                    sig = rva_sig_index.get(rva, '')
+                    if sig:
+                        n_sigs_by_rva += 1
         out.append({
             'n': name,
             't': 'label' if is_label else 'func',
@@ -488,6 +526,7 @@ def build_fallback_symbols() -> List[dict]:
         })
     if sig_index:
         print(f'  Attached PDB signatures: {n_sigs_by_name:,} by name + '
+              f'{n_sigs_by_alias:,} by alias + '
               f'{n_sigs_by_rva:,} by RVA fallback '
               f'(of {len(by_addr):,} candidates)')
     return out
