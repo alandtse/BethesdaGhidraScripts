@@ -41,31 +41,32 @@ def clean_sig(sig: str) -> str:
     return s
 
 
-def load_sigs(json_path: Path) -> Dict[str, str]:
+def load_sigs(json_path) -> Dict[str, str]:
     """Return ``{qualified_name: cleaned_c_signature}``.
 
-    Overloads: first-emitted sig wins (matches the order PDB lists
-    methods, which is link order = earliest in binary).
+    Accepts a single Path or an iterable of Paths -- when multiple PDBs
+    are supplied, sigs are merged with first-win semantics (Debug build
+    listed first wins on overlap; other builds fill in functions the
+    Debug PDB didn't surface, e.g. due to different inlining).
     """
-    if not json_path.is_file():
-        return {}
-    data = json.loads(json_path.read_text(encoding='utf-8'))
+    paths = [json_path] if isinstance(json_path, Path) else list(json_path)
     out: Dict[str, str] = {}
-    for _cls, fns in data.items():
-        for fn in fns:
-            qname = fn.get('name', '')
-            sig   = fn.get('sig', '')
-            if not qname or not sig:
-                continue
-            if qname in out:
-                continue
-            cleaned = clean_sig(sig)
-            # Drop sigs whose method name doesn't appear in the signature
-            # body -- defensive, the PDB sometimes emits class-method
-            # forward declarations whose sig text isn't a proper proto.
-            if '(' not in cleaned or ')' not in cleaned:
-                continue
-            out[qname] = cleaned
+    for p in paths:
+        if not p.is_file():
+            continue
+        data = json.loads(p.read_text(encoding='utf-8'))
+        for _cls, fns in data.items():
+            for fn in fns:
+                qname = fn.get('name', '')
+                sig   = fn.get('sig', '')
+                if not qname or not sig:
+                    continue
+                if qname in out:
+                    continue
+                cleaned = clean_sig(sig)
+                if '(' not in cleaned or ')' not in cleaned:
+                    continue
+                out[qname] = cleaned
     return out
 
 

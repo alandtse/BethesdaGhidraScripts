@@ -370,10 +370,19 @@ def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
 
 
 def _load_pdb_sig_index():
-    """Lazy import + load the qualified-name -> C signature index."""
+    """Lazy import + load the qualified-name -> C signature index.
+
+    Merges sigs from all 4 PDBs (Debug + Retail + Release-Beta +
+    Release-MemDebug).  Debug wins on collisions; the other builds fill
+    gaps where Debug didn't surface a sig (different inlining/ICF).
+    """
     try:
         from pdb_signatures import load_sigs
-        return load_sigs(Path(r'C:\GhidraProjects\scripts\Fallout_Debug_funcs.json'))
+        base = Path(r'C:\GhidraProjects\scripts')
+        paths = [base / f'{n}_funcs.json' for n in (
+                 'Fallout_Debug', 'Fallout',
+                 'Fallout_Release_Beta', 'Fallout_Release_MemDebug')]
+        return load_sigs(paths)
     except Exception:
         return {}
 

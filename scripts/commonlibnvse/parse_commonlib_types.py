@@ -178,33 +178,48 @@ def main():
     enums, structs, vtable_structs, template_source = _try_clang_types(verbose=True)
 
     # 2a. PDB-derived enums (3.4k of them; clang produces ~40).  Merge
-    # WITHOUT clobbering xNVSE enums.
-    pdb_enums_json = r'C:\GhidraProjects\scripts\Fallout_Debug_enums.json'
-    if os.path.isfile(pdb_enums_json):
-        try:
-            import json as _j
-            pdb_enums = _j.loads(open(pdb_enums_json, encoding='utf-8').read())
-            n_added = 0
+    # from all 4 PDBs (Debug + Retail + Release-Beta + Release-MemDebug),
+    # first-win, WITHOUT clobbering xNVSE enums.
+    pdb_enums_paths = [
+        r'C:\GhidraProjects\scripts\Fallout_Debug_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_Beta_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_MemDebug_enums.json',
+    ]
+    pdb_enums_json = pdb_enums_paths[0]
+    try:
+        import json as _j
+        n_added = 0
+        n_total_members = 0
+        for p in pdb_enums_paths:
+            if not os.path.isfile(p):
+                continue
+            pdb_enums = _j.loads(open(p, encoding='utf-8').read())
             for cls, en in pdb_enums.items():
                 if cls in enums:
                     continue
-                # Convert ``values`` lists back to tuples (json normalizes)
                 en['values'] = [tuple(v) for v in en.get('values', [])]
                 enums[cls] = en
                 n_added += 1
-            print('PDB enums merged: {} added ({} members)'.format(
-                  n_added, sum(len(e['values']) for e in pdb_enums.values())))
-        except Exception as e:
-            print('WARNING: PDB enum merge failed: {}: {}'.format(
-                type(e).__name__, e))
+                n_total_members += len(en['values'])
+        print('PDB enums merged (all 4 builds): {} added '
+              '({} members)'.format(n_added, n_total_members))
+    except Exception as e:
+        print('WARNING: PDB enum merge failed: {}: {}'.format(
+            type(e).__name__, e))
 
-    # 2b. PDB-derived type layouts -- merge into structs.  When clang
-    # provides a REAL layout (size>0 with non-vftable fields), it wins
-    # (xNVSE knows methods + RE-style namespacing).  When clang is empty
-    # (xNVSE never documented that type), PDB fills it in.
+    # 2b. PDB-derived type layouts -- merge into structs from ALL 4 PDBs.
+    # Debug build wins on collisions (most fields, best layouts); the
+    # other builds add structs Debug didn't surface (different inlining
+    # may expose types that were optimized away in Debug).
     pdb_merge_count = 0  # noqa: F841
 
     pdb_types_json = r'C:\GhidraProjects\scripts\Fallout_Debug_types.json'
+    pdb_extra_types = [
+        r'C:\GhidraProjects\scripts\Fallout_types.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_Beta_types.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_MemDebug_types.json',
+    ]
     if os.path.isfile(pdb_types_json):
         try:
             from pdb_types_to_pipeline import convert_pdb_types
@@ -235,9 +250,24 @@ def main():
                     upgraded['_overload_aliases'] = existing.get('_overload_aliases', {})
                     structs[cls] = upgraded
                     n_upgraded += 1
-            print('PDB types merged: {} new + {} upgraded (skipped: {} '
+            print('PDB types merged (Debug): {} new + {} upgraded (skipped: {} '
                   'empty/anon, {} fields total in source)'.format(
                   n_added, n_upgraded, n_skip, n_field))
+
+            # Pull NEW (not in Debug) structs from the other 3 PDBs.
+            n_extra = 0
+            for extra_path in pdb_extra_types:
+                if not os.path.isfile(extra_path):
+                    continue
+                extra_structs, _, _ = convert_pdb_types(
+                    Path(extra_path),
+                    Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None)
+                for cls, st in extra_structs.items():
+                    if cls in structs:
+                        continue
+                    structs[cls] = st
+                    n_extra += 1
+            print('PDB types merged (other 3 builds): {} new added'.format(n_extra))
         except Exception as e:
             print('WARNING: PDB type merge failed: {}: {}'.format(
                 type(e).__name__, e))
