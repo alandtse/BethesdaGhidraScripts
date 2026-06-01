@@ -749,8 +749,8 @@ def run():
     tx_syms = currentProgram.startTransaction('Symbol import')
     try:
         _import_symbols()
-        _import_vtable_names()
         _import_fallback_symbols()
+        _import_vtable_names()
     finally:
         currentProgram.endTransaction(tx_syms, True)
 
@@ -871,6 +871,7 @@ def _import_symbols():
     version_key = {
         'se': 's', 'ae': 'a', 'svr': 'v',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
+        'f4_221': '221',
         'sf': 'sf',
         'fnv': 'fnv',
     }.get(VERSION, 'a')
@@ -1220,6 +1221,7 @@ def _import_fallback_symbols():
     version_key = {
         'se': 's', 'ae': 'a', 'svr': 'v',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
+        'f4_221': '221',
         'sf': 'sf',
         'fnv': 'fnv',
     }.get(VERSION, 'a')
@@ -1409,7 +1411,8 @@ def generate_script(
     if _sig_count:
         symbols_json = json.dumps(_syms, separators=(',', ':'))
 
-    lines.append('SYMBOLS = ' + symbols_json)
+    lines.append('import json as _json_sym')
+    lines.append('SYMBOLS = _json_sym.loads(' + repr(symbols_json) + ')')
     lines.append('')
 
     # Upgrade fallback symbols that match vtable slots
@@ -1431,7 +1434,11 @@ def generate_script(
             print('  Upgraded {} vtable-known fallback symbols to {} source'.format(_upgraded, project_name))
             fallback_symbols_json = json.dumps(_fb, separators=(',', ':'))
 
-    lines.append('FALLBACK_SYMBOLS = ' + fallback_symbols_json)
+    # Use json.loads so JSON's ``true``/``false``/``null`` parse safely
+    # in Python (bare ``false`` would NameError; ``True``/``False`` are
+    # capitalized in Python).
+    lines.append('import json as _json')
+    lines.append('FALLBACK_SYMBOLS = _json.loads(' + repr(fallback_symbols_json) + ')')
     lines.append('')
 
     # Address library RVA→ID reverse map (base64 binary blob)

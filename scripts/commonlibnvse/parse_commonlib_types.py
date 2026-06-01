@@ -300,7 +300,7 @@ def main():
 
     # 3b. PDB-derived fallback symbols (NVSE-known + Xbox dev-kit PDB).
     # Primary xNVSE wins on address collision; fallbacks only fill gaps.
-    primary_addrs = {s['a'] for s in symbols if s.get('a')}
+    primary_addrs = {s['fnv'] for s in symbols if s.get('fnv')}
     from pdb_naming import build_fallback_symbols
     fb_all = build_fallback_symbols()
     fallback_symbols = [s for s in fb_all if s['a'] not in primary_addrs]

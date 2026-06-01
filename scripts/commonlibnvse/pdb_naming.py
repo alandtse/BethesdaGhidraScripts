@@ -16,7 +16,7 @@ Sources, in priority order (lower index wins on address collision):
 
 Returns a list of symbol entries shaped for the FNV pipeline's
 ``fallback_symbols_json`` slot:
-    {'n': qualified_name, 't': 'func'|'label', 'sig': '', 'a': rva, 'src': label}
+    {'n': qualified_name, 't': 'func'|'label', 'sig': '', 'a': rva, 'fnv': rva, 'src': label}
 """
 from __future__ import annotations
 
@@ -421,6 +421,38 @@ def _load_global_labels(path: Path) -> List[Tuple[int, str]]:
     return out
 
 
+def _load_pc_vtable_labels(path: Path) -> List[Tuple[int, str]]:
+    """Parse fnv_pc_vtables.txt and emit (rva, 'VTABLE_<Class>') pairs.
+
+    Format: ``VTABLE|0x<RVA>|<ClassName>|<N> vfuncs`` (header rows only).
+    These labels let the generated import script's vtable-walk pass find
+    the vtable base for each CommonLib-defined class and name slot
+    pointers from it.  Image base is 0x00400000; the RVA is already
+    relative.
+    """
+    out: List[Tuple[int, str]] = []
+    if not path.is_file():
+        return out
+    for ln in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        if not ln.startswith('VTABLE|'):
+            continue
+        parts = ln.split('|')
+        if len(parts) < 3:
+            continue
+        try:
+            va = int(parts[1], 16)
+        except ValueError:
+            continue
+        rva = va - FNV_IMAGE_BASE
+        if rva <= 0:
+            continue
+        cls = parts[2].strip()
+        if not cls:
+            continue
+        out.append((rva, 'VTABLE_' + cls))
+    return out
+
+
 def _load_pdb_compiland_index():
     """Load Xbox VA -> compiland-basename map and build PC RVA -> compiland
     via the xbox_vtable + string_xref pairings (the two sources where we
@@ -543,6 +575,7 @@ def build_fallback_symbols() -> List[dict]:
     thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
     ghidra_globs  = _load_global_labels(REFS_DIR / 'fnv_ghidra_global_names.csv')
+    pc_vtables    = _load_pc_vtable_labels(REFS_DIR / 'fnv_pc_vtables.txt')
 
     # Address -> (name, source).  Earlier source wins on collision.
     by_addr: Dict[int, Tuple[str, str]] = {}
@@ -582,6 +615,8 @@ def build_fallback_symbols() -> List[dict]:
         label_addrs.setdefault(rva, (name, 'global_label'))
     for rva, name in ghidra_globs:
         label_addrs.setdefault(rva, (name, 'global_ghidra_pair'))
+    for rva, name in pc_vtables:
+        label_addrs.setdefault(rva, (name, 'pc_vtable'))
     sig_index = _load_pdb_sig_index()
     rva_sig_index = _build_rva_to_sig_index(sig_index)
     compiland_index = _load_pdb_compiland_index()
@@ -718,6 +753,7 @@ def build_fallback_symbols() -> List[dict]:
             't': 'label' if is_label else 'func',
             'sig': sig,
             'a': rva,
+            'fnv': rva,
             'src': src,
         }
         if sd is not None:
@@ -732,6 +768,7 @@ def build_fallback_symbols() -> List[dict]:
             't': 'label',
             'sig': '',
             'a': rva,
+            'fnv': rva,
             'src': src,
         })
     if sig_index:
