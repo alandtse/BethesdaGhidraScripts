@@ -510,6 +510,30 @@ def build_fallback_symbols() -> List[dict]:
     rva_sig_index = _build_rva_to_sig_index(sig_index)
     compiland_index = _load_pdb_compiland_index()
 
+    # Build a known-types index from the PDB types + enums + typedefs JSONs
+    # so we can parse sigs into structured form.
+    _types_known: set = set()
+    _enums_known: set = set()
+    _typedefs: dict = {}
+    try:
+        import json as _j
+        types_p = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_types.json')
+        enums_p = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_enums.json')
+        tdefs_p = Path(r'C:\GhidraProjects\scripts\Fallout_Debug_typedefs.json')
+        if types_p.is_file():
+            _types_known = set(_j.loads(types_p.read_text(encoding='utf-8')))
+        if enums_p.is_file():
+            _enums_known = set(_j.loads(enums_p.read_text(encoding='utf-8')))
+        if tdefs_p.is_file():
+            _typedefs = _j.loads(tdefs_p.read_text(encoding='utf-8'))
+    except Exception:
+        pass
+
+    try:
+        from pdb_sig_to_structured import parse_sig
+    except Exception:
+        parse_sig = None
+
     def _alias_lookups(name: str) -> List[str]:
         """Yield alternate qualified-name forms to try for sig lookup.
 
@@ -544,9 +568,11 @@ def build_fallback_symbols() -> List[dict]:
     n_sigs_by_name = 0
     n_sigs_by_rva  = 0
     n_sigs_by_alias = 0
+    n_sd_attached  = 0
     for rva, (name, src) in by_addr.items():
         is_label = _looks_like_label(name)
         sig = ''
+        sd  = None
         if not is_label:
             sig = sig_index.get(name, '')
             if sig:
@@ -570,13 +596,27 @@ def build_fallback_symbols() -> List[dict]:
         cmp = compiland_index.get(rva, '')
         if cmp:
             src = f'{src} / {cmp}'
-        out.append({
+        # Structured-sig form: ghidra_import_gen applies via
+        # FunctionDefinitionDataType (more reliable than the raw-sig path
+        # which goes through CParserUtils.parseSignature).
+        if sig and parse_sig is not None:
+            try:
+                parsed = parse_sig(sig, _types_known, _enums_known, _typedefs)
+                if parsed is not None:
+                    sd = parsed
+                    n_sd_attached += 1
+            except Exception:
+                pass
+        entry = {
             'n': name,
             't': 'label' if is_label else 'func',
             'sig': sig,
             'a': rva,
             'src': src,
-        })
+        }
+        if sd is not None:
+            entry['sd'] = sd
+        out.append(entry)
     for rva, (name, src) in label_addrs.items():
         cmp = compiland_index.get(rva, '')
         if cmp:
@@ -596,6 +636,8 @@ def build_fallback_symbols() -> List[dict]:
     if compiland_index:
         n_with_cmp = sum(1 for r in by_addr if r in compiland_index)
         print(f'  Attached compiland (.obj) tags to {n_with_cmp:,} symbols')
+    if n_sd_attached:
+        print(f'  Attached structured sigs to {n_sd_attached:,} symbols')
     return out
 
 
