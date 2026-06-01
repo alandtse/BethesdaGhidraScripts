@@ -224,9 +224,11 @@ def main():
         try:
             from pdb_types_to_pipeline import convert_pdb_types
             from pathlib import Path
+            pdb_typedefs_json = r'C:\GhidraProjects\scripts\Fallout_Debug_typedefs.json'
             pdb_structs, n_skip, n_field = convert_pdb_types(
                 Path(pdb_types_json),
-                Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None)
+                Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None,
+                Path(pdb_typedefs_json) if os.path.isfile(pdb_typedefs_json) else None)
             n_added = 0
             n_upgraded = 0
             for cls, st in pdb_structs.items():

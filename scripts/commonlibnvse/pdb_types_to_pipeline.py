@@ -141,10 +141,21 @@ def _strip_qualifiers(t: str) -> str:
 
 
 def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
-                  known_enums: Set[str] = None) -> str:
-    """Convert a single PDB type string to pipeline format."""
+                  known_enums: Set[str] = None,
+                  typedefs: Dict[str, str] = None,
+                  _depth: int = 0) -> str:
+    """Convert a single PDB type string to pipeline format.
+
+    ``typedefs`` is an optional ``{alias: target}`` map -- when a type
+    doesn't match anything else, we follow up to 4 typedef hops to
+    find a resolvable form.  Prevents the converter from emitting
+    ``bytes:N`` for fields whose PDB type is just a typedef alias of
+    a known struct/enum (``STFC_STATS`` -> ``_STFC_STATS``).
+    """
     if known_enums is None:
         known_enums = set()
+    if typedefs is None:
+        typedefs = {}
     t = _strip_qualifiers(type_str)
     # PDB often prefixes class/struct/enum on field types
     for prefix in ('enum ', 'class ', 'struct ', 'union '):
@@ -170,7 +181,7 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
         inner = m.group(1).rstrip()
         count = int(m.group(2))
         elem_size = field_size // count if count > 0 else 0
-        inner_pipeline = _convert_one(inner, elem_size, known_structs, known_enums)
+        inner_pipeline = _convert_one(inner, elem_size, known_structs, known_enums, typedefs)
         # ghidra_import_gen.resolve_type uses rfind(':') to split off the
         # count, so ``arr:struct:Foo<Bar>:N`` works.  Only fall back when
         # the inner type ITSELF is already a bytes:N or arr:... form.
@@ -205,6 +216,13 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
     base = t.split('<', 1)[0].rstrip()
     if base in known_structs and '<' not in t:
         return f'struct:{normalize_struct_name(base)}'
+
+    # Typedef alias fallback: follow the chain (capped) and retry.
+    if _depth < 4 and t in typedefs:
+        target = typedefs[t]
+        if target and target != t:
+            return _convert_one(target, field_size, known_structs,
+                                known_enums, typedefs, _depth + 1)
 
     # Templated instantiation we don't have a layout for, OR unknown
     # type entirely.  Raw bytes preserve the field's declared size.
@@ -261,7 +279,8 @@ def _dedup_field_ranges(fields):
     return kept
 
 
-def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str, dict]:
+def convert_pdb_types(json_path: Path, enums_json_path: Path = None,
+                       typedefs_json_path: Path = None) -> Dict[str, dict]:
     """Convert a parsed pretty-dump types JSON to a structs dict ready to
     merge with the clang-AST-derived structs in parse_commonlib_types.py.
 
@@ -278,6 +297,12 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
         for cls in en_data:
             known_enums.add(cls)
             known_enums.add(cls.replace('::', '_'))
+
+    # Optional typedef alias map -- catches fields whose PDB type is a
+    # typedef of a known struct/enum (8,400+ Bethesda/Win/Xbox typedefs).
+    typedefs: Dict[str, str] = {}
+    if typedefs_json_path and typedefs_json_path.is_file():
+        typedefs = json.loads(typedefs_json_path.read_text(encoding='utf-8'))
 
     def _normalize_name(cls: str) -> str:
         """``Class::Inner`` -> ``Class_Inner`` so Ghidra DTM gets a single
@@ -337,7 +362,7 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
                 count = int(am.group(2))
                 inner_type = _convert_one(fld['type'],
                                           fsize // count if count > 0 else 0,
-                                          known_structs, known_enums)
+                                          known_structs, known_enums, typedefs)
                 if count > 0 and not inner_type.startswith('bytes:') \
                    and not inner_type.startswith('arr:'):
                     ftype = f'arr:{inner_type}:{count}'
@@ -345,7 +370,7 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
                     ftype = f'bytes:{fsize}' if fsize > 0 else 'u8'
                 fname = base_name
             else:
-                ftype = _convert_one(fld['type'], fsize, known_structs, known_enums)
+                ftype = _convert_one(fld['type'], fsize, known_structs, known_enums, typedefs)
             out_fields.append({
                 'name':   fname,
                 'offset': fld['off'],
