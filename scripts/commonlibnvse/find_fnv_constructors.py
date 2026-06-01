@@ -127,28 +127,53 @@ def main():
     vt_va_set = set(vtables.keys())
 
     print('Scanning .text for vtable VA references...')
-    # For each xref position, record (fn_start_va, vtable_va, xref_offset).
-    # We track xref ORDER so that for multi-vtable functions we can pick
-    # the LAST-referenced vtable -- MSVC overwrites base-class vtable
-    # pointers with the derived class's pointer LAST in the constructor,
-    # so the final vtable VA in the byte stream IS the primary class.
-    fn_to_vts: Dict[int, List[tuple]] = defaultdict(list)  # fn_va -> [(off, vtable_va), ...]
+    # Constructor pattern: ``mov dword ptr [reg], offset vtable_va``
+    # encodes as a 4-byte LE VA preceded by 2-3 bytes of opcode/modrm.
+    # Common forms:
+    #   C7 06 XX XX XX XX    mov [esi], imm32
+    #   C7 07 XX XX XX XX    mov [edi], imm32
+    #   C7 45 ?? XX XX XX XX mov [ebp+disp8], imm32
+    #   C7 47 ?? XX XX XX XX mov [edi+disp8], imm32
+    #   C7 46 ?? XX XX XX XX mov [esi+disp8], imm32
+    #   C7 06/07/45/47/46 with C6, A3, 89... variants
+    #
+    # We require the xref to be BOTH within the first 256 bytes of the
+    # heuristic function start AND preceded by one of the C7 forms
+    # (constructor-typical "store immediate to memory" pattern).
+    _MOV_MEM_IMM = (0xC7,)
+    fn_to_vts: Dict[int, List[tuple]] = defaultdict(list)
     n_xrefs = 0
-    n_resolved = 0
-    for i in range(0, len(text_bytes) - 4):
+    n_in_fn = 0
+    n_ctor_pat = 0
+    for i in range(2, len(text_bytes) - 4):
         v = (text_bytes[i] | (text_bytes[i+1] << 8) |
              (text_bytes[i+2] << 16) | (text_bytes[i+3] << 24))
         if v not in vt_va_set:
             continue
         n_xrefs += 1
+        # Require ``C7 <modrm> [disp] imm32`` -- the modrm byte for
+        # [esi]/[edi]/[ebp+d8]/[esi+d8]/[edi+d8] is 0x06/0x07/0x45/0x46/0x47.
+        # imm32 starts at position i, so the modrm + opcode is at i-2 (for
+        # no-disp forms) or i-3 (with disp8).
+        is_ctor_pattern = False
+        if i >= 2 and text_bytes[i-2] == 0xC7 \
+           and text_bytes[i-1] in (0x06, 0x07):
+            is_ctor_pattern = True
+        elif i >= 3 and text_bytes[i-3] == 0xC7 \
+             and text_bytes[i-2] in (0x45, 0x46, 0x47):
+            is_ctor_pattern = True
+        if not is_ctor_pattern:
+            continue
+        n_ctor_pat += 1
         fn_va = find_function_start_for_offset(text_bytes, text_vaddr, i)
         if fn_va == 0:
             continue
-        n_resolved += 1
+        n_in_fn += 1
         fn_to_vts[fn_va].append((i, v))
-    print(f'  xrefs found: {n_xrefs:,}')
-    print(f'  resolved to a function: {n_resolved:,}')
-    print(f'  unique constructor-candidate fns: {len(fn_to_vts):,}')
+    print(f'  raw 4-byte VA matches:               {n_xrefs:,}')
+    print(f'  preceded by C7 mov-imm pattern:      {n_ctor_pat:,}')
+    print(f'  resolved to a function:              {n_in_fn:,}')
+    print(f'  unique constructor-candidate fns:    {len(fn_to_vts):,}')
 
     # Emit: for each fn that's NOT already named, pick the PRIMARY vtable
     # (the one whose class has the most fns associated -- typically the
