@@ -97,10 +97,12 @@ def main():
     vt_va_set = set(vtables.keys())
 
     print('Scanning .text for vtable VA references...')
-    # For each xref position, record (fn_start_va, vtable_va)
-    # A function might init MULTIPLE vtables -- common for multi-inheritance
-    # ctors -- so we collect all matches per function.
-    fn_to_vts: Dict[int, Set[int]] = defaultdict(set)
+    # For each xref position, record (fn_start_va, vtable_va, xref_offset).
+    # We track xref ORDER so that for multi-vtable functions we can pick
+    # the LAST-referenced vtable -- MSVC overwrites base-class vtable
+    # pointers with the derived class's pointer LAST in the constructor,
+    # so the final vtable VA in the byte stream IS the primary class.
+    fn_to_vts: Dict[int, List[tuple]] = defaultdict(list)  # fn_va -> [(off, vtable_va), ...]
     n_xrefs = 0
     n_resolved = 0
     for i in range(0, len(text_bytes) - 4):
@@ -113,7 +115,7 @@ def main():
         if fn_va == 0:
             continue
         n_resolved += 1
-        fn_to_vts[fn_va].add(v)
+        fn_to_vts[fn_va].append((i, v))
     print(f'  xrefs found: {n_xrefs:,}')
     print(f'  resolved to a function: {n_resolved:,}')
     print(f'  unique constructor-candidate fns: {len(fn_to_vts):,}')
@@ -123,32 +125,34 @@ def main():
     # primary base of a multi-inherit ctor) and name as Class::Class.
     matches: List = []
     skipped_named = 0
-    skipped_multi = 0
+    multi_picked  = 0
     for fn_va, vts in fn_to_vts.items():
         rva = fn_va - image_base
         if rva in existing:
             skipped_named += 1
             continue
-        # Single-vtable -> unambiguous primary ctor
-        if len(vts) == 1:
-            vt = next(iter(vts))
-            cls = vtables.get(vt, '')
-            if not cls:
-                continue
-            bare = _sanitize_class_for_ctor(cls)
-            if bare:
-                matches.append((rva, f'{cls}::{bare}', vt))
+        # Sort xrefs by byte offset (instruction order)
+        vts_sorted = sorted(set((off, vt) for off, vt in vts),
+                            key=lambda x: x[0])
+        unique_vts = list({vt for _, vt in vts_sorted})
+        if len(unique_vts) == 1:
+            vt = unique_vts[0]
+        else:
+            # Multi-vtable function (multi-inheritance ctor/dtor).
+            # MSVC overwrites base vtable ptrs with derived class's LAST,
+            # so the LATEST byte offset's vtable is the primary class.
+            vt = vts_sorted[-1][1]
+            multi_picked += 1
+        cls = vtables.get(vt, '')
+        if not cls:
             continue
-        # Multi-vtable: try to pick the EARLIEST emitted (lowest VA) --
-        # MSVC initializes the primary vtable last (overwrites bases), so
-        # the LAST init wins.  Without instruction order we can't tell;
-        # pick the alphabetically-first class name as a tiebreaker.
-        # For now, skip multi-vt cases to avoid noise.
-        skipped_multi += 1
+        bare = _sanitize_class_for_ctor(cls)
+        if bare:
+            matches.append((rva, f'{cls}::{bare}', vt))
 
     print(f'  named candidates: {len(matches):,}')
     print(f'  skipped (already named): {skipped_named:,}')
-    print(f'  skipped (multi-vtable initialization): {skipped_multi:,}')
+    print(f'  multi-vtable resolved via LAST-write heuristic: {multi_picked:,}')
 
     out_path = REFS_DIR / 'fnv_constructor_names.csv'
     out_path.parent.mkdir(parents=True, exist_ok=True)
