@@ -65,8 +65,13 @@ _BASE_LINE = re.compile(
 
 
 def _extract_qname(sig: str) -> str:
-    """``static? <ret> __cdecl Class::method(args)`` -> ``Class::method``."""
-    # Strip args by finding the LAST unparenthesized '('
+    """``static? <ret> __cdecl Class::method(args)`` -> ``Class::method``.
+
+    Template-aware: walks backwards counting ``<>`` depth so commas
+    inside template args (``AStarSearch<NodeT,LinkT>``) don't truncate
+    the qname.
+    """
+    # 1) Strip args by finding the LAST unparenthesized '('
     depth = 0
     last_paren = -1
     for i in range(len(sig) - 1, -1, -1):
@@ -79,13 +84,20 @@ def _extract_qname(sig: str) -> str:
                 break
     if last_paren > 0:
         sig = sig[:last_paren].rstrip()
-    # Last token is Class::method (or Class<T>::method)
-    # Handle multi-word names by walking from right until we hit a known sep
-    toks = sig.split()
-    if not toks:
-        return sig
-    # Strip ``__cdecl`` etc. -- name is the LAST token after the calling conv
-    return toks[-1]
+    # 2) Walk backwards through the remaining sig.  The qname begins at
+    # the first whitespace we hit while at template depth 0.
+    tdepth = 0
+    start = 0
+    for i in range(len(sig) - 1, -1, -1):
+        ch = sig[i]
+        if ch == '>':
+            tdepth += 1
+        elif ch == '<':
+            tdepth -= 1
+        elif ch.isspace() and tdepth == 0:
+            start = i + 1
+            break
+    return sig[start:].strip()
 
 
 def main():

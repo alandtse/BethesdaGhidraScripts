@@ -191,31 +191,42 @@ def _load_xbox_vtable_methods() -> List[Tuple[int, str]]:
     _sys.path.insert(0, str((SCRIPT_DIR.parent / 'core').resolve()))
     from pdb_symbols import undecorate
 
+    def _qname_template_aware(s: str) -> str:
+        """Template-aware ``return_type Class::method`` -> ``Class::method``.
+        Walks backwards from end counting ``<>`` depth so template commas
+        don't fool the split."""
+        tdepth = 0
+        start = 0
+        for i in range(len(s) - 1, -1, -1):
+            ch = s[i]
+            if ch == '>':
+                tdepth += 1
+            elif ch == '<':
+                tdepth -= 1
+            elif ch.isspace() and tdepth == 0:
+                start = i + 1
+                break
+        return s[start:].strip()
+
     def _qname_from_demangled(d: str, cls_fallback: str, slot_i: int) -> str:
         """Extract ``Class::method`` from a demangled MSVC name, handling
-        the awkward cases: backticked special methods, ``\`vector
-        deleting destructor'``, plain ``_purecall``, etc."""
-        # Plain C runtime placeholders -- keep cls + slot for traceability
+        backticked special methods, ``_purecall``, templated class names
+        with commas, etc."""
         if d in ('_purecall', '__purecall', '__abi_winrt_thunk') or '__cdecl' in d and '::' not in d:
             return f'{cls_fallback}::vf{slot_i:03d}_{d.lstrip("_")}'
-        # MSVC special methods: ``Class::`vector deleting destructor'``
-        # -> ``Class::vector_deleting_destructor``
         m_bt = re.search(r"`([^']+)'", d)
         if m_bt:
             spec = m_bt.group(1).replace(' ', '_')
             head = d[:m_bt.start()].rstrip(':').rstrip()
-            # Strip leading return type + calling conv
-            head = re.sub(r'^\s*\w[\w\s\*&]*\s+', '', head)
             head = head.split('(')[0].rstrip()
+            head = _qname_template_aware(head)
             if head.endswith('::'):
                 head = head[:-2]
             if head:
                 return f'{head}::{spec}'
             return f'{cls_fallback}::vf{slot_i:03d}_{spec}'
-        # Standard case: strip args + return type
         s = _strip_args(d)
-        toks = s.split()
-        qname = toks[-1] if toks else s
+        qname = _qname_template_aware(s)
         if qname and '::' in qname:
             return qname
         return f'{cls_fallback}::vf{slot_i:03d}'
@@ -367,6 +378,38 @@ def _load_pdb_sig_index():
         return {}
 
 
+def _build_rva_to_sig_index(sig_by_qname: Dict[str, str]) -> Dict[int, str]:
+    """Build PC-RVA -> sig index using sources that surface BOTH a name
+    AND an address.  Used as a fallback when the symbol's final name
+    differs from the PDB qualified form (e.g. xNVSE wrappers like
+    ``FormHeap_Allocate`` are PDB's ``Bethesda::FormHeap::Allocate``).
+    """
+    out: Dict[int, str] = {}
+
+    # 1. xbox_vtable pairs (PC RVA -> qualified PDB name)
+    for rva, name in _load_xbox_vtable_methods():
+        if name in sig_by_qname:
+            out.setdefault(rva, sig_by_qname[name])
+
+    # 2. string_xref CSV (PC RVA -> qualified name)
+    p = REFS_DIR / 'fnv_string_xref_names.csv'
+    if p.is_file():
+        for ln in p.read_text(encoding='utf-8', errors='replace').splitlines():
+            if not ln or ln.startswith('#'):
+                continue
+            parts = ln.split('|', 4)
+            if len(parts) < 2:
+                continue
+            try:
+                rva = int(parts[0], 16)
+            except ValueError:
+                continue
+            name = parts[1].strip()
+            if name in sig_by_qname:
+                out.setdefault(rva, sig_by_qname[name])
+    return out
+
+
 def build_fallback_symbols() -> List[dict]:
     """Return the merged fallback symbol list for the FNV pipeline."""
     nvse_syms     = _load_nvse_known(REFS_DIR / 'fnv_pc_symbols.txt')
@@ -401,14 +444,24 @@ def build_fallback_symbols() -> List[dict]:
     for rva, name in globals_:
         label_addrs.setdefault(rva, (name, 'global_label'))
     sig_index = _load_pdb_sig_index()
+    rva_sig_index = _build_rva_to_sig_index(sig_index)
 
     out = []
-    n_sigs_attached = 0
+    n_sigs_by_name = 0
+    n_sigs_by_rva  = 0
     for rva, (name, src) in by_addr.items():
         is_label = _looks_like_label(name)
-        sig = '' if is_label else sig_index.get(name, '')
-        if sig:
-            n_sigs_attached += 1
+        sig = ''
+        if not is_label:
+            sig = sig_index.get(name, '')
+            if sig:
+                n_sigs_by_name += 1
+            else:
+                # Fallback: try by RVA (catches nvse_known whose name
+                # form doesn't match the PDB qualified form)
+                sig = rva_sig_index.get(rva, '')
+                if sig:
+                    n_sigs_by_rva += 1
         out.append({
             'n': name,
             't': 'label' if is_label else 'func',
@@ -425,8 +478,9 @@ def build_fallback_symbols() -> List[dict]:
             'src': src,
         })
     if sig_index:
-        print(f'  Attached PDB signatures to {n_sigs_attached:,} '
-              f'fallback symbols (of {len(by_addr):,} candidates)')
+        print(f'  Attached PDB signatures: {n_sigs_by_name:,} by name + '
+              f'{n_sigs_by_rva:,} by RVA fallback '
+              f'(of {len(by_addr):,} candidates)')
     return out
 
 
