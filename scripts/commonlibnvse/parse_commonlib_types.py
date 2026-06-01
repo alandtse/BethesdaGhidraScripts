@@ -202,6 +202,8 @@ def main():
     # provides a REAL layout (size>0 with non-vftable fields), it wins
     # (xNVSE knows methods + RE-style namespacing).  When clang is empty
     # (xNVSE never documented that type), PDB fills it in.
+    pdb_merge_count = 0  # noqa: F841
+
     pdb_types_json = r'C:\GhidraProjects\scripts\Fallout_Debug_types.json'
     if os.path.isfile(pdb_types_json):
         try:
@@ -239,6 +241,21 @@ def main():
         except Exception as e:
             print('WARNING: PDB type merge failed: {}: {}'.format(
                 type(e).__name__, e))
+
+    # 2c. After merging PDB inheritance into structs, re-run flatten to
+    # cascade base-class fields into derived PDB types.  Without this,
+    # the 5,645 PDB classes with bases would only show their own fields
+    # in Ghidra, missing all inherited members.
+    try:
+        from ghidra_import_gen import flatten_structs as _flatten
+        before = sum(1 for s in structs.values() if s['fields'])
+        _flatten(structs)
+        after = sum(1 for s in structs.values() if s['fields'])
+        print('Post-PDB flatten: {} -> {} structs with field data'.format(
+              before, after))
+    except Exception as e:
+        print('WARNING: post-PDB flatten failed: {}: {}'.format(
+              type(e).__name__, e))
 
     # 3. Assemble SYMBOLS array
     symbols      = _make_symbols(func_syms, label_syms)

@@ -135,12 +135,14 @@ def main():
                 raw = mbl.group('bases')
                 for part in raw.split(','):
                     p = part.strip()
-                    # Strip access specifier (public/protected/private/virtual)
                     p = re.sub(r'^(public|protected|private|virtual\s+\w+)\s+',
                                '', p)
                     p = p.strip().rstrip('{').strip()
-                    if p and p not in cur_class_bases:
-                        cur_class_bases.append(p)
+                    if p and not any(b[0] == p for b in cur_class_bases):
+                        # Offset is unknown here; ``base +0xOFF`` lines
+                        # below will fill it in (and the dedup keeps both
+                        # entries pointing at the same name).
+                        cur_class_bases.append([p, 0])
                 continue
 
             # ``base +0xOFF [sizeof=N] BaseClass`` -- immediate bases only
@@ -151,8 +153,13 @@ def main():
                     cur_outer_base_indent = ind
                 if ind == cur_outer_base_indent:
                     base_name = mbi.group('name').strip()
-                    if base_name not in cur_class_bases:
-                        cur_class_bases.append(base_name)
+                    base_off  = int(mbi.group('off'), 16)
+                    existing = next((b for b in cur_class_bases
+                                     if b[0] == base_name), None)
+                    if existing:
+                        existing[1] = base_off
+                    else:
+                        cur_class_bases.append([base_name, base_off])
                 continue
 
             mf = _FUNC_LINE.match(ln)

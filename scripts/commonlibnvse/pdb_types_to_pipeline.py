@@ -324,15 +324,27 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None) -> Dict[str
         # Use NORMALIZED name (`::` -> `_`) so the entry surfaces in
         # Ghidra DTM under the same key that field refs use.
         norm = _normalize_name(cls)
-        bases = entry.get('bases', []) or []
+        # parse_pdb_pretty emits bases as ``[[name, offset], ...]`` after
+        # the inheritance + base-line capture. Both forms are accepted:
+        # newer ``[name, off]`` lists and older bare-name strings.
+        raw_bases = entry.get('bases', []) or []
+        pdb_bases = []
+        bases_names = []
+        for b in raw_bases:
+            if isinstance(b, (list, tuple)) and len(b) >= 2:
+                pdb_bases.append((b[0], int(b[1])))
+                bases_names.append(b[0])
+            elif isinstance(b, str):
+                pdb_bases.append((b, 0))
+                bases_names.append(b)
         structs[cls] = {
             'name':              norm,
             'full_name':         cls,
             'size':              size,
             'category':          '/xNVSE/PDB',
             'fields':            out_fields,
-            'bases':             [b for b in bases],
-            'pdb_bases':         [b for b in bases],
+            'bases':             bases_names,
+            'pdb_bases':         pdb_bases,
             'has_vtable':        False,
             'vmethods':          {},
             'methods':           {},
