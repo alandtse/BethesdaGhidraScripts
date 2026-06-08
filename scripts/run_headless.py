@@ -114,6 +114,14 @@ SPOT_CHECKS_OVERRIDES = {
         'labels':    ["VTABLE_Actor", "VTABLE_ActiveEffect"],
         'min_named': 100,
     },
+    # 1.11.221 now has meh321's version-1-11-221-0.bin (same ID namespace as
+    # AE) plus the Bethesda debug PDB publics merged in as fallback symbols.
+    # VTABLE_* labels resolve identically to AE; function-name count tracks
+    # AE primary (~25k) plus ~22k PDB-only publics.
+    ('f4', '221'): {
+        'labels':    ["VTABLE_Actor", "VTABLE_ActiveEffect"],
+        'min_named': 30000,
+    },
 }
 
 

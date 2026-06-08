@@ -32,6 +32,9 @@ def main():
                     help="Project name without .gpr (default: %(default)s)")
     ap.add_argument('--program',      default=PROGRAM_NAME,
                     help="Program file to find inside the project")
+    ap.add_argument('--program-path', default=None,
+                    help="Exact program path inside the project (overrides "
+                         "--program when set)")
     ap.add_argument('--script',       default=str(SCRIPT_PATH),
                     help="CommonLibImport_FNV.py path")
     args = ap.parse_args()
@@ -39,6 +42,7 @@ def main():
     project_dir  = Path(args.project_dir)
     project_name = args.project_name
     program_name = args.program
+    target_path  = args.program_path
     script_path  = Path(args.script)
 
     os.environ.setdefault("GHIDRA_INSTALL_DIR", str(GHIDRA_DIR))
@@ -58,13 +62,17 @@ def main():
         # Steamless-unpacked variants (FalloutNV.exe.unpacked.exe etc).
         stem = program_name.rsplit('.', 1)[0]
 
-        def find(folder):
+        def find(folder, prefix=""):
             for f in folder.getFiles():
                 n = f.getName()
-                if n == program_name or (n.startswith(stem) and n.lower().endswith('.exe')):
+                full = prefix + "/" + n
+                if target_path is not None:
+                    if full == target_path:
+                        return f
+                elif n == program_name or (n.startswith(stem) and n.lower().endswith('.exe')):
                     return f
             for sub in folder.getFolders():
-                hit = find(sub)
+                hit = find(sub, prefix + "/" + sub.getName())
                 if hit is not None:
                     return hit
             return None

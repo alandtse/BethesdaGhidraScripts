@@ -120,6 +120,11 @@ F4_TARGETS = (
     ('f4_ng', 'CommonLibImport_F4_NG.py', '[]',  'ng.csv', []),
     ('f4_ae', 'CommonLibImport_F4_AE.py', None,  'ae.csv', []),
     ('f4_vr', 'CommonLibImport_F4_VR.py', '[]',  'vr.csv', []),
+    # 1.11.221 uses meh321's version-1-11-221-0.bin (same ID namespace as
+    # AE/NG).  Direct address-library resolution covers every CommonLibF4
+    # symbol; AE->221 byte-sig porting (run_bytesig_port.py) still fills
+    # in IDA-name extras whose source pool is AE-only.
+    ('f4_221', 'CommonLibImport_F4_221.py', '[]',  '221.csv', []),
 )
 
 
@@ -140,7 +145,7 @@ def main():
     addr_lib.load_all(ADDRLIB_DIR)
     print(f'Address libraries — OG: {len(addr_lib.og_db):,}, '
           f'NG: {len(addr_lib.ng_db):,}, AE: {len(addr_lib.ae_db):,}, '
-          f'VR: {len(addr_lib.vr_db):,}')
+          f'VR: {len(addr_lib.vr_db):,}, 221: {len(addr_lib.db_221):,}')
 
     # --- Relocation scan ---
     print('\n=== Collecting symbols via relocation parser ===')
@@ -169,10 +174,12 @@ def main():
         ng = addr_lib.ng_db.get(id_val)
         ae = addr_lib.ae_db.get(id_val)
         vr = addr_lib.vr_db.get(id_val)
+        v221 = addr_lib.db_221.get(id_val)
         if og: sym['og'] = og
         if ng: sym['ng'] = ng
         if ae: sym['a']  = ae
         if vr: sym['v']  = vr
+        if v221: sym['221'] = v221
 
     symbols = []
     for fs in func_syms:
@@ -199,8 +206,9 @@ def main():
     n_ng = sum(1 for s in symbols if 'ng' in s)
     n_ae = sum(1 for s in symbols if 'a'  in s)
     n_vr = sum(1 for s in symbols if 'v'  in s)
+    n_221 = sum(1 for s in symbols if '221' in s)
     print(f'\nTotal symbols: {len(symbols)} '
-          f'(OG: {n_og}, NG: {n_ng}, AE: {n_ae}, VR: {n_vr})')
+          f'(OG: {n_og}, NG: {n_ng}, AE: {n_ae}, VR: {n_vr}, 221: {n_221})')
 
     # --- Type parsing setup (per-version below) ---
     print('\n=== Parsing types (clang AST) — per version ===')
@@ -255,6 +263,21 @@ def main():
     fallback_json_ae = _json.dumps(ida_fallback, separators=(',', ':'))
     symbols_json     = _json.dumps(symbols, separators=(',', ':'))
 
+    # --- F4 1.11.221 PDB publics (Bethesda debug PDB) ---
+    print('\n=== Loading Fallout4 1.11.221 debug PDB publics ===')
+    from pdb_publics_f4_221 import load_publics as _load_f4_221_publics
+    f4_221_publics = _load_f4_221_publics()
+    primary_221_rvas = {s['221'] for s in symbols if s.get('221')}
+    f4_221_fallback = [s for s in f4_221_publics
+                       if s['221'] not in primary_221_rvas]
+    n_221_func  = sum(1 for s in f4_221_fallback if s['t'] == 'func')
+    n_221_label = sum(1 for s in f4_221_fallback if s['t'] == 'label')
+    print(f'F4 1.11.221 PDB publics: {len(f4_221_publics):,} loaded, '
+          f'{len(f4_221_fallback):,} new ({n_221_func:,} funcs, '
+          f'{n_221_label:,} labels)')
+    fallback_json_221 = _json.dumps(f4_221_fallback, separators=(',', ':'))
+    fallback_json_by_ver = {'f4_221': fallback_json_221}
+
     # --- Per-version: parse → build vtable structs → verify anchors → generate ---
     # One AST parse per target so a VR-aware overlay can change the layout for
     # F4VR without affecting OG/NG/AE.  Today all four use empty defines so
@@ -264,7 +287,9 @@ def main():
     print('\nGenerating Ghidra scripts...')
     for ver, fname, fb_json, anchors_name, parse_defines in F4_TARGETS:
         print(f'\n--- {ver} ---')
-        if fb_json is None:
+        if ver in fallback_json_by_ver:
+            fb_json = fallback_json_by_ver[ver]
+        elif fb_json is None:
             fb_json = fallback_json_ae
         parse_args = list(base_parse_args) + list(parse_defines)
         enums, structs, template_source = collect_types(
