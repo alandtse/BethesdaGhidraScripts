@@ -96,6 +96,41 @@ def test_unknown_status_defaults_to_protect():
     assert created['Weird'] == ('EXISTING', 'Weird')
 
 
+def test_enum_parent_key_disambiguates_bare_names():
+    # same leaf 'Flag' under different parents must not collide
+    k1 = apply_plan.enum_parent_key('/CommonLibSSE/RE/ACTOR_BASE_DATA', 'Flag')
+    k2 = apply_plan.enum_parent_key('/CommonLibVR.pdb/ACTOR_BASE_DATA', 'Flag')
+    k3 = apply_plan.enum_parent_key('/CommonLibSSE/RE/TESForm', 'Flag')
+    assert k1 == ('ACTOR_BASE_DATA', 'Flag')
+    assert k1 == k2          # same parent across root categories -> match
+    assert k1 != k3          # different parent -> distinct
+
+
+def test_classify_enum_new():
+    action, add = apply_plan.classify_enum(4, [('A', 0), ('B', 1)], None, [])
+    assert action == 'NEW'
+    assert add == [('A', 0), ('B', 1)]
+
+
+def test_classify_enum_match_when_subset():
+    action, add = apply_plan.classify_enum(4, [('A', 0)], 4, ['A', 'B'])
+    assert action == 'MATCH'
+    assert add == []
+
+
+def test_classify_enum_extend_adds_only_missing():
+    # generated has B,C that existing lacks; existing A is preserved
+    action, add = apply_plan.classify_enum(4, [('A', 0), ('B', 1), ('C', 2)], 4, ['A'])
+    assert action == 'EXTEND'
+    assert add == [('B', 1), ('C', 2)]
+
+
+def test_classify_enum_keep_on_size_diff():
+    action, add = apply_plan.classify_enum(1, [('A', 0), ('B', 1)], 4, ['A'])
+    assert action == 'KEEP_SIZE'
+    assert add == []
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

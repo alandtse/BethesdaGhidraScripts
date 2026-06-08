@@ -20,6 +20,38 @@ ACTION = {
 }
 
 
+def enum_parent_key(category, name):
+    """Parent-scoped match key for an enum: (last category component, leaf name),
+    ignoring the root category (/CommonLibSSE, /CommonLibVR.pdb, /types.h, ...).
+    Bare leaf names collide (every class has a 'Flag'); the parent component
+    disambiguates, e.g. ('ACTOR_BASE_DATA', 'Flag')."""
+    _ROOTS = ('CommonLibSSE', 'CommonLibVR.pdb', 'CommonLibVR', 'types.h',
+              'Demangler', 'SkyrimSE.pdb', 'SkyrimVR.pdb', 'SkyrimAE.pdb', 'auto_structs')
+    parts = [p for p in category.strip('/').split('/') if p]
+    if parts and parts[0] in _ROOTS:
+        parts = parts[1:]
+    return (parts[-1] if parts else '', name)
+
+
+def classify_enum(gen_size, gen_values, existing_size, existing_names):
+    """Decide how a generated enum relates to an existing one. Lossless: EXTEND only
+    ADDS names the existing enum lacks; it never removes manual values.
+
+    Returns (action, add_values):
+      NEW       existing is None                          -> create with gen_values
+      KEEP_SIZE size differs                              -> keep existing, review (no repack)
+      MATCH     same size, gen names subset of existing   -> reuse, nothing to add
+      EXTEND    same size, gen has names existing lacks    -> add those (name,value) pairs
+    """
+    if existing_size is None:
+        return ('NEW', list(gen_values))
+    if gen_size != existing_size:
+        return ('KEEP_SIZE', [])
+    have = set(existing_names)
+    add = [(n, v) for (n, v) in gen_values if n not in have]
+    return ('MATCH', []) if not add else ('EXTEND', add)
+
+
 def select_fill_targets(structs, classify_fn, live, create_struct, stage_struct,
                         register=None, action_map=ACTION):
     """Decide an action per generated struct and return (fill_list, staging).

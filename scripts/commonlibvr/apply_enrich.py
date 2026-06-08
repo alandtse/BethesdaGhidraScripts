@@ -173,26 +173,54 @@ def run():
         fill_list, staging = select_fill_targets(
             STRUCTS, classify, live, _create_struct, _stage_struct, register=_register)
 
-        # enums: reuse if a same-named enum exists anywhere, else create in /types.h
+        # enums: conflict-aware + parent-scoped (apply_plan). NEW->create;
+        # MATCH->reuse; EXTEND->add missing values to existing (lossless); size
+        # diff->keep existing (no repack). All three name aliases registered so
+        # struct fields referencing an enum by full name resolve.
         EnumDataType = gns['EnumDataType']
-        live_enum = {}
         import ghidra.program.model.data as _D
+        live_enum = {}
         for d in dtm.getAllDataTypes():
             if isinstance(d, _D.Enum):
-                live_enum.setdefault(d.getName(), d)
+                live_enum.setdefault(apply_plan.enum_parent_key(
+                    d.getCategoryPath().getPath(), d.getName()), d)
+
+        def _register_enum(ename, ecat, dt):
+            created[ename] = dt
+            created[ecat + '/' + ename] = dt
+            ns = '::'.join(ecat.strip('/').split('/')[1:])
+            if ns:
+                created[ns + '::' + ename] = dt
+
+        enum_stats = {'NEW': 0, 'MATCH': 0, 'EXTEND': 0, 'KEEP_SIZE': 0}
         for en in ENUMS:
             ename, esize, ecat, evals = en
-            ex = live_enum.get(ename)
-            if ex is not None:
-                created[ename] = ex
-                continue
-            e = EnumDataType(CategoryPath(NEW_CAT), ename, esize)
-            for vname, vval in evals:
-                try:
-                    e.add(vname, vval)
-                except Exception:
-                    e.add(vname + '_', vval)
-            created[ename] = dtm.addDataType(e, KEEP)
+            ex = live_enum.get(apply_plan.enum_parent_key(ecat, ename))
+            ex_size = ex.getLength() if ex is not None else None
+            ex_names = list(ex.getNames()) if ex is not None else []
+            action, add_vals = apply_plan.classify_enum(esize, evals, ex_size, ex_names)
+            enum_stats[action] = enum_stats.get(action, 0) + 1
+            if action == 'NEW':
+                e = EnumDataType(CategoryPath(NEW_CAT), ename, esize)
+                for vname, vval in evals:
+                    try:
+                        e.add(vname, vval)
+                    except Exception:
+                        try:
+                            e.add(vname + '_', vval)
+                        except Exception:
+                            pass
+                dt = dtm.addDataType(e, KEEP)
+            else:
+                dt = ex
+                if action == 'EXTEND':
+                    for vname, vval in add_vals:
+                        try:
+                            ex.add(vname, vval)
+                        except Exception:
+                            pass
+            _register_enum(ename, ecat, dt)
+        print('Enums: ' + ', '.join('{}={}'.format(k, v) for k, v in enum_stats.items()))
 
         # vtable structs (NEW names like X_vtbl) -> create in /types.h
         _create_vtable_structs(gns, dtm, NEW_CAT)
