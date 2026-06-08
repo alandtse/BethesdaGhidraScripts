@@ -138,7 +138,25 @@ The program is modified **in-memory only** — the MCP/transaction layer can't s
 CommonLib in 429/913 conflicts (incl. 175/260 PDB overrides); phase 4 reparented ~14.3k
 functions and produced ~2k GhidraClasses.
 
-### 6. Scripts vs LLM-in-the-loop — division of labor
+### 6. Version Tracking — exact cross-version matches from ids (`version_track.py`)
+CommonLib's `RELOCATION_ID(se, ae)` / `VariantID(se, ae, vr)` give each symbol's exact address in
+every runtime; the generated SYMBOLS carry them as `s`/`a`/`v` offsets. `version_track.py` turns
+that ground truth into Ghidra Version Tracking ACCEPTED matches — far more precise than the
+heuristic correlators (which match by bytes/instructions and drift onto adjacent functions):
+
+- **SEED** — for a source address with no accepted match, inject the exact `src->dst` manual match
+  and accept it (type Function for `func`, Data for labels).
+- **AUDIT** — where a source already has an accepted match to a *different* dst, that is a
+  correlator error (or a stale id); record it to `<import>.vt_audit.csv` for review. Never
+  auto-changed.
+
+Run inside Ghidra with the SE/AE/VR programs and the VT sessions open; dry-run by default,
+`VT_APPLY=go` to seed. Decision logic is in `vt_plan.py` (unit-tested). Validated: seeded ~16.2k
+(SE↔AE) + ~15.5k (SE↔VR) exact matches into the manual set (which had ~93 before), and surfaced
+436 correlator conflicts to audit. Most conflicts were adjacent-function drift where the id mapping
+is authoritative.
+
+### 7. Scripts vs LLM-in-the-loop — division of labor
 The **scripts are the focus**: the deterministic, reproducible artifact others run. They decide
 everything rule-expressible — layouts, addresses, type/conflict classification, signature
 application, and the bulk of conflict resolution and class population. Re-running them on a fresh
