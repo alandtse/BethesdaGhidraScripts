@@ -117,6 +117,27 @@ function naming are unaffected (they go through the `VTABLE_*` symbols/addresses
 only the vptr field's *type* shows root methods. `CLVR_EMBED=0` (flatten) types the vptr to the
 most-derived vtable instead, at the cost of no base composition. Pick per preference.
 
+### 5. Enrich phases (`CLVR_PHASE`) — run order for a full import
+`apply_enrich.py` dispatches on the `CLVR_PHASE` env var. Run it inside Ghidra (exec the file,
+or via the MCP eval) against the target program **in this order**; each is enrich-safe and
+idempotent, and each is **dry-run by default** with its own `*=go` flag to write:
+
+| order | `CLVR_PHASE` | what it does | apply flag |
+|---|---|---|---|
+| 1 | `types` (default) | create/replace types per `conflict_report.classify` | `CLVR_APPLY=go` |
+| 2 | `symbols` | label + name FUN_/sub_ functions, apply CommonLib sigs, vtable-slot + fallback naming. Upgrades auto-inferred (DEFAULT/ANALYSIS) sigs; never clobbers USER_DEFINED/IMPORTED | (writes in-txn) |
+| 3 | `sigconflict` | where a CommonLib sig **differs** from an existing USER_DEFINED/IMPORTED one, decompile both ways and keep the cleaner (`decompile_score`) | `CLVR_SIGCONFLICT=go` |
+| 4 | `classes` | reparent flat `Class::Method` names into namespaces, create/promote GhidraClass per class, re-point straggler vftable fields | `CLVR_CLASSES=go` |
+
+Phase 3 writes a decision CSV (`<import>.sigconflict.csv`); `CLVR_SIGCONFLICT_MAX` caps the
+count. Phase 4 `CLVR_CLASSES_MAX` caps reparents. Pure decision logic is unit-tested
+(`pytest scripts/commonlibvr/` — `apply_plan`, `decompile_score`); pre-commit runs ruff + these.
+
+The program is modified **in-memory only** — the MCP/transaction layer can't save, so
+**File→Save in Ghidra** after the phases to persist. Validated on SkyrimVR.exe: phase 3 chose
+CommonLib in 429/913 conflicts (incl. 175/260 PDB overrides); phase 4 reparented ~14.3k
+functions and produced ~2k GhidraClasses.
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
@@ -132,4 +153,5 @@ most-derived vtable instead, at the cost of no base composition. Pick per prefer
       (0 vftable loss). Protect guards: HANDCURATED / VFTABLE_LOSS / SUSPICIOUS / EMBED_BASE.
 - [x] Inheritance embedding (`embed_structs`, default on; trimmed variants for tail-padding reuse;
       per-struct flatten fallback). `CLVR_EMBED=0` to flatten.
-- [ ] Apply for real (`CLVR_APPLY=go`) once embedded build is re-validated.
+- [x] Apply for real — all four phases applied to SkyrimVR.exe (`types`/`symbols`/`sigconflict`/
+      `classes`). Enrich phases documented above; pure logic unit-tested.
