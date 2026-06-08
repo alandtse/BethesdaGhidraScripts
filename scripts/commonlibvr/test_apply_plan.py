@@ -29,7 +29,7 @@ def _run(structs, status_map):
 
     created = {}
 
-    def create_struct(name, size):
+    def create_struct(name, size, cat=None):
         return ('STRUCT', name)
 
     def stage_struct(name, size, existing):

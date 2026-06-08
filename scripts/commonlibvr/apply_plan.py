@@ -61,7 +61,8 @@ def select_fill_targets(structs, classify_fn, live, create_struct, stage_struct,
                 are not edited).
     staging   : {name: (staging_dt, existing_dt)} for the REPLACE swaps.
 
-    create_struct(name, size) -> dt        creates a new shell in /types.h.
+    create_struct(name, size, category) -> dt  creates a new shell (caller picks the
+                                               target category from the generated one).
     stage_struct(name, size, existing) -> dt creates a staging shell to swap in.
     register(st, dt)                        optional: record dt (e.g. into created[]).
 
@@ -79,7 +80,7 @@ def select_fill_targets(structs, classify_fn, live, create_struct, stage_struct,
         c = classify_fn(st, live)
         action = action_map.get(c['status'], 'PROTECT')
         if action == 'CREATE':
-            dt = create_struct(name, gsize)
+            dt = create_struct(name, gsize, st[2])   # st[2] = generated category
             fill_list.append((dt, st))
         elif action == 'REPLACE':
             dt = stage_struct(name, gsize, c['best'])

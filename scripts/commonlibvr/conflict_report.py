@@ -77,7 +77,12 @@ def _ns_compatible(gen_ns, existing_cat):
     generated one? Avoids false collisions like RE::Color vs
     DirectX::SimpleMath::Color that merely share a leaf name."""
     if gen_ns in ('RE', ''):
-        return any(existing_cat == c or existing_cat.startswith(c + '/') for c in _RE_CATS)
+        # RE engine types AND global/system C types (e.g. _LIST_ENTRY, _M128A) that
+        # the generator buckets under /CommonLibSSE/RE. Match any existing same-name
+        # type so we reuse it (incl. Windows/CRT header categories like /winnt.h)
+        # instead of duplicating into /types.h. The SUSPICIOUS size-ratio guard in
+        # classify() rejects accidental leaf-name collisions.
+        return True
     # Non-RE generated namespace (DirectX, std, fmt, ...): require the existing
     # category to actually carry that namespace, else it's not the same type.
     return gen_ns.replace('::', '/') in existing_cat

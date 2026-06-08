@@ -153,8 +153,14 @@ def run():
         # Phase 1: register created[] target for every struct + enum + vtable.
         # REUSE/PROTECT -> existing dt; CREATE -> shell in /types.h; REPLACE ->
         # staging shell (filled later, then swapped via replaceDataType).
-        def _create_struct(name, size):
-            return dtm.addDataType(StructureDataType(CategoryPath(NEW_CAT), name, size), KEEP)
+        _gen_namespace = cns['_gen_namespace']
+
+        def _create_struct(name, size, gcat):
+            # Keep /types.h for our (RE) types only; route library/system NEW types
+            # (std, DirectX, REX, global, ...) to their own generated category.
+            ns = _gen_namespace(gcat)
+            cat = NEW_CAT if (ns == 'RE' or ns.startswith('RE::')) else gcat
+            return dtm.addDataType(StructureDataType(CategoryPath(cat), name, size), KEEP)
 
         def _stage_struct(name, size, _existing):
             sdt = StructureDataType(CategoryPath(STAGING_CAT), name, size)
@@ -319,4 +325,131 @@ def _create_vtable_structs(gns, dtm, cat):
         created['vtbl:' + vname] = dtm.addDataType(s, KEEP)
 
 
-run()
+def _no_sig(f):
+    """True if the function has no real signature yet (default/undefined return)."""
+    try:
+        rt = f.getSignature().getReturnType()
+        return rt.getClass().getSimpleName() == 'DefaultDataType' or \
+            (rt.getName() or '').startswith('undefined')
+    except Exception:
+        return True
+
+
+def _safe_eol_comment(cu, text):
+    """Set the EOL comment only if empty; otherwise prepend our line(s) without
+    clobbering an existing (possibly manual) comment."""
+    if cu is None:
+        return
+    existing = cu.getComment(0)
+    if not existing:
+        cu.setComment(0, text)
+    elif text.split('\n')[0] not in existing:
+        cu.setComment(0, text + '\n' + existing)
+
+
+def run_symbols():
+    """Enrich-safe symbol + vtable pass (separate from the types pass):
+      - apply VTABLE_/RTTI_ labels (additive),
+      - name functions ONLY where currently FUN_/sub_ (never clobber a real name),
+      - set EOL comments only if absent (prepend, never overwrite),
+      - apply CommonLib signatures ONLY to functions that have none,
+      - then the generated (already enrich-safe) vtable virtual-function naming +
+        fallback symbol passes.
+    """
+    from ghidra.program.model.symbol import SourceType
+    from ghidra.app.cmd.disassemble import DisassembleCommand
+    gns = _load_generated_ns()
+    dtm = gns['dtm']
+    created = gns['created']
+    SYMBOLS = gns['SYMBOLS']
+    VERSION = gns['VERSION']
+    apply_structured_sig = gns['apply_structured_sig']
+    create_function = gns.get('createFunction')
+    cp = gns['currentProgram']
+    fm = cp.getFunctionManager()
+    stt = cp.getSymbolTable()
+    base = cp.getImageBase()
+    listing = cp.getListing()
+
+    # Rebuild created[] from the LIVE (already type-applied) program so signature
+    # type references resolve without recreating anything.
+    live = {}
+    for dt in dtm.getAllDataTypes():
+        live.setdefault(dt.getName(), dt)
+    for st in gns['STRUCTS']:
+        if st[0] in live:
+            created[st[0]] = live[st[0]]
+    for en in gns['ENUMS']:
+        if en[0] in live:
+            created[en[0]] = live[en[0]]
+    for vt in gns['VTABLES']:
+        if vt[0] in live:
+            created['vtbl:' + vt[0]] = live[vt[0]]
+
+    vkey = {'svr': 'v', 'se': 's', 'ae': 'a'}.get(VERSION, 'a')
+
+    def relid(s):
+        si, ai = s.get('si'), s.get('ai')
+        if si and ai:
+            return 'RELOCATION_ID(%d, %d)' % (si, ai)
+        if si:
+            return 'REL::ID(%d)' % si
+        if ai:
+            return 'REL::ID(%d)' % ai
+        return None
+
+    tx = cp.startTransaction('CommonLibVR symbol/vtable enrich')
+    labeled = named = made = sigd = 0
+    try:
+        for s in SYMBOLS:
+            off = s.get(vkey)
+            if not off:
+                continue
+            addr = base.add(int(off))
+            nm = s['n']
+            if s['t'] == 'label':
+                if nm not in [x.getName() for x in stt.getSymbols(addr)]:
+                    stt.createLabel(addr, nm, SourceType.USER_DEFINED)
+                    labeled += 1
+                rc = relid(s)
+                if rc:
+                    _safe_eol_comment(listing.getCodeUnitAt(addr), rc)
+            else:  # function
+                f = fm.getFunctionAt(addr)
+                if f is None and create_function is not None:
+                    DisassembleCommand(addr, None, True).applyTo(cp)
+                    try:
+                        f = create_function(addr, nm)
+                    except Exception:
+                        f = fm.getFunctionAt(addr)
+                    if f is not None:
+                        made += 1
+                if f is None:
+                    continue
+                cur = f.getName()
+                if cur.startswith('FUN_') or cur.startswith('sub_'):
+                    f.setName(nm, SourceType.USER_DEFINED)
+                    named += 1
+                rc = relid(s)
+                if rc:
+                    _safe_eol_comment(listing.getCodeUnitAt(addr), rc)
+                sd = s.get('sd')
+                if sd and _no_sig(f):
+                    try:
+                        apply_structured_sig(sd, f.getName(), addr, fm)
+                        sigd += 1
+                    except Exception:
+                        pass
+        print('Symbols: labeled %d, named %d, created %d, signatures %d' % (labeled, named, made, sigd))
+        gns['_import_vtable_names']()       # enrich-safe: names vfuncs at vtable slots
+        gns['_import_fallback_symbols']()   # enrich-safe: FUN_/sub_ only
+    finally:
+        cp.endTransaction(tx, True)
+    print('Symbol/vtable enrich complete.')
+
+
+_PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
+if _PHASE == 'symbols':
+    run_symbols()
+else:
+    run()
