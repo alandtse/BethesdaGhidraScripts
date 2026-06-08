@@ -163,7 +163,7 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
 
 
 def run_version(version, symbols_json, fallback_symbols_json='[]',
-                address_lib_map=None, pdb_structs=None):
+                address_lib_map=None, pdb_structs=None, pdb_enums=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -186,6 +186,20 @@ def run_version(version, symbols_json, fallback_symbols_json='[]',
         extra_scope_paths=[COMMONLIB_INCLUDE],
     )
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
+
+    # Merge SkyrimSE.pdb-derived enums (AST wins on name collision).
+    if pdb_enums:
+        n_added = n_members = 0
+        for cls, en in pdb_enums.items():
+            if cls in enums:
+                continue
+            en2 = dict(en)
+            en2['values'] = [tuple(v) for v in en.get('values', [])]
+            enums[cls] = en2
+            n_added += 1
+            n_members += len(en2['values'])
+        if n_added:
+            print('PDB enum merge: {} new ({} members)'.format(n_added, n_members))
 
     # Merge SkyrimSE.pdb-derived types into the clang AST result so SE/AE/VR
     # all inherit Bethesda's full internal class hierarchy (the parts
@@ -489,9 +503,25 @@ def main():
               'scripts/commonlibnvse/parse_pdb_pretty.py against the PDB '
               'pretty dump first to populate it.'.format(pdb_types_json))
 
+    # --- SkyrimSE.pdb-derived enums (Bethesda internal enums beyond CommonLibSSE) ---
+    pdb_enums = {}
+    pdb_enums_json = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_enums.json')
+    if os.path.isfile(pdb_enums_json):
+        try:
+            with open(pdb_enums_json, encoding='utf-8') as f:
+                pdb_enums = _json.load(f)
+            # Re-tag category from FNV default to Skyrim bucket.
+            for cls, en in pdb_enums.items():
+                en['category'] = '/CommonLibSSE/PDB'
+            print('Loaded {} PDB enums'.format(len(pdb_enums)))
+        except Exception as e:
+            print('WARNING: SkyrimSE PDB enum load failed: {}: {}'.format(
+                type(e).__name__, e))
+            pdb_enums = {}
+
     for version in ('se', 'ae', 'svr'):
         run_version(version, symbols_json, fb_for[version],
-                    pdb_structs=pdb_structs)
+                    pdb_structs=pdb_structs, pdb_enums=pdb_enums)
 
 
 if __name__ == '__main__':
