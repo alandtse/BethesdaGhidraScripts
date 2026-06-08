@@ -146,18 +146,33 @@ def _find_program(root, hints: list[str], stem: str = "Fallout4"):
 
 
 def _load_text_block(program):
-    """Return (image_base, text_rva, text_bytes) for the .text block."""
+    """Return (image_base, text_rva, text_bytes) for the .text block.
+
+    Reads via a Java byte[] in 64 KB chunks (a Python bytearray passes
+    by value and stays all zeros, and a one-shot 37 MB JArray sometimes
+    fails class resolution depending on JVM init order).  Mirrors the
+    chunked pattern in core/run_vtable_pipeline.py.
+    """
+    import jpype
     mem = program.getMemory()
     block = mem.getBlock('.text')
     if block is None:
         raise RuntimeError(f"{program.getName()}: no .text block")
     image_base = program.getImageBase().getOffset() & 0xFFFFFFFFFFFFFFFF
-    start = block.getStart().getOffset() & 0xFFFFFFFFFFFFFFFF
-    text_rva = start - image_base
+    start_addr = block.getStart()
+    text_rva = (start_addr.getOffset() & 0xFFFFFFFFFFFFFFFF) - image_base
     size = block.getSize()
-    raw = bytearray(size)
-    block.getBytes(block.getStart(), raw)
-    return image_base, text_rva, bytes(raw)
+
+    ByteArray = jpype.JArray(jpype.JByte)
+    CHUNK = 64 * 1024
+    out = bytearray(size)
+    for off in range(0, size, CHUNK):
+        n = min(CHUNK, size - off)
+        buf = ByteArray(n)
+        block.getBytes(start_addr.add(off), buf, 0, n)
+        for i in range(n):
+            out[off + i] = buf[i] & 0xff
+    return image_base, text_rva, bytes(out)
 
 
 def _rename_in_program(program, ported: list[tuple[str, int]]) -> dict[str, int]:
