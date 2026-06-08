@@ -162,7 +162,8 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
     return _json.dumps(symbols, separators=(',', ':'))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_map=None):
+def run_version(version, symbols_json, fallback_symbols_json='[]',
+                address_lib_map=None, pdb_structs=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -185,6 +186,42 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_m
         extra_scope_paths=[COMMONLIB_INCLUDE],
     )
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
+
+    # Merge SkyrimSE.pdb-derived types into the clang AST result so SE/AE/VR
+    # all inherit Bethesda's full internal class hierarchy (the parts
+    # CommonLibSSE doesn't document).  Mirrors the FNV pdb-types merge.
+    if pdb_structs:
+        n_added = n_upgraded = 0
+        for cls, st in pdb_structs.items():
+            existing = structs.get(cls)
+            if existing is None:
+                structs[cls] = st
+                n_added += 1
+                continue
+            ex_fields = existing.get('fields', [])
+            non_vft = [f for f in ex_fields
+                       if not f.get('name', '').startswith('__vftable')]
+            if existing.get('size', 0) == 0 or not non_vft:
+                # Empty clang stub -- upgrade with PDB layout, keep clang's
+                # class methods + vtable info if any
+                upgraded = dict(st)
+                upgraded['vmethods']         = existing.get('vmethods', {})
+                upgraded['methods']          = existing.get('methods', {})
+                upgraded['has_vtable']       = existing.get('has_vtable', False)
+                upgraded['bases']            = existing.get('bases', [])
+                upgraded['_overload_aliases'] = existing.get('_overload_aliases', {})
+                structs[cls] = upgraded
+                n_upgraded += 1
+        print('PDB type merge: {} new + {} upgraded (clang AST is authoritative '
+              'for documented types)'.format(n_added, n_upgraded))
+        # Re-run flatten so PDB-introduced bases cascade fields down into
+        # their derived classes (mirrors FNV's post-PDB flatten pass).
+        try:
+            from ghidra_import_gen import flatten_structs as _flatten
+            _flatten(structs)
+        except Exception as e:
+            print('  WARNING: post-PDB flatten failed: {}: {}'.format(
+                type(e).__name__, e))
 
     symbols_json = _enrich_symbols_with_sigs(symbols_json, structs)
 
@@ -246,10 +283,12 @@ def main():
     print('=== Detecting exe versions ===')
     se_ver, ae_ver = _detect_exe_versions()
 
-    # Load address databases using detected versions
+    # Load address databases (AddressLibrary picks fixed versions:
+    # SE 1.5.97, AE 1.6.1170, VR 1.4.15 -- detected exe versions are
+    # logged for diagnostics but don't currently feed the loader).
+    _ = (se_ver, ae_ver)  # noqa: F841 -- kept for future per-version selection
     addr_lib = AddressLibrary()
-    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'),
-                      se_version=se_ver, ae_version=ae_ver)
+    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'))
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
     print('\n=== Collecting symbols via regex relocation parser ===')
@@ -421,8 +460,38 @@ def main():
         'ae':  ae_fallback_json,
         'svr': '[]',
     }
+
+    # --- SkyrimSE.pdb-derived type layouts (Bethesda's full class hierarchy) ---
+    # Parse once, share across SE/AE/VR.  CommonLibSSE documents only the
+    # public-facing classes; the PDB exposes ~19k internal Bethesda types
+    # with full field layouts that lift every F4-style "empty stub" struct
+    # to a real layout for Ghidra (same FNV gained from Fallout_Debug PDB).
+    pdb_structs = {}
+    pdb_types_json = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_types.json')
+    if os.path.isfile(pdb_types_json):
+        from pathlib import Path as _Path
+        # Reuse the FNV converter -- pointer-size-agnostic, output 'ptr' is
+        # resolved by Ghidra against the loaded program's pointer width.
+        sys.path.insert(0, os.path.join(PROJECT_DIR, 'scripts', 'commonlibnvse'))
+        from pdb_types_to_pipeline import convert_pdb_types as _convert_pdb_types
+        try:
+            pdb_structs, n_skipped, n_fields = _convert_pdb_types(
+                _Path(pdb_types_json),
+                category='/CommonLibSSE/PDB')
+            print('\nLoaded {} PDB structs ({} fields total, skipped {} empty/anon)'.format(
+                len(pdb_structs), n_fields, n_skipped))
+        except Exception as e:
+            print('WARNING: SkyrimSE PDB type load failed: {}: {}'.format(
+                type(e).__name__, e))
+            pdb_structs = {}
+    else:
+        print('\nNo SkyrimSE.pdb types JSON at {} -- run '
+              'scripts/commonlibnvse/parse_pdb_pretty.py against the PDB '
+              'pretty dump first to populate it.'.format(pdb_types_json))
+
     for version in ('se', 'ae', 'svr'):
-        run_version(version, symbols_json, fb_for[version])
+        run_version(version, symbols_json, fb_for[version],
+                    pdb_structs=pdb_structs)
 
 
 if __name__ == '__main__':

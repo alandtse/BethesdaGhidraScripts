@@ -280,12 +280,17 @@ def _dedup_field_ranges(fields):
 
 
 def convert_pdb_types(json_path: Path, enums_json_path: Path = None,
-                       typedefs_json_path: Path = None) -> Dict[str, dict]:
+                       typedefs_json_path: Path = None,
+                       category: str = '/xNVSE/PDB') -> Dict[str, dict]:
     """Convert a parsed pretty-dump types JSON to a structs dict ready to
     merge with the clang-AST-derived structs in parse_commonlib_types.py.
 
     Skips entries with size==0 or no fields, and entries whose names
     look like compiler-internal anonymous tags (``<unnamed-tag>``).
+
+    ``category`` selects the Ghidra DTM bucket for emitted structs.
+    Defaults to ``/xNVSE/PDB`` for the FNV pipeline; pass
+    ``/CommonLibSSE/PDB`` for Skyrim, etc.
     """
     data = json.loads(json_path.read_text(encoding='utf-8'))
 
@@ -400,7 +405,7 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None,
             'name':              norm,
             'full_name':         cls,
             'size':              size,
-            'category':          '/xNVSE/PDB',
+            'category':          category,
             'fields':            out_fields,
             'bases':             bases_names,
             'pdb_bases':         pdb_bases,

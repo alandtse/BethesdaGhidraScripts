@@ -53,7 +53,11 @@ def load_pdb_names(file_path: str) -> Dict[int, str]:
     if not os.path.exists(file_path):
         return {}
 
-    import pdbparse
+    try:
+        import pdbparse
+    except ImportError as e:
+        print(f"  WARNING: pdbparse not installed ({e}); skipping {file_path}")
+        return {}
 
     pdb = pdbparse.parse(file_path)
     dbi = pdb.STREAM_DBI
