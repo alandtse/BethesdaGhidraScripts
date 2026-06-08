@@ -156,7 +156,25 @@ Run inside Ghidra with the SE/AE/VR programs and the VT sessions open; dry-run b
 436 correlator conflicts to audit. Most conflicts were adjacent-function drift where the id mapping
 is authoritative.
 
-### 7. Scripts vs LLM-in-the-loop — division of labor
+### 7. Write-back detection — Ghidra -> CommonLib (`commonlib_writeback.py`)
+The pipeline imports CommonLib INTO Ghidra; this closes the other half of the loop by reporting
+what the live program knows that CommonLib does not, so RE/PDB knowledge can flow back to the
+canonical source. Per CommonLib function symbol it compares the live Ghidra name against
+CommonLib's at that address (`commonlib_delta`, unit-tested):
+- **NAME_DELTA** — Ghidra has a trusted (USER_DEFINED/IMPORTED) name whose base differs. Either a
+  naming-convention difference to reconcile (`GetCurrentWeapon` vs PDB `GetCurrentlyEquippedWeapon`)
+  or, when wildly different (`IsValid` vs `ResizeWindow`), a sign CommonLib's address for that
+  runtime is wrong -- a `database.csv` bug to verify against the binary.
+- **MISSING_IN_GHIDRA** — CommonLib named it but Ghidra is still generic: a gap in our own apply.
+
+Read-only; writes `<import>.writeback.csv` with cross-version ids so each row is locatable in
+CommonLib. The classes-phase `_<addr>` overload-disambiguation suffix is stripped before comparing.
+Signature deltas are out of v1 (need cross-representation normalization; the `SIG_DELTA` path is
+tested and ready). Validated: VR 143 / SE 155 / AE 281 name deltas. A natural extension is
+cross-runtime aggregation -- a delta in ALL THREE runtimes is a naming-convention reconcile; a delta
+in only ONE points at a per-runtime address error.
+
+### 8. Scripts vs LLM-in-the-loop — division of labor
 The **scripts are the focus**: the deterministic, reproducible artifact others run. They decide
 everything rule-expressible — layouts, addresses, type/conflict classification, signature
 application, and the bulk of conflict resolution and class population. Re-running them on a fresh
