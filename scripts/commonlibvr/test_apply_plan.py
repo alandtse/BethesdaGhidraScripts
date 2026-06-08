@@ -209,11 +209,20 @@ def test_double_underscore_unknown_head_left_alone():
 
 
 def test_redundant_doubled_class_prefix_stripped():
-    # Class::Class_Method -> leaf Method
-    cn = {'MessageBoxMenu'}
+    # Class::Class_Method -> leaf Method (single and double underscore)
     ns, leaf, ci = apply_plan.class_namespace_plan(
-        'MessageBoxMenu::MessageBoxMenu_RemoveMessageFromQueue', cn)
+        'MessageBoxMenu::MessageBoxMenu_RemoveMessageFromQueue', {'MessageBoxMenu'})
     assert ns == ['MessageBoxMenu'] and leaf == 'RemoveMessageFromQueue' and ci == 0
+    ns2, leaf2, _ = apply_plan.class_namespace_plan('Actor::Actor__ProcessInWater', {'Actor'})
+    assert leaf2 == 'ProcessInWater'   # double underscore fully stripped, no leading _
+
+
+def test_overload_disambiguator_not_stripped():
+    # Class_2 is an overload disambiguator, not a doubled prefix -> keep it
+    ns, leaf, ci = apply_plan.class_namespace_plan(
+        'CombatBehaviorAcquireResource::CombatBehaviorAcquireResource_2',
+        {'CombatBehaviorAcquireResource'})
+    assert leaf == 'CombatBehaviorAcquireResource_2'   # not reduced to '2'
 
 
 def test_class_namespace_plan_free_function():

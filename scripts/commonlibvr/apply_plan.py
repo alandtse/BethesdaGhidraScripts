@@ -99,9 +99,14 @@ def class_namespace_plan(name, class_names):
     if qual_full in class_names or ns_chain[-1] in class_names:
         class_index = len(ns_chain) - 1
         cls = ns_chain[class_index]
-        # strip a redundant 'Class_' prefix the leaf sometimes carries
-        if leaf.startswith(cls + '_') and len(leaf) > len(cls) + 1:
-            leaf = leaf[len(cls) + 1:]
+        # strip a redundant 'Class_' / 'Class__' prefix the leaf sometimes carries
+        # (e.g. MessageBoxMenu_RemoveMessageFromQueue, Actor__ProcessInWater).
+        # Guard: keep the prefix when the remainder would start with a digit -- that
+        # is an overload disambiguator (Class_2), not a doubled prefix.
+        if leaf.startswith(cls + '_'):
+            rest = leaf[len(cls):].lstrip('_')
+            if rest and not rest[0].isdigit():
+                leaf = rest
     return (ns_chain, leaf, class_index)
 
 
