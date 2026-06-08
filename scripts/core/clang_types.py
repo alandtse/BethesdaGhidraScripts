@@ -752,6 +752,13 @@ def _parse_method_sig(sig, root_ns='RE'):
 # Record layout parser
 # ---------------------------------------------------------------------------
 
+# When True, _parse_layouts_with_bases records only DIRECT bases and a record's OWN
+# fields (skips everything nested under a base line). Required by embed_structs; the
+# flatten path is unaffected (it recurses into bases either way). Default False keeps
+# the powerof3/F4/SF output byte-identical. The CommonLibVR wrapper sets this True.
+SKIP_NESTED_BASE_FIELDS = False
+
+
 def _parse_layouts_with_bases(text, root_ns='RE'):
     """Parse -fdump-record-layouts-complete output.
 
@@ -765,11 +772,16 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
         if not m_sz:
             continue
         sizeof_bytes = int(m_sz.group(1))
+        m_ds = re.search(r'\bdsize=(\d+)', block)
+        dsize_bytes = int(m_ds.group(1)) if m_ds else sizeof_bytes
 
         type_name = ''
         fields = []
         bases = []
-        has_vtable = False
+        # Polymorphic iff a vptr appears anywhere in the layout. Detect from the whole
+        # block so SKIP_NESTED_BASE_FIELDS (which hides nested base vptr lines) does not
+        # suppress has_vtable for classes that inherit their vtable.
+        has_vtable = ('vftable pointer' in block) or ('vbtable pointer' in block)
         first_seen = False
         value_field_indents = []
 
@@ -803,7 +815,12 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                     type_name = _qualify_type(raw_name, root_ns)
                 continue
 
-            # Base class
+            # Base class. Record only DIRECT bases and skip everything nested under
+            # this base line (its own fields and its nested bases) by pushing its
+            # indent as a skip-frame -- so `bases` holds direct bases only and
+            # `fields` holds the record's OWN fields only. (flatten_structs recurses
+            # into each base, so its output is unchanged; embed_structs needs the
+            # direct/own split to place base members correctly.)
             if '(base)' in content or '(primary base)' in content:
                 m_off = re.match(r'^\s*(\d+)\s+\|', line_r)
                 if m_off:
@@ -813,6 +830,8 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                         bname = _qualify_type(
                             _KW_STRIP_RE.sub('', m_base.group(1)).strip(), root_ns)
                         bases.append((bname, base_off))
+                if SKIP_NESTED_BASE_FIELDS:
+                    value_field_indents.append(indent)
                 continue
 
             if '(empty)' in content:
@@ -882,6 +901,7 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                     f['size'] = 0
             results[type_name] = {
                 'size': sizeof_bytes,
+                'dsize': dsize_bytes,
                 'fields': fields,
                 'bases': bases,
                 'has_vtable': has_vtable,
@@ -986,6 +1006,7 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
                 'name': ast['name'],
                 'full_name': key,
                 'size': layout['size'],
+                'dsize': layout.get('dsize', layout['size']),
                 'category': ast['category'],
                 'fields': layout['fields'],
                 'bases': bases,
@@ -1045,6 +1066,7 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
             'name': short,
             'full_name': lname,
             'size': ldata['size'],
+            'dsize': ldata.get('dsize', ldata['size']),
             'category': category,
             'fields': ldata['fields'],
             'bases': bases,
@@ -2015,6 +2037,7 @@ def _force_template_layouts(structs, header_path, parse_args, clang_binary,
             continue
         st = structs[key]
         st['size']       = ldata['size']
+        st['dsize']      = ldata.get('dsize', ldata['size'])
         st['fields']     = ldata['fields']
         st['bases']      = [bname for bname, _ in ldata['bases']]
         st['pdb_bases']  = ldata['bases']

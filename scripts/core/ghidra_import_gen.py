@@ -355,6 +355,184 @@ def flatten_structs(structs: dict) -> None:
     print('Flattening: {} structs have field data after inheritance expansion'.format(gained))
 
 
+def embed_structs(structs: dict) -> None:
+    """Additive alternative to flatten_structs: represent inheritance by EMBEDDING
+    each base as a struct member at its pdb_bases offset (compositional), instead of
+    inlining all base fields into every derived.
+
+    When MSVC reuses a base's tail padding (a sibling base or an own field starts
+    before base_off + base.size), embed a trimmed (data-size) variant of the base so
+    Ghidra does not reject the overlap -- a full-size embedded member is atomic and
+    placing anything inside its footprint silently clears it (verified empirically).
+    The trim length is derived from the span to the next subobject, so no extra clang
+    data is needed.
+
+    Robustness: if any base cannot be cleanly resolved/embedded, that single struct
+    falls back to a flattened layout (byte-accurate, never loses field data). The
+    primary base at offset 0 carries the shared vtable, so the derived's injected
+    __vftable@0 is dropped (it is 'covered' by the base member).
+
+    Used by the CommonLibVR path (set base._flatten_structs = embed_structs). Other
+    runtimes keep flatten_structs unchanged.
+    """
+    by_name = {}
+    for st in structs.values():
+        by_name[st['full_name']] = st
+        by_name[st['name']] = st
+
+    # Snapshot original (pre-embed) own-fields so the flat helper stays correct even
+    # as we mutate st['fields'] during the embed pass.
+    orig = {st['full_name']: list(st['fields']) for st in structs.values()}
+
+    flat_memo = {}
+
+    def get_flat(full_name, depth=0):
+        if depth > 20:
+            return []
+        if full_name in flat_memo:
+            return flat_memo[full_name]
+        st = by_name.get(full_name)
+        if not st:
+            flat_memo[full_name] = []
+            return []
+        flat_memo[full_name] = []
+        combined = {}
+
+        def key(f, off=None):
+            o = off if off is not None else f['offset']
+            return ('bf', o, f['type']) if f['type'].startswith('bf:') else o
+
+        for bn, bo in st.get('pdb_bases', []):
+            bst = _resolve_base(by_name, bn)
+            if not bst:
+                continue
+            for f in get_flat(bst['full_name'], depth + 1):
+                ao = bo + f['offset']
+                k = key(f, ao)
+                if k not in combined:
+                    fc = dict(f, offset=ao)
+                    if f['name'] == '__vftable' and bo > 0:
+                        fc['name'] = '__vftable_' + bst['name']
+                    combined[k] = fc
+        for f in orig.get(st['full_name'], []):
+            combined[key(f)] = f
+        flat = sorted(combined.values(), key=lambda f: (f['offset'], f['type']))
+        for i in range(len(flat) - 1):
+            end = flat[i]['offset'] + flat[i]['size']
+            if end > flat[i + 1]['offset']:
+                flat[i] = dict(flat[i], size=flat[i + 1]['offset'] - flat[i]['offset'])
+        flat_memo[full_name] = flat
+        return flat
+
+    trimmed = {}
+
+    def make_trimmed(base_st, embed_size):
+        tfull = '{}__embed_{:X}'.format(base_st['full_name'], embed_size)
+        if tfull in trimmed or tfull in by_name:
+            return tfull
+        ff = [dict(f) for f in get_flat(base_st['full_name']) if f['offset'] < embed_size]
+        for f in ff:
+            if f['offset'] + f['size'] > embed_size:
+                f['size'] = embed_size - f['offset']
+        trimmed[tfull] = {
+            'name': '{}__embed_{:X}'.format(base_st['name'], embed_size),
+            'full_name': tfull, 'size': embed_size,
+            'category': base_st.get('category', '/CommonLibSSE/RE'),
+            'fields': ff, 'bases': [], 'pdb_bases': [], 'has_vtable': False,
+        }
+        return tfull
+
+    import os as _os
+    _watch = set(filter(None, _os.environ.get('CLVR_EMBED_DEBUG', '').split(',')))
+    _reasons = {}
+
+    def _fb(reason, name):
+        _reasons[reason] = _reasons.get(reason, 0) + 1
+        if name in _watch or _watch == {'*'}:
+            print('  EMBED fallback [{}]: {}'.format(reason, name))
+
+    n_embedded = n_fallback = 0
+    for st in list(structs.values()):
+        pdb_bases = st.get('pdb_bases', [])
+        if not pdb_bases:
+            continue
+        # st['fields'] already holds ALL fields (own + inherited); pdb_bases lists the
+        # full nested base chain. Reduce to DIRECT bases: clang prints the layout tree
+        # outer-first, so the FIRST base at each offset is the direct one (deeper bases
+        # at the same offset are its ancestors).
+        all_fields = orig.get(st['full_name'], [])
+        direct = []
+        seen_off = set()
+        for bn, bo in pdb_bases:           # document order = outer-first
+            if bo in seen_off:
+                continue
+            seen_off.add(bo)
+            direct.append((bn, bo))
+        direct.sort(key=lambda x: x[1])
+        if st['full_name'] in _watch or _watch == {'*'}:
+            print('  EMBED watch {}: size={} direct={} pdb_bases={}'.format(
+                st['full_name'], st['size'], direct, pdb_bases))
+        members = []
+        ok = True
+        for i, (bn, bo) in enumerate(direct):
+            bst = _resolve_base(by_name, bn)
+            if not bst:
+                _fb('unresolved_base:' + str(bn), st['full_name'])
+                ok = False
+                break
+            bsize = bst['size']
+            if bsize <= 0:
+                continue   # empty base (EBO) contributes nothing
+            # base occupies [bo, next_subobject) where next_subobject is the next
+            # direct base or the first OWN field after bo (fields are own-only here),
+            # else struct end. Anything before bo+bsize => MSVC reused this base's tail
+            # padding => embed a trimmed (data-size) variant.
+            cands = [st['size']]
+            if i + 1 < len(direct):
+                cands.append(direct[i + 1][1])
+            cands += [f['offset'] for f in all_fields if f['offset'] > bo]
+            span = min(cands) - bo
+            if span <= 0:
+                _fb('span<=0', st['full_name'])
+                ok = False
+                break
+            if bsize <= span:
+                embed_size = bsize
+                tref = bst['full_name']
+            else:
+                embed_size = span
+                bdsize = bst.get('dsize', bsize)
+                if embed_size < bdsize:
+                    # sibling overlaps the base's real data -> inconsistent; flatten.
+                    _fb('trim_cuts_data', st['full_name'])
+                    ok = False
+                    break
+                tref = make_trimmed(bst, embed_size)
+            members.append({
+                'name': '_base' if bo == 0 else '_base_' + bst['name'],
+                'type': 'struct:' + tref, 'offset': bo, 'size': embed_size,
+            })
+        if not ok or not members:
+            st['fields'] = get_flat(st['full_name'])
+            n_fallback += 1
+            continue
+
+        def covered(o, _members=members):
+            return any(m['offset'] <= o < m['offset'] + m['size'] for m in _members)
+
+        own_kept = [f for f in all_fields if not covered(f['offset'])]
+        st['fields'] = sorted(members + own_kept,
+                              key=lambda f: (f['offset'], f.get('type', '')))
+        n_embedded += 1
+
+    structs.update(trimmed)
+    print('Embedding: {} structs embed bases, {} flattened (fallback), '
+          '{} trimmed base variants'.format(n_embedded, n_fallback, len(trimmed)))
+    if _reasons:
+        top = sorted(_reasons.items(), key=lambda kv: -kv[1])
+        print('  fallback reasons: ' + ', '.join('{}={}'.format(k, v) for k, v in top[:12]))
+
+
 # ---------------------------------------------------------------------------
 # Ghidra script template (embedded Jython)
 # ---------------------------------------------------------------------------
