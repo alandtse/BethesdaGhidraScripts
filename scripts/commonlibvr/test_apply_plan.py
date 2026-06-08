@@ -106,6 +106,24 @@ def test_enum_parent_key_disambiguates_bare_names():
     assert k1 != k3          # different parent -> distinct
 
 
+def test_doubled_is_replaced():
+    # an exact 2x import-doubling artifact must be replaced with the generated layout
+    assert apply_plan.ACTION['DOUBLED'] == 'REPLACE'
+    structs = [_st('_GUID', 16)]
+    fill_list, staging, created = _run(structs, {'_GUID': 'DOUBLED'})
+    assert '_GUID' in staging                 # staged for replaceDataType
+    assert len(fill_list) == 1                 # and filled with generated layout
+
+
+def test_pdb_is_not_specially_protected():
+    # PDB is just another data source, not authoritative: a size disagreement is a
+    # plain DIVERGENT (replaced + logged for binary verification), never protected.
+    assert 'PDB_DIVERGENT' not in apply_plan.ACTION
+    structs = [_st('BSLightingShader', 248)]
+    fill_list, staging, created = _run(structs, {'BSLightingShader': 'DIVERGENT'})
+    assert 'BSLightingShader' in staging        # replaced, not protected
+
+
 def test_classify_enum_new():
     action, add = apply_plan.classify_enum(4, [('A', 0), ('B', 1)], None, [])
     assert action == 'NEW'

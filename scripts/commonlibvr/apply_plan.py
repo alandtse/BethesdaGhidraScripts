@@ -13,6 +13,7 @@ ACTION = {
     'STUB_UPGRADE': 'REPLACE',
     'EXTENDS': 'REPLACE',
     'DIVERGENT': 'REPLACE',
+    'DOUBLED': 'REPLACE',   # existing == 2x generated: import doubling artifact, generated correct
     'HANDCURATED': 'PROTECT',
     'VFTABLE_LOSS': 'PROTECT',
     'SUSPICIOUS': 'PROTECT',

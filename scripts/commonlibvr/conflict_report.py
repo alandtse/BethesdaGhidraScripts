@@ -98,6 +98,14 @@ def _trust(cat):
     return 0
 
 
+# NOTE: PDB is NOT treated as authoritative. For RE, a PDB is just an intake
+# format for sharing data -- one source among several, no more trustworthy than
+# CommonLib's generated per-runtime layout. Accuracy is only knowable from binary
+# effects, so a genuine size disagreement against a PDB type is a plain DIVERGENT
+# (default to the generated layout, logged for binary verification), not a
+# protected status. Mechanical import corruption is handled separately by DOUBLED.
+
+
 def _existing_members(dt):
     """[(offset, length, typename, fieldname)] for defined components."""
     out = []
@@ -283,6 +291,13 @@ def classify(st, live):
         status = 'EXTENDS'
     elif vftable_loss:
         status = 'VFTABLE_LOSS'
+    elif esize == 2 * gsize:
+        # existing is EXACTLY double the generated size -- a Ghidra import doubling
+        # artifact (pointer/alignment), not a real layout difference. Seen on
+        # system/DirectX types (_GUID 32 vs 16, XMDEC4 8 vs 4). The generated
+        # clang size is correct; replace even over HANDCURATED/PDB/EMBED guards.
+        # (Ordered after VFTABLE_LOSS so a vtable is never dropped.)
+        status = 'DOUBLED'
     elif suspicious:
         status = 'SUSPICIOUS'
     elif _embeds_base(best):
@@ -340,7 +355,8 @@ def run():
     total = len(STRUCTS)
     print('\n=== conflict summary ({} generated structs) ==='.format(total))
     for k in ('NEW', 'MATCH', 'GEN_EMPTY', 'STUB_UPGRADE', 'EXTENDS',
-              'DIVERGENT', 'HANDCURATED', 'VFTABLE_LOSS', 'SUSPICIOUS', 'EMBED_BASE'):
+              'DIVERGENT', 'DOUBLED', 'HANDCURATED', 'VFTABLE_LOSS',
+              'SUSPICIOUS', 'EMBED_BASE'):
         print('  {:13s} {}'.format(k, counts.get(k, 0)))
     print('\nWRITE (create new / fill-stub / extend / replace-divergent): {}'.format(
         counts['NEW'] + counts['STUB_UPGRADE'] + counts['EXTENDS'] + counts['DIVERGENT']))
