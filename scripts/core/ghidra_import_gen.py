@@ -1293,8 +1293,10 @@ def _import_vtable_names():
                         cu.setComment(0, '\\n'.join(comment_parts))
                     named_vfuncs += 1
                 if slot_ret is not None and slot_params is not None:
-                    has_sig = func.getSignature().getReturnType().getClass().getSimpleName() != 'DefaultDataType'
-                    if not has_sig:
+                    # Upgrade auto-derived signatures (DEFAULT/ANALYSIS source);
+                    # never clobber a USER_DEFINED or IMPORTED (PDB) signature.
+                    _src = func.getSignatureSource()
+                    if _src not in (SourceType.USER_DEFINED, SourceType.IMPORTED):
                         try:
                             fdef = FunctionDefinitionDataType(CategoryPath('/'), slot_name, dtm)
                             ret_dt = resolve_type(slot_ret)
@@ -1567,13 +1569,19 @@ def generate_script(
     lines.append(']')
     lines.append('')
 
-    # Build class::method -> structured signature lookup from method data
+    # Build class::method -> structured signature lookup from method data.
+    # methods is { name: (ret, params, is_static) }; preserve is_static so static
+    # members are NOT given a spurious `this` param in apply_structured_sig.
     _method_sd_lookup = {}
     for st in structs.values():
         class_short = st['name']
-        for mname, (ret, params) in st.get('method_sigs', {}).items():
+        for mname, info in st.get('methods', {}).items():
+            if not info:
+                continue
+            ret, params = info[0], info[1]
+            is_static = info[2] if len(info) > 2 else 0
             if ret and params is not None:
-                _method_sd_lookup[class_short + '::' + mname] = [ret, params, 0]
+                _method_sd_lookup[class_short + '::' + mname] = [ret, params, 1 if is_static else 0]
 
     # Inject structured signatures into symbol entries
     _syms = json.loads(symbols_json)
