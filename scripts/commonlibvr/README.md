@@ -170,9 +170,20 @@ CommonLib's at that address (`commonlib_delta`, unit-tested):
 Read-only; writes `<import>.writeback.csv` with cross-version ids so each row is locatable in
 CommonLib. The classes-phase `_<addr>` overload-disambiguation suffix is stripped before comparing.
 Signature deltas are out of v1 (need cross-representation normalization; the `SIG_DELTA` path is
-tested and ready). Validated: VR 143 / SE 155 / AE 281 name deltas. A natural extension is
-cross-runtime aggregation -- a delta in ALL THREE runtimes is a naming-convention reconcile; a delta
-in only ONE points at a per-runtime address error.
+tested and ready). Validated: VR 143 / SE 155 / AE 281 name deltas.
+
+`writeback_aggregate.py` (plain Python, no Ghidra) joins the three reports by symbol name and
+triages each by HOW the disagreement is distributed across the runtimes it is *mapped* in
+(presence comes from the generated SYMBOLS, so MATCH is distinguished from ABSENT = not yet
+mapped). CommonLib is iterative -- a symbol may start SE/AE-only and gain a VR offset later -- so:
+- **RUNTIME_SPECIFIC** (delta in some mapped runtimes, MATCH in others) names the suspect runtime
+  vs the trusted ones. `suspect=vr` with SE MATCH (AE often ABSENT) is the prime case: an
+  iteratively-added VR offset that may point at the wrong function -> verify against the binary /
+  `vr_address_tools` database.csv.
+- **RECONCILE** (delta in EVERY mapped runtime) -> one CommonLib name fix.
+- **APPLY_GAP** -> our apply left it generic (often an AE-program intake gap).
+Run: `python writeback_aggregate.py [import_dir] [out_csv]`. Validated: 263 RUNTIME_SPECIFIC /
+79 RECONCILE / 90 APPLY_GAP, with the AE PDB intake the systematically noisiest source.
 
 ### 8. Scripts vs LLM-in-the-loop — division of labor
 The **scripts are the focus**: the deterministic, reproducible artifact others run. They decide
