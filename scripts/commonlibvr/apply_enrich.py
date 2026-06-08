@@ -325,14 +325,29 @@ def _create_vtable_structs(gns, dtm, cat):
         created['vtbl:' + vname] = dtm.addDataType(s, KEEP)
 
 
-def _no_sig(f):
-    """True if the function has no real signature yet (default/undefined return)."""
+def _upgrade_sig(f):
+    """True if it is safe to overwrite this function's signature with CommonLib's.
+
+    Upgrade when the current signature is auto-derived -- either absent
+    (DefaultDataType / undefined return) or inferred by Ghidra's analyzer
+    (signature source DEFAULT or ANALYSIS). NEVER touch a USER_DEFINED or
+    IMPORTED (PDB) signature: those are hand-curated or authoritative, and a
+    generated CommonLib prototype must not clobber them.
+    """
+    from ghidra.program.model.symbol import SourceType
     try:
-        rt = f.getSignature().getReturnType()
-        return rt.getClass().getSimpleName() == 'DefaultDataType' or \
-            (rt.getName() or '').startswith('undefined')
+        src = f.getSignatureSource()
+        if src in (SourceType.USER_DEFINED, SourceType.IMPORTED):
+            return False
+        return True   # DEFAULT / ANALYSIS -> auto-inferred, safe to upgrade
     except Exception:
-        return True
+        # Fall back to the return-type heuristic if source is unavailable.
+        try:
+            rt = f.getSignature().getReturnType()
+            return rt.getClass().getSimpleName() == 'DefaultDataType' or \
+                (rt.getName() or '').startswith('undefined')
+        except Exception:
+            return True
 
 
 def _safe_eol_comment(cu, text):
@@ -434,7 +449,7 @@ def run_symbols():
                 if rc:
                     _safe_eol_comment(listing.getCodeUnitAt(addr), rc)
                 sd = s.get('sd')
-                if sd and _no_sig(f):
+                if sd and _upgrade_sig(f):
                     try:
                         apply_structured_sig(sd, f.getName(), addr, fm)
                         sigd += 1
@@ -448,8 +463,162 @@ def run_symbols():
     print('Symbol/vtable enrich complete.')
 
 
+def _sig_key(sig):
+    """Normalized comparable key for a Ghidra FunctionSignature: return type +
+    ordered param type names. Ignores parameter names and cosmetic spacing."""
+    try:
+        ret = sig.getReturnType().getName()
+        ps = tuple(p.getDataType().getName() for p in sig.getArguments())
+        return (ret, ps)
+    except Exception:
+        return None
+
+
+def _decompile_text(decomp, f, monitor):
+    try:
+        res = decomp.decompileFunction(f, 30, monitor)
+        if res and res.decompileCompleted():
+            df = res.getDecompiledFunction()
+            if df:
+                return df.getC()
+    except Exception:
+        pass
+    return None
+
+
+def _snapshot_sig(f):
+    """Capture a function's current signature as a re-appliable FunctionDefinition
+    plus its source, so a losing trial can be rolled back exactly."""
+    from ghidra.program.model.data import FunctionDefinitionDataType
+    sig = f.getSignature()
+    fdef = FunctionDefinitionDataType(sig)
+    return (fdef, f.getSignatureSource())
+
+
+def _restore_sig(addr, snap, cp):
+    from ghidra.app.cmd.function import ApplyFunctionSignatureCmd
+    fdef, src = snap
+    ApplyFunctionSignatureCmd(addr, fdef, src, True, False).applyTo(cp)
+
+
+def run_sigconflict():
+    """Conflict-resolution pass: where a CommonLib signature DIFFERS from an
+    existing USER_DEFINED/IMPORTED one, decompile the function both ways and keep
+    whichever decompiles cleaner. Incumbent wins ties/noise (see decompile_score).
+
+    Dry-run by default (logs a CSV, writes nothing). Set CLVR_SIGCONFLICT=go to
+    persist the winners. CLVR_SIGCONFLICT_MAX caps how many conflicts to evaluate.
+    """
+    import csv
+    import importlib.util as _ilu
+    from ghidra.program.model.symbol import SourceType
+    from ghidra.app.decompiler import DecompInterface
+
+    _ds_spec = _ilu.spec_from_file_location(
+        'clvr_decompile_score', os.path.join(SCRIPT_DIR, 'decompile_score.py'))
+    ds = _ilu.module_from_spec(_ds_spec)
+    _ds_spec.loader.exec_module(ds)
+
+    gns = _load_generated_ns()
+    SYMBOLS = gns['SYMBOLS']
+    VERSION = gns['VERSION']
+    apply_structured_sig = gns['apply_structured_sig']
+    cp = gns['currentProgram']
+    fm = cp.getFunctionManager()
+    base = cp.getImageBase()
+    dtm = gns['dtm']
+    created = gns['created']
+
+    # Rebuild created[] from the live (type-applied) program so candidate sigs
+    # resolve to real struct types.
+    live = {}
+    for dt in dtm.getAllDataTypes():
+        live.setdefault(dt.getName(), dt)
+    for st in gns['STRUCTS']:
+        if st[0] in live:
+            created[st[0]] = live[st[0]]
+
+    apply_go = os.environ.get('CLVR_SIGCONFLICT', 'dry').lower() == 'go'
+    cap = int(os.environ.get('CLVR_SIGCONFLICT_MAX', '0') or 0)
+    vkey = {'svr': 'v', 'se': 's', 'ae': 'a'}.get(VERSION, 'a')
+    out_csv = IMPORT_PATH + '.sigconflict.csv'
+
+    decomp = DecompInterface()
+    decomp.openProgram(cp)
+
+    rows = []
+    evaluated = wins_cand = wins_exist = conflicts = 0
+    tx = cp.startTransaction('CommonLibVR signature conflict resolution')
+    try:
+        for s in SYMBOLS:
+            if s.get('t') != 'func':
+                continue
+            sd = s.get('sd')
+            if not sd:
+                continue
+            off = s.get(vkey)
+            if not off:
+                continue
+            addr = base.add(int(off))
+            f = fm.getFunctionAt(addr)
+            if f is None:
+                continue
+            src = f.getSignatureSource()
+            # Only challenge authoritative/curated incumbents; auto-inferred ones
+            # are already handled by run_symbols().
+            if src not in (SourceType.USER_DEFINED, SourceType.IMPORTED):
+                continue
+
+            # Snapshot, then build the candidate by applying it, to get its key.
+            snap = _snapshot_sig(f)
+            existing_key = _sig_key(f.getSignature())
+            existing_text = _decompile_text(decomp, f, gns['monitor'])
+            try:
+                apply_structured_sig(sd, s['n'], addr, fm)
+            except Exception:
+                continue
+            candidate_key = _sig_key(f.getSignature())
+            if candidate_key == existing_key:
+                _restore_sig(addr, snap, cp)   # no real conflict
+                continue
+            conflicts += 1
+            candidate_text = _decompile_text(decomp, f, gns['monitor'])
+
+            winner, se, sc = ds.choose_better(existing_text, candidate_text)
+            evaluated += 1
+            if winner == 'candidate':
+                wins_cand += 1
+                if not apply_go:
+                    _restore_sig(addr, snap, cp)  # dry-run: revert the trial
+            else:
+                wins_exist += 1
+                _restore_sig(addr, snap, cp)      # incumbent kept either way
+
+            rows.append((str(addr), s['n'],
+                         src.name() if hasattr(src, 'name') else str(src),
+                         se, sc, winner,
+                         'applied' if (winner == 'candidate' and apply_go) else 'kept-existing'))
+            if cap and conflicts >= cap:
+                break
+    finally:
+        cp.endTransaction(tx, True)
+        decomp.dispose()
+
+    with open(out_csv, 'w') as fh:
+        w = csv.writer(fh)
+        w.writerow(['address', 'name', 'incumbent_source',
+                    'existing_score', 'candidate_score', 'winner', 'action'])
+        for r in rows:
+            w.writerow(r)
+    print('Sig-conflict: %s. conflicts=%d evaluated=%d candidate_better=%d incumbent_better=%d'
+          % ('APPLIED' if apply_go else 'DRY-RUN', conflicts, evaluated, wins_cand, wins_exist))
+    print('Decision log: ' + out_csv)
+
+
 _PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
 if _PHASE == 'symbols':
     run_symbols()
+elif _PHASE == 'sigconflict':
+    run_sigconflict()
 else:
     run()
