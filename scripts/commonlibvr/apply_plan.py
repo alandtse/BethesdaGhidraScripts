@@ -20,6 +20,74 @@ ACTION = {
 }
 
 
+def split_qualified(name):
+    """Split a C++ qualified name on '::' at depth 0 only.
+
+    A naive name.split('::') corrupts template instantiations -- e.g.
+    'BSTArray<RE::TESForm>::push_back' must split to
+    ['BSTArray<RE::TESForm>', 'push_back'], NOT on the '::' inside the angle
+    brackets. We only split at '::' that sit outside any <>, (), [] nesting.
+
+    Operators (operator<<, operator()) appear only as the trailing leaf, after
+    every real class-level '::', so their unbalanced brackets do not affect the
+    class-path splits that precede them.
+    """
+    parts = []
+    depth = 0
+    cur = []
+    i = 0
+    n = len(name)
+    while i < n:
+        c = name[i]
+        if c in '<([':
+            depth += 1
+            cur.append(c)
+        elif c in '>)]':
+            if depth > 0:
+                depth -= 1
+            cur.append(c)
+        elif c == ':' and depth == 0 and i + 1 < n and name[i + 1] == ':':
+            parts.append(''.join(cur))
+            cur = []
+            i += 2
+            continue
+        else:
+            cur.append(c)
+        i += 1
+    parts.append(''.join(cur))
+    return parts
+
+
+def class_namespace_plan(name, class_names):
+    """Decide the namespace placement for a function whose name is a flat
+    'A::B::Method' string.
+
+    Returns None if the name has no qualifier (free function). Otherwise returns
+    (ns_chain, leaf, class_index) where:
+      ns_chain    = the qualifier components (everything before the leaf)
+      leaf        = the method/short name to set on the function
+      class_index = index into ns_chain that should be a GhidraClass (the class),
+                    or None if the qualifier is not a known class (treat all
+                    components as plain namespaces, e.g. a C++ namespace).
+
+    class_names is a set of known class names; both the full qualifier
+    ('A::B') and the leaf class component ('B') are accepted so a class is
+    recognised whether class_names stores full or short names.
+    """
+    parts = [p for p in split_qualified(name) if p]   # drop empty '::::' components
+    if len(parts) < 2:
+        return None
+    leaf = parts[-1]
+    if not leaf:
+        return None
+    ns_chain = parts[:-1]
+    qual_full = '::'.join(ns_chain)
+    class_index = None
+    if qual_full in class_names or ns_chain[-1] in class_names:
+        class_index = len(ns_chain) - 1
+    return (ns_chain, leaf, class_index)
+
+
 def enum_parent_key(category, name):
     """Parent-scoped match key for an enum: (last category component, leaf name),
     ignoring the root category (/CommonLibSSE, /CommonLibVR.pdb, /types.h, ...).

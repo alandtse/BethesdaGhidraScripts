@@ -131,6 +131,61 @@ def test_classify_enum_keep_on_size_diff():
     assert add == []
 
 
+def test_split_qualified_simple():
+    assert apply_plan.split_qualified('Actor::ClearData') == ['Actor', 'ClearData']
+    assert apply_plan.split_qualified('A::B::C') == ['A', 'B', 'C']
+    assert apply_plan.split_qualified('freefunc') == ['freefunc']
+
+
+def test_split_qualified_ignores_template_colons():
+    # the '::' inside <> must NOT split
+    assert apply_plan.split_qualified('BSTArray<RE::TESForm>::push_back') == \
+        ['BSTArray<RE::TESForm>', 'push_back']
+    assert apply_plan.split_qualified('NiTMap<RE::A::B, RE::C>::Find') == \
+        ['NiTMap<RE::A::B, RE::C>', 'Find']
+
+
+def test_split_qualified_destructor_and_nested_template():
+    assert apply_plan.split_qualified('NiPointer<RE::NiNode>::~NiPointer') == \
+        ['NiPointer<RE::NiNode>', '~NiPointer']
+    assert apply_plan.split_qualified('A::B<C<D::E>>::F') == ['A', 'B<C<D::E>>', 'F']
+
+
+def test_class_namespace_plan_known_class():
+    cn = {'Actor', 'BSGraphics::Renderer'}
+    ns, leaf, ci = apply_plan.class_namespace_plan('Actor::ClearData', cn)
+    assert ns == ['Actor'] and leaf == 'ClearData' and ci == 0
+    ns2, leaf2, ci2 = apply_plan.class_namespace_plan('BSGraphics::Renderer::Init', cn)
+    # 'Renderer' is the class (full 'BSGraphics::Renderer' known), BSGraphics is ns
+    assert ns2 == ['BSGraphics', 'Renderer'] and leaf2 == 'Init' and ci2 == 1
+
+
+def test_class_namespace_plan_unknown_is_namespace():
+    # a C++ namespace (not a class) -> class_index None, components stay namespaces
+    ns, leaf, ci = apply_plan.class_namespace_plan(
+        'XAPOBaseWaveHlpNameSpace::IsValidXmaWaveFormat', set())
+    assert ci is None and leaf == 'IsValidXmaWaveFormat'
+
+
+def test_class_namespace_plan_drops_empty_components():
+    # double-colon artifact 'Class::::Func1' must not yield an empty namespace
+    ns, leaf, ci = apply_plan.class_namespace_plan(
+        'SynchronizedQueue_IOTask::::Func1', {'SynchronizedQueue_IOTask'})
+    assert '' not in ns
+    assert ns == ['SynchronizedQueue_IOTask'] and leaf == 'Func1' and ci == 0
+
+
+def test_class_namespace_plan_free_function():
+    assert apply_plan.class_namespace_plan('malloc', {'Actor'}) is None
+
+
+def test_class_namespace_plan_template_class_not_missplit():
+    cn = {'BSTArray<RE::TESForm>'}
+    ns, leaf, ci = apply_plan.class_namespace_plan(
+        'BSTArray<RE::TESForm>::push_back', cn)
+    assert ns == ['BSTArray<RE::TESForm>'] and leaf == 'push_back' and ci == 0
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

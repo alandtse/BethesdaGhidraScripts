@@ -615,10 +615,184 @@ def run_sigconflict():
     print('Decision log: ' + out_csv)
 
 
+def run_classes():
+    """Class-population pass (OO namespaces + vftable wiring).
+
+    B) Reparent functions whose name is a flat 'Class::Method' string into a real
+       Ghidra namespace, creating a GhidraClass for the class component (so the
+       class browser + decompiler treat methods as members). Reuses any existing
+       (e.g. PDB-derived) class namespace; never reparents a name that is not a
+       flat qualified string.
+    A) Re-point a polymorphic struct's offset-0 `vftable` field at our generated
+       `<Class>_vtbl` (CommonLib FunctionDefinition slots) when it still points at
+       the PDB `__VFTable` or an untyped pointer, so virtual calls render as named
+       method calls. Most roots are already wired at import time; this fixes the
+       stragglers.
+
+    Dry-run by default; set CLVR_CLASSES=go to write. CLVR_CLASSES_MAX caps the
+    number of function reparents (0 = all).
+    """
+    from ghidra.program.model.symbol import SourceType
+
+    gns = _load_generated_ns()
+    STRUCTS = gns['STRUCTS']
+    VTABLES = gns['VTABLES']
+    dtm = gns['dtm']
+    cp = gns['currentProgram']
+    fm = cp.getFunctionManager()
+    st = cp.getSymbolTable()
+    global_ns = cp.getGlobalNamespace()
+
+    apply_go = os.environ.get('CLVR_CLASSES', 'dry').lower() == 'go'
+    cap = int(os.environ.get('CLVR_CLASSES_MAX', '0') or 0)
+
+    # Known class names (short): any generated struct or vtable class. Short names
+    # are enough to flag the leaf qualifier as a class for namespace planning.
+    class_names = set()
+    for stt in STRUCTS:
+        class_names.add(stt[0])
+    for vt in VTABLES:
+        class_names.add(vt[1].split('::')[-1])
+
+    ns_cache = {}
+
+    def get_ns(chain, class_index):
+        """Resolve/create the namespace chain; the component at class_index is a
+        GhidraClass, the rest plain namespaces. Existing namespaces are reused."""
+        key = '::'.join(chain)
+        if key in ns_cache:
+            return ns_cache[key]
+        parent = global_ns
+        for i, part in enumerate(chain):
+            sub = st.getNamespace(part, parent)
+            if sub is None and apply_go:
+                if i == class_index:
+                    sub = st.createClass(parent, part, SourceType.USER_DEFINED)
+                else:
+                    sub = st.createNameSpace(parent, part, SourceType.USER_DEFINED)
+            if sub is None:
+                sub = parent   # dry-run, or creation skipped
+            parent = sub
+        ns_cache[key] = parent
+        return parent
+
+    reparented = classes_seen = errors = 0
+    tx = cp.startTransaction('CommonLibVR class population')
+    sample = []
+    try:
+        # B: reparent flat Class::Method functions
+        from ghidra.util.exception import DuplicateNameException
+        for f in fm.getFunctions(True):
+            nm = f.getName()
+            if '::' not in nm:
+                continue
+            # compiler-generated, not real class methods (the '::' is in the data
+            # symbol they initialise) -- leave them alone.
+            if nm.startswith('_dynamic_initializer') or '_anonymous_namespace_' in nm:
+                continue
+            plan = apply_plan.class_namespace_plan(nm, class_names)
+            if plan is None:
+                continue
+            chain, leaf, class_index = plan
+            classes_seen += 1
+            if len(sample) < 12:
+                sample.append('%s -> %s::%s' % (nm[:40], '::'.join(chain), leaf))
+            if not apply_go:
+                reparented += 1
+                if cap and reparented >= cap:
+                    break
+                continue
+            try:
+                target_ns = get_ns(chain, class_index)
+                if target_ns is not global_ns:
+                    f.setParentNamespace(target_ns)
+                try:
+                    f.setName(leaf, SourceType.USER_DEFINED)
+                except DuplicateNameException:
+                    # leaf already taken in this namespace (overload/static) --
+                    # disambiguate with the address, matching the vtable-walk style.
+                    f.setName('%s_%X' % (leaf, f.getEntryPoint().getOffset()),
+                              SourceType.USER_DEFINED)
+                reparented += 1
+            except Exception:
+                errors += 1
+            if cap and reparented >= cap:
+                break
+
+        # C: promote any known-class component that exists as a plain Namespace
+        # to a GhidraClass, so OO features (class browser, this typing) apply.
+        # get_ns reuses pre-existing namespaces (PDB or prior passes) which may be
+        # plain Namespaces; convert them here regardless of reparenting.
+        from ghidra.app.util import NamespaceUtils
+        from ghidra.program.model.symbol import SymbolType
+        converted = 0
+        for cn in class_names:
+            for s in st.getSymbols(cn):
+                if s.getSymbolType() == SymbolType.NAMESPACE:
+                    if apply_go:
+                        try:
+                            NamespaceUtils.convertNamespaceToClass(s.getObject())
+                            converted += 1
+                        except Exception:
+                            errors += 1
+                    else:
+                        converted += 1
+
+        # A: re-point straggler vftable fields to our generated _vtbl.
+        # _load_generated_ns does not run type creation, so resolve the live
+        # `<name>_vtbl` struct from the program rather than the empty created[].
+        from java.util import ArrayList
+        rewired = 0
+        for stt in STRUCTS:
+            name, size, category, fields, bases, has_vtable = stt
+            if not has_vtable:
+                continue
+            _vl = ArrayList()
+            dtm.findDataTypes(name + '_vtbl', _vl)
+            vdt = None
+            for _i in range(_vl.size()):
+                _c = _vl.get(_i)
+                if _c.getClass().getSimpleName() == 'StructureDB':
+                    vdt = _c
+                    break
+            if vdt is None:
+                continue
+            dt = dtm.getDataType(CategoryPath(category), name)
+            if dt is None or dt.getNumComponents() == 0:
+                continue
+            c0 = dt.getComponent(0)
+            if c0.getFieldName() not in ('vftable', '__vftable', '_vftable'):
+                continue
+            tn = c0.getDataType().getName()
+            if '_vtbl' in tn:
+                continue   # already wired to ours
+            if not ('__VFTable' in tn or tn in ('void *', 'ulonglong', 'undefined8')):
+                continue   # leave anything else alone
+            if apply_go:
+                try:
+                    dt.replaceAtOffset(0, dtm.getPointer(vdt, 8), 8, c0.getFieldName(), '')
+                    rewired += 1
+                except Exception:
+                    errors += 1
+            else:
+                rewired += 1
+    finally:
+        cp.endTransaction(tx, True)
+
+    print('Classes: %s. flat-method functions=%d, reparented=%d, ns->class=%d, '
+          'vftable rewired=%d, errors=%d'
+          % ('APPLIED' if apply_go else 'DRY-RUN', classes_seen, reparented,
+             converted, rewired, errors))
+    for s in sample:
+        print('   ' + s)
+
+
 _PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
 if _PHASE == 'symbols':
     run_symbols()
 elif _PHASE == 'sigconflict':
     run_sigconflict()
+elif _PHASE == 'classes':
+    run_classes()
 else:
     run()
