@@ -910,6 +910,9 @@ def _infer_commonlib_script(program_name):
 # (applier_basename, [extra args]); the unified F4 applier accepts
 # ``--version`` so all five F4 variants share one entry point.
 _COMMONLIB_APPLY_SCRIPTS = {
+    'CommonLibImport_SE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'se']),
+    'CommonLibImport_AE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'ae']),
+    'CommonLibImport_VR.py':     ('apply_skyrim_to_user_project.py', ['--version', 'vr']),
     'CommonLibImport_F4_OG.py':  ('apply_f4_to_user_project.py',  ['--version', 'og']),
     'CommonLibImport_F4_NG.py':  ('apply_f4_to_user_project.py',  ['--version', 'ng']),
     'CommonLibImport_F4_AE.py':  ('apply_f4_to_user_project.py',  ['--version', 'ae']),
