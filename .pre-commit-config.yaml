@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: commonlibvr-tests
         name: commonlibvr unit tests
-        entry: python -m pytest scripts/commonlibvr/test_embed_structs.py -q
+        entry: python -m pytest scripts/commonlibvr/ -q
         language: system
         pass_filenames: false
         files: ^scripts/(commonlibvr|core)/

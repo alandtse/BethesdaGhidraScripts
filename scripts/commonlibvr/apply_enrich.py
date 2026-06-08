@@ -42,19 +42,13 @@ STAGING_CAT = '/CommonLibVR_staging'
 
 DRY_RUN = os.environ.get('CLVR_APPLY', 'dry').lower() != 'go'
 
-# status -> high-level action
-ACTION = {
-    'NEW': 'CREATE',
-    'MATCH': 'REUSE',
-    'GEN_EMPTY': 'REUSE',
-    'STUB_UPGRADE': 'REPLACE',
-    'EXTENDS': 'REPLACE',
-    'DIVERGENT': 'REPLACE',
-    'HANDCURATED': 'PROTECT',
-    'VFTABLE_LOSS': 'PROTECT',
-    'SUSPICIOUS': 'PROTECT',
-    'EMBED_BASE': 'PROTECT',
-}
+# Pure planning logic (no Ghidra deps) loaded by path so it works under MCP exec.
+import importlib.util as _ilu  # noqa: E402
+_ap_spec = _ilu.spec_from_file_location('clvr_apply_plan', os.path.join(SCRIPT_DIR, 'apply_plan.py'))
+apply_plan = _ilu.module_from_spec(_ap_spec)
+_ap_spec.loader.exec_module(apply_plan)
+ACTION = apply_plan.ACTION
+select_fill_targets = apply_plan.select_fill_targets
 
 
 def _load_generated_ns():
@@ -159,24 +153,25 @@ def run():
         # Phase 1: register created[] target for every struct + enum + vtable.
         # REUSE/PROTECT -> existing dt; CREATE -> shell in /types.h; REPLACE ->
         # staging shell (filled later, then swapped via replaceDataType).
-        staging = {}   # name -> (staging_dt, existing_dt)
-        for st in STRUCTS:
-            name, gsize, gcat, gfields, gbases, ghas_vt = st
-            c = classify(st, live)
-            action = ACTION.get(c['status'], 'PROTECT')
+        def _create_struct(name, size):
+            return dtm.addDataType(StructureDataType(CategoryPath(NEW_CAT), name, size), KEEP)
+
+        def _stage_struct(name, size, _existing):
+            sdt = StructureDataType(CategoryPath(STAGING_CAT), name, size)
+            return dtm.addDataType(sdt, DataTypeConflictHandler.REPLACE_HANDLER)
+
+        def _register(st, dt):
+            name, gcat = st[0], st[2]
             ns_alias = '::'.join(gcat.strip('/').split('/')[1:])
-            if action in ('REUSE', 'PROTECT'):
-                dt = c['best']
-            elif action == 'CREATE':
-                dt = dtm.addDataType(StructureDataType(CategoryPath(NEW_CAT), name, gsize), KEEP)
-            else:  # REPLACE -> staging
-                sdt = StructureDataType(CategoryPath(STAGING_CAT), name, gsize)
-                dt = dtm.addDataType(sdt, DataTypeConflictHandler.REPLACE_HANDLER)
-                staging[name] = (dt, c['best'])
             created[name] = dt
             created[gcat + '/' + name] = dt
             if ns_alias:
                 created[ns_alias + '::' + name] = dt
+
+        # fill_list/staging are tracked at creation time (NOT re-derived from
+        # created[], which the enum pass below also writes to) -- see apply_plan.
+        fill_list, staging = select_fill_targets(
+            STRUCTS, classify, live, _create_struct, _stage_struct, register=_register)
 
         # enums: reuse if a same-named enum exists anywhere, else create in /types.h
         EnumDataType = gns['EnumDataType']
@@ -202,23 +197,12 @@ def run():
         # vtable structs (NEW names like X_vtbl) -> create in /types.h
         _create_vtable_structs(gns, dtm, NEW_CAT)
 
-        # Phase 2: fill fields for CREATE shells + REPLACE staging shells.
-        replace_names = set(staging.keys())
-        for st in STRUCTS:
-            name, gsize, gcat, gfields, gbases, ghas_vt = st
-            target = created.get(name)
-            if target is None:
-                continue
-            # only fill things we own (created new or staged); never edit REUSE/PROTECT existing
-            is_create = (target.getCategoryPath().getPath() == NEW_CAT and name not in replace_names
-                         and target.getNumDefinedComponents() == 0)
-            if name in replace_names:
-                s = staging[name][0]
-            elif is_create:
-                s = target
-            else:
-                continue
-            _fill_struct(s, gsize, gfields, resolve_type, make_padding, _U16, _U32, _U64, _U8)
+        # Phase 2: fill fields for the shells WE created/staged (tracked explicitly
+        # in fill_list, so an enum sharing a struct's name can't redirect us).
+        for s, st in fill_list:
+            _gsize, _gfields = st[1], st[3]
+            _fill_struct(s, _gsize, _gfields, resolve_type, make_padding,
+                         _U16, _U32, _U64, _U8)
 
         # Phase 3: swap each staged replacement in for the existing type (rewires
         # all refs; function signatures preserved). updateCategoryPath=True moves
