@@ -74,7 +74,19 @@ def class_namespace_plan(name, class_names):
     class_names is a set of known class names; both the full qualifier
     ('A::B') and the leaf class component ('B') are accepted so a class is
     recognised whether class_names stores full or short names.
+
+    Also normalizes two non-'::' forms to the real Ghidra class scheme:
+      * IDA-style 'Class__Method' (double underscore, since IDA has no class
+        namespaces) -> 'Class::Method' when 'Class' is a known class.
+      * a redundant doubled class prefix in the leaf ('Class::Class_Method')
+        -> 'Class::Method'.
     """
+    # IDA-style Class__Method -> Class::Method (only when the head is a real class)
+    if '::' not in name and '__' in name:
+        head, _, rest = name.partition('__')
+        if rest and head in class_names:
+            name = head + '::' + rest
+
     parts = [p for p in split_qualified(name) if p]   # drop empty '::::' components
     if len(parts) < 2:
         return None
@@ -86,6 +98,10 @@ def class_namespace_plan(name, class_names):
     class_index = None
     if qual_full in class_names or ns_chain[-1] in class_names:
         class_index = len(ns_chain) - 1
+        cls = ns_chain[class_index]
+        # strip a redundant 'Class_' prefix the leaf sometimes carries
+        if leaf.startswith(cls + '_') and len(leaf) > len(cls) + 1:
+            leaf = leaf[len(cls) + 1:]
     return (ns_chain, leaf, class_index)
 
 

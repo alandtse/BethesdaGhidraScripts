@@ -683,17 +683,28 @@ def run_classes():
         # B: reparent flat Class::Method functions
         from ghidra.util.exception import DuplicateNameException
         for f in fm.getFunctions(True):
-            nm = f.getName()
-            if '::' not in nm:
+            # Full qualified name: catches flat 'Class::Method' strings, IDA-style
+            # 'Class__Method' (IDA has no class namespaces), AND a redundant doubled
+            # class prefix that only shows once the parent namespace is included
+            # (short name 'Class_Method' inside class Class).
+            nm = f.getName(True)
+            short = f.getName()
+            if '::' not in nm and '__' not in nm:
                 continue
-            # compiler-generated, not real class methods (the '::' is in the data
-            # symbol they initialise) -- leave them alone.
-            if nm.startswith('_dynamic_initializer') or '_anonymous_namespace_' in nm:
+            # compiler-generated, not real class methods -- leave them alone.
+            if short.startswith('_dynamic_initializer') or '_anonymous_namespace_' in nm:
                 continue
             plan = apply_plan.class_namespace_plan(nm, class_names)
             if plan is None:
                 continue
             chain, leaf, class_index = plan
+            # already correctly placed -> skip (avoids reprocessing the ~12k
+            # already-membered functions and re-suffixing their overloads). Holds
+            # for both class and plain-namespace parents, hence chain[-1].
+            cur_parent = f.getParentNamespace()
+            if (leaf == short and cur_parent is not global_ns
+                    and cur_parent.getName() == chain[-1]):
+                continue
             classes_seen += 1
             if len(sample) < 12:
                 sample.append('%s -> %s::%s' % (nm[:40], '::'.join(chain), leaf))

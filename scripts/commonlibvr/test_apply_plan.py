@@ -193,6 +193,29 @@ def test_class_namespace_plan_drops_empty_components():
     assert ns == ['SynchronizedQueue_IOTask'] and leaf == 'Func1' and ci == 0
 
 
+def test_ida_double_underscore_becomes_class_member():
+    # IDA-style Class__Method (no '::') -> Class::Method when Class is known
+    cn = {'BGSAttackData', 'BSStringPool'}
+    ns, leaf, ci = apply_plan.class_namespace_plan('BGSAttackData__Ctor', cn)
+    assert ns == ['BGSAttackData'] and leaf == 'Ctor' and ci == 0
+    ns2, leaf2, ci2 = apply_plan.class_namespace_plan('BSStringPool__DrainQueue', cn)
+    assert ns2 == ['BSStringPool'] and leaf2 == 'DrainQueue' and ci2 == 0
+
+
+def test_double_underscore_unknown_head_left_alone():
+    # head is not a known class -> not split (e.g. a Name__<addr> artifact)
+    assert apply_plan.class_namespace_plan('Update_RegenDelay__140620CC0', {'Actor'}) is None
+    assert apply_plan.class_namespace_plan('_helper_func_cdecl__1405C0870', {'Actor'}) is None
+
+
+def test_redundant_doubled_class_prefix_stripped():
+    # Class::Class_Method -> leaf Method
+    cn = {'MessageBoxMenu'}
+    ns, leaf, ci = apply_plan.class_namespace_plan(
+        'MessageBoxMenu::MessageBoxMenu_RemoveMessageFromQueue', cn)
+    assert ns == ['MessageBoxMenu'] and leaf == 'RemoveMessageFromQueue' and ci == 0
+
+
 def test_class_namespace_plan_free_function():
     assert apply_plan.class_namespace_plan('malloc', {'Actor'}) is None
 
