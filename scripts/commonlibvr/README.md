@@ -138,6 +138,29 @@ The program is modified **in-memory only** — the MCP/transaction layer can't s
 CommonLib in 429/913 conflicts (incl. 175/260 PDB overrides); phase 4 reparented ~14.3k
 functions and produced ~2k GhidraClasses.
 
+### 6. Scripts vs LLM-in-the-loop — division of labor
+The **scripts are the focus**: the deterministic, reproducible artifact others run. They decide
+everything rule-expressible — layouts, addresses, type/conflict classification, signature
+application, and the bulk of conflict resolution and class population. Re-running them on a fresh
+program reproduces that work.
+
+A residual tail is genuine **judgment** the scripts can't reliably call: e.g. signature conflicts
+where the two decompiles score within the margin, or dispositions that need reading the actual
+code. There each script stops at a **defensible default** (keep the incumbent) and emits a
+**decision log** (`<import>.sigconflict.csv`) so the picks are auditable. An LLM connected to
+Ghidra — directly, or by reading that log plus both decompilations — can finish those cases by
+reading the code. That step improves on the heuristic but is **not bit-reproducible**.
+
+Working rules:
+- **Fix the script when the failure is rule-expressible.** Fold the lesson back in so the
+  deterministic core gets better over time (e.g. "an undeclared incoming-register param is a
+  decisive signature defect" became a weight in `decompile_score`; static-method `this` handling
+  became a generator fix).
+- **Use the LLM for the irreducible-judgment tail**, and treat its applied corrections as
+  authoritative. Do **not** regenerate over them with a script just to be "pure" — the decision
+  logs keep LLM picks auditable, and a pure re-run can be *worse* (the heuristic is the fallback,
+  not the ground truth).
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
