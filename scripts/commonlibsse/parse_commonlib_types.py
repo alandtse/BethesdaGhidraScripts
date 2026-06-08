@@ -401,9 +401,18 @@ def main():
     print('Added {} new symbols from AE rename, merged AE offset into {} existing'.format(
         rename_added, rename_merged))
 
-    # SE PDB public symbols fallback
+    # SE PDB public symbols fallback.  Prefer the pdbparse-backed loader
+    # (rich, parses S_PUB32 records directly) but fall back to the
+    # llvm-pdbutil pretty --externals dump when pdbparse isn't available
+    # (e.g. Python 3.12+ where the ``construct`` dep won't install).
     se_pdb_path = os.path.join(PROJECT_DIR, 'extras', 'SkyrimSE.pdb')
     se_pdb_names = load_se_pdb_names(se_pdb_path)
+    if not se_pdb_names:
+        from pdb_publics_skyrim import load_pdb_names as _load_via_pretty
+        se_pdb_names = _load_via_pretty()
+        if se_pdb_names:
+            print('  Using llvm-pdbutil pretty fallback: {} publics'.format(
+                len(se_pdb_names)))
     pdb_added = pdb_merged = 0
     for se_off, name in se_pdb_names.items():
         if se_off in sym_seen_se:
