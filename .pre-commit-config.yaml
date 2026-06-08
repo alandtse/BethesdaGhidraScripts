@@ -1,0 +1,31 @@
+# Pre-commit baseline. Hygiene hooks run repo-wide (staged files only); the ruff
+# linter is currently scoped to the new scripts/commonlibvr/ module and is widened
+# across the rest of the tree incrementally as it is brought up to standard.
+#   install:  pre-commit install
+#   run all:  pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff
+        files: ^scripts/commonlibvr/
+
+  - repo: local
+    hooks:
+      - id: commonlibvr-tests
+        name: commonlibvr unit tests
+        entry: python -m pytest scripts/commonlibvr/test_embed_structs.py -q
+        language: system
+        pass_filenames: false
+        files: ^scripts/(commonlibvr|core)/

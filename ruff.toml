@@ -1,0 +1,10 @@
+# Baseline lint config. Default rule set (pyflakes F + pycodestyle E4/E7/E9) catches
+# real problems (unused imports/vars, undefined names, bare excepts). The compact
+# one-statement-per-line style (E701/E702) is used pervasively throughout this
+# codebase by design, so it is not flagged. Standards are tightened incrementally;
+# the pre-commit ruff hook is currently scoped to scripts/commonlibvr/.
+target-version = "py38"
+line-length = 120
+
+[lint]
+extend-ignore = ["E701", "E702"]
