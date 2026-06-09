@@ -236,8 +236,9 @@ def _load_text_block(program):
         n = min(CHUNK, size - off)
         buf = ByteArray(n)
         block.getBytes(start_addr.add(off), buf, 0, n)
-        for i in range(n):
-            out[off + i] = buf[i] & 0xff
+        # bytes(buf) uses JPype's buffer-protocol bulk-copy (C memcpy)
+        # instead of a per-byte Python loop -- ~100x faster for 37 MB.
+        out[off:off + n] = bytes(buf)
     return image_base, text_rva, bytes(out)
 
 
