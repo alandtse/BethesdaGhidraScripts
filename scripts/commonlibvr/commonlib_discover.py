@@ -21,6 +21,7 @@ Knobs (env): CLVR_DISCOVER_PER_CLASS (methods sampled per class, default 4),
 CLVR_DISCOVER_MAX_CLASSES (0 = all), CLVR_DISCOVER_FOLLOW (1 = follow into called
 functions for deeper inference, slower; default 0).
 """
+import collections
 import csv
 import os
 
@@ -98,10 +99,18 @@ def run():
 
     observations = []
     classes_done = funcs_done = 0
+    total_classes = min(len(by_class), MAX_CLASSES) if MAX_CLASSES else len(by_class)
+    print('Discovery: %d structs have unknown fields; %d of them have typed methods to mine.'
+          % (len(unk_by_class), len(by_class)))
     for cl, fns in by_class.items():
         if MAX_CLASSES and classes_done >= MAX_CLASSES:
             break
         classes_done += 1
+        if classes_done % 25 == 0 or classes_done == total_classes:
+            monitor.setMessage('discover %d/%d classes, %d fields' % (  # noqa: F821
+                classes_done, total_classes, len(observations)))
+            print('  [%d/%d classes] functions=%d observations=%d'
+                  % (classes_done, total_classes, funcs_done, len(observations)))
         offs = unk_by_class[cl]
         for f in fns[:PER_CLASS]:
             try:
@@ -136,10 +145,19 @@ def run():
             w.writerow([cls, '0x%X' % off, cur, typ, conf, votes, total])
 
     high = sum(1 for r in rows if r[4] == 'high')
+    named = sum(1 for r in rows if r[3] not in dp.GENERIC_TYPES)
+    classes_with_hits = len({r[0] for r in rows})
+    per_class = collections.Counter(r[0] for r in rows)
     dt_after = dtm.getDataTypeCount(True)
-    print('Discovery (%s): classes=%d functions=%d -> %d candidate fields (%d high-confidence)'
-          % (cp.getName(), classes_done, funcs_done, len(rows), high))
-    print('  NON-DESTRUCTIVE check: data types %d -> %d (%s)'
+    print('\n=== Discovery summary (%s) ===' % cp.getName())
+    print('  classes mined=%d  functions analyzed=%d' % (classes_done, funcs_done))
+    print('  candidate fields=%d  (high-confidence=%d, named-type=%d, size-only=%d)'
+          % (len(rows), high, named, len(rows) - named))
+    print('  classes with >=1 discovery=%d / %d unknown-bearing'
+          % (classes_with_hits, len(unk_by_class)))
+    print('  top classes by yield: %s'
+          % ', '.join('%s(%d)' % (c, n) for c, n in per_class.most_common(6)))
+    print('  NON-DESTRUCTIVE: data types %d -> %d (%s)'
           % (dt_before, dt_after, 'unchanged' if dt_before == dt_after else 'CHANGED!'))
     print('  -> ' + OUT_CSV)
 
