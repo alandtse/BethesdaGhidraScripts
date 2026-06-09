@@ -75,6 +75,7 @@ def run():
                 continue
             if parent.getSymbol().getSymbolType() != SymbolType.CLASS:
                 continue
+            from ghidra.program.model.data import Pointer
             cls = parent.getName()
             leaf = _DUP.sub('', f.getName())
             struct = dtm.getDataType(CategoryPath('/types.h'), cls)
@@ -82,8 +83,12 @@ def run():
             src = f.getSignatureSource()
             srcname = src.name() if hasattr(src, 'name') else str(src)
             is_static = static_of.get(cls + '::' + leaf, False)
+            ps0 = f.getParameters()
+            dt0 = ps0[0].getDataType() if ps0 else None
+            has_this = dt0 is not None and isinstance(dt0, Pointer) and not sp.is_untyped(dt0.getName())
 
-            action, reason = sp.should_set_thiscall(struct is not None, leaf, conv, srcname, is_static)
+            action, reason = sp.should_set_thiscall(
+                struct is not None, leaf, conv, srcname, is_static, has_this)
             if action == 'skip':
                 skipped += 1
                 reasons[reason] = reasons.get(reason, 0) + 1

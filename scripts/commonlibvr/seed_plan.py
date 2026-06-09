@@ -26,7 +26,8 @@ def is_untyped(typename):
     return t == '' or t.startswith('undefined') or t == 'void'
 
 
-def should_set_thiscall(class_known, leaf, current_convention, sig_source, is_static):
+def should_set_thiscall(class_known, leaf, current_convention, sig_source,
+                        is_static, already_has_typed_this):
     """Decide whether to make a function a `__thiscall` member. Returns
     (action, reason) where action is 'set' or 'skip'.
 
@@ -39,9 +40,16 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source, is_st
       class_known         a /types.h struct for the class exists (so auto-this can
                           resolve a type)
       leaf                method short name (to exclude operators/lambdas)
-      current_convention  the function's calling convention name ('__fastcall'...)
-      sig_source          'IMPORTED'/'USER_DEFINED'/'ANALYSIS'/'DEFAULT'
-      is_static           the method is static (no `this`) -- from CommonLib if known
+      current_convention   the function's calling convention name ('__fastcall'...)
+      sig_source           'IMPORTED'/'USER_DEFINED'/'ANALYSIS'/'DEFAULT'
+      is_static            the method is static (no `this`) -- from CommonLib if known
+      already_has_typed_this  param-0 is already a typed (class) pointer
+
+    CRITICAL: setting __thiscall on a function that ALREADY has an explicit typed
+    `this` makes Ghidra insert a SECOND auto-this and shift every parameter's
+    storage down a register (verified). So skip anything that already has a typed
+    `this` -- it's already correct; only set __thiscall where the `this` slot is
+    empty/untyped.
     """
     if is_static:
         return ('skip', 'static-no-this')
@@ -51,6 +59,8 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source, is_st
         return ('skip', 'operator-or-lambda')
     if sig_source in _PROTECTED_SOURCES:
         return ('skip', 'protected-source')   # never touch PDB / hand-curated
+    if already_has_typed_this:
+        return ('skip', 'already-has-this')   # avoid double-this / storage shift
     if current_convention == '__thiscall':
         return ('skip', 'already-thiscall')
     return ('set', 'ok')

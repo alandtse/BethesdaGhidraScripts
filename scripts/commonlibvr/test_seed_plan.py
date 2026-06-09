@@ -22,27 +22,33 @@ def test_is_untyped():
 
 
 def test_set_thiscall_when_unprotected_non_thiscall():
-    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'ANALYSIS', False)[0] == 'set'
-    assert sp.should_set_thiscall(True, 'ClearData', '__cdecl', 'DEFAULT', False)[0] == 'set'
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'ANALYSIS', False, False)[0] == 'set'
+    assert sp.should_set_thiscall(True, 'ClearData', '__cdecl', 'DEFAULT', False, False)[0] == 'set'
     # constructors/destructors take a this too
-    assert sp.should_set_thiscall(True, '~Actor', '__fastcall', 'ANALYSIS', False)[0] == 'set'
+    assert sp.should_set_thiscall(True, '~Actor', '__fastcall', 'ANALYSIS', False, False)[0] == 'set'
 
 
 def test_skip_protected_source():
-    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'IMPORTED', False) == \
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'IMPORTED', False, False) == \
         ('skip', 'protected-source')
-    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False)[0] == 'skip'
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False, False)[0] == 'skip'
+
+
+def test_skip_already_has_this():
+    # already has a typed this -> setting __thiscall would double it; must skip
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'ANALYSIS', False, True) == \
+        ('skip', 'already-has-this')
 
 
 def test_skip_already_thiscall():
-    assert sp.should_set_thiscall(True, 'ClearData', '__thiscall', 'ANALYSIS', False) == \
+    assert sp.should_set_thiscall(True, 'ClearData', '__thiscall', 'ANALYSIS', False, False) == \
         ('skip', 'already-thiscall')
 
 
 def test_skip_static_operator_unknown_class():
-    assert sp.should_set_thiscall(True, 'GetSingleton', '__fastcall', 'ANALYSIS', True)[0] == 'skip'
-    assert sp.should_set_thiscall(True, 'operator==', '__fastcall', 'ANALYSIS', False)[0] == 'skip'
-    assert sp.should_set_thiscall(False, 'ClearData', '__fastcall', 'ANALYSIS', False) == \
+    assert sp.should_set_thiscall(True, 'GetSingleton', '__fastcall', 'ANALYSIS', True, False)[0] == 'skip'
+    assert sp.should_set_thiscall(True, 'operator==', '__fastcall', 'ANALYSIS', False, False)[0] == 'skip'
+    assert sp.should_set_thiscall(False, 'ClearData', '__fastcall', 'ANALYSIS', False, False) == \
         ('skip', 'class-type-not-found')
 
 
