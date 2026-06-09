@@ -185,7 +185,30 @@ mapped). CommonLib is iterative -- a symbol may start SE/AE-only and gain a VR o
 Run: `python writeback_aggregate.py [import_dir] [out_csv]`. Validated: 263 RUNTIME_SPECIFIC /
 79 RECONCILE / 90 APPLY_GAP, with the AE PDB intake the systematically noisiest source.
 
-### 8. Scripts vs LLM-in-the-loop — division of labor
+### 8. Discovery cycle — bootstrap Ghidra to find net-new RE (`commonlib_discover.py`)
+The point of the bootstrap is not to re-export what CommonLib already knows -- it is to let
+Ghidra's OWN tools discover what CommonLib doesn't, *because* the typed scaffold gives them anchors
+to reason from. `commonlib_discover.py` drives Ghidra's decompiler dataflow inference
+(`FillOutStructureHelper`, the engine behind "Auto Fill Out Structure") to infer field types at the
+offsets CommonLib still marks `unkNN`:
+
+- For each `/types.h` struct with unknown pointer-sized fields, it samples functions whose param-0 is
+  that type (i.e. anything enrichment gave a typed `this` -- not just CommonLib's id-bound symbols,
+  which is what scales the yield), runs read-only structure inference, and records the inferred type
+  at each `unk` offset. `discover_plan` ranks them (a named type beats a size-only `ulonglong`;
+  consensus across functions raises confidence).
+- **NON-DESTRUCTIVE**: `processStructure` returns an in-memory `Structure`; nothing is applied to the
+  program (asserted: data-type count unchanged). It only writes `<import>.discovered_fields.csv`.
+
+This closes the loop and **compounds**: feed the discovered fields back to CommonLib, re-import, and
+the now-typed field lets the decompiler propagate one level deeper next pass. Validated on SE: 60
+classes / 92 functions -> 171 candidate fields, 142 high-confidence (e.g. `TESObjectCELL +0xB0 ->
+TESForm*` x3, `CombatInventory +0xB0 -> BSTArray<TESForm*>`, `UI3DSceneManager +0x10 ->
+NiPointer<BSShaderAccumulator>`) -- and only 60 of 217 unknown-bearing classes had typed methods this
+pass, so coverage grows every cycle. Knobs: `CLVR_DISCOVER_PER_CLASS`, `CLVR_DISCOVER_FOLLOW=1`
+(follow into callees, deeper + slower), `CLVR_DISCOVER_MAX_CLASSES`.
+
+### 9. Scripts vs LLM-in-the-loop — division of labor
 The **scripts are the focus**: the deterministic, reproducible artifact others run. They decide
 everything rule-expressible — layouts, addresses, type/conflict classification, signature
 application, and the bulk of conflict resolution and class population. Re-running them on a fresh
