@@ -184,9 +184,13 @@ def _convert_one(type_str: str, field_size: int, known_structs: Set[str],
         inner_pipeline = _convert_one(inner, elem_size, known_structs, known_enums, typedefs)
         # ghidra_import_gen.resolve_type uses rfind(':') to split off the
         # count, so ``arr:struct:Foo<Bar>:N`` works.  Only fall back when
-        # the inner type ITSELF is already a bytes:N or arr:... form.
-        if inner_pipeline.startswith('bytes:') or inner_pipeline.startswith('arr:'):
-            return f'bytes:{field_size}'
+        # the inner type ITSELF is already a bytes:N / arr:... form, OR
+        # when it's ``void`` (Ghidra rejects ArrayDataType(VoidDataType,
+        # N, 0) -- "Data type may not report a length less than 1").
+        if (inner_pipeline.startswith('bytes:')
+                or inner_pipeline.startswith('arr:')
+                or inner_pipeline == 'void'):
+            return f'bytes:{field_size}' if field_size > 0 else 'u8'
         return f'arr:{inner_pipeline}:{count}'
 
     # Primitive match (case-sensitive first, then lowered)
@@ -368,8 +372,9 @@ def convert_pdb_types(json_path: Path, enums_json_path: Path = None,
                 inner_type = _convert_one(fld['type'],
                                           fsize // count if count > 0 else 0,
                                           known_structs, known_enums, typedefs)
-                if count > 0 and not inner_type.startswith('bytes:') \
-                   and not inner_type.startswith('arr:'):
+                if (count > 0 and not inner_type.startswith('bytes:')
+                        and not inner_type.startswith('arr:')
+                        and inner_type != 'void'):
                     ftype = f'arr:{inner_type}:{count}'
                 else:
                     ftype = f'bytes:{fsize}' if fsize > 0 else 'u8'

@@ -117,23 +117,44 @@ def _read_se_pdb_publics() -> dict[str, int]:
     return out
 
 
-def _find_program(root, hints: list[str]):
+def _find_program(root, hints: list[str], exact_path: str | None = None):
+    """Find one program by hint substrings OR by exact path.
+
+    ``exact_path`` (e.g. ``/Skyrim/SkyrimAE_1_6_1170.exe``) bypasses hint
+    matching entirely -- useful when two binaries share the same hints
+    (Steam vs GOG) and the user wants a specific one.  Returns
+    ``(full_path, domain_file)`` on a single match, ``None`` otherwise.
+    """
     matches = []
 
     def walk(folder, prefix=""):
         for f in folder.getFiles():
             n = f.getName()
             full = prefix + "/" + n
-            if not n.lower().endswith('.exe'):
-                continue
-            if any(h in full.lower() for h in hints):
-                matches.append((full, f))
+            if exact_path is not None:
+                if full == exact_path:
+                    matches.append((full, f))
+            else:
+                if not n.lower().endswith('.exe'):
+                    continue
+                if any(h in full.lower() for h in hints):
+                    matches.append((full, f))
         for sub in folder.getFolders():
             walk(sub, prefix + "/" + sub.getName())
 
     walk(root)
     if len(matches) == 1:
         return matches[0]
+    if exact_path is not None and len(matches) == 0:
+        return None
+    if len(matches) > 1:
+        # Log to help the caller disambiguate (no auto-pick to avoid
+        # silently writing back to the wrong binary).
+        print(f"  AMBIGUOUS: {len(matches)} candidates matched "
+              f"{'hint' if exact_path is None else 'exact path'}; pick one "
+              f"via --source-path / --target-paths:")
+        for path, _ in matches:
+            print(f"    {path}")
     return None
 
 
@@ -279,6 +300,15 @@ def main():
     ap.add_argument('--targets', nargs='+', default=['ae', 'vr'],
                     choices=sorted(VERSIONS),
                     help="Target variants (default: ae, vr)")
+    ap.add_argument('--source-path', default=None,
+                    help="Exact source program path in the project "
+                         "(overrides version-hint disambiguation)")
+    ap.add_argument('--target-paths', nargs='+', default=None,
+                    metavar='VER=PATH',
+                    help="Exact target program path(s) keyed by version, e.g. "
+                         "ae=/Skyrim/SkyrimAE_1_6_1170.exe (use to skip "
+                         "version-hint disambiguation when multiple binaries "
+                         "match -- typical with Steam + GOG)")
     ap.add_argument('--write-back-script', action='store_true',
                     help="ALSO merge ported (name, target_rva) pairs into the "
                          "target's CommonLibImport_<VER>.py SYMBOLS array so "
@@ -290,6 +320,19 @@ def main():
 
     if args.source in args.targets:
         args.targets = [t for t in args.targets if t != args.source]
+
+    # Parse --target-paths VER=PATH overrides into {version: path}
+    target_path_overrides: dict[str, str] = {}
+    if args.target_paths:
+        for spec in args.target_paths:
+            if '=' not in spec:
+                print(f"  WARNING: --target-paths entry {spec!r} lacks '='; ignoring")
+                continue
+            ver, path = spec.split('=', 1)
+            if ver not in VERSIONS:
+                print(f"  WARNING: unknown version {ver!r} in --target-paths; ignoring")
+                continue
+            target_path_overrides[ver] = path
 
     src_names = _read_symbols_from_script(args.source)
     print(f"Source: Skyrim {args.source.upper()}")
@@ -314,7 +357,7 @@ def main():
         root = project.getProjectData().getRootFolder()
 
         src_hint = VERSIONS[args.source][1]
-        src_match = _find_program(root, src_hint)
+        src_match = _find_program(root, src_hint, exact_path=args.source_path)
         if src_match is None:
             print(f"ERROR: source Skyrim {args.source.upper()} program not found in project.")
             sys.exit(1)
@@ -332,7 +375,8 @@ def main():
         grand_total = 0
         for tgt in args.targets:
             tgt_hint = VERSIONS[tgt][1]
-            tgt_match = _find_program(root, tgt_hint)
+            tgt_match = _find_program(root, tgt_hint,
+                                      exact_path=target_path_overrides.get(tgt))
             if tgt_match is None:
                 print(f"\n  {tgt.upper()}: program not found in project — skip")
                 continue
