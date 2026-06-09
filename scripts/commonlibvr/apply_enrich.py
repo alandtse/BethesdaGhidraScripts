@@ -798,6 +798,29 @@ def run_classes():
         print('   ' + s)
 
 
+def run_thiscall():
+    """Post-classes phase: normalize class members to proper `__thiscall` (delegates
+    to seed_this.py).
+
+    MUST run AFTER run_classes(): the GhidraClass<->struct association that pass
+    creates is what lets `__thiscall` auto-TYPE the `this` param. The symbols phase
+    deliberately leaves members as `__fastcall`-with-explicit-`this` (a typed `this`
+    helps the sigconflict decompile scoring, and at symbols time the class
+    association does not exist yet); this phase converts that explicit `this` to the
+    correct `__thiscall` convention and seeds a typed `this` on the non-id-bound
+    tail (vtable-walk-named / reparented functions).
+
+    Dry-run by default; set CLVR_SEED=go to apply (per seed_this.py). Decision logic
+    is in seed_plan.py (unit-tested). Reads the same CLVR_IMPORT / CLVR_SCRIPT_DIR.
+    """
+    path = os.path.join(SCRIPT_DIR, 'seed_this.py')
+    g = dict(globals())
+    g['__name__'] = '__main__'
+    with open(path) as fh:
+        code = fh.read()
+    exec(compile(code, path, 'exec'), g)
+
+
 _PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
 if _PHASE == 'symbols':
     run_symbols()
@@ -805,5 +828,7 @@ elif _PHASE == 'sigconflict':
     run_sigconflict()
 elif _PHASE == 'classes':
     run_classes()
+elif _PHASE == 'thiscall':
+    run_thiscall()
 else:
     run()

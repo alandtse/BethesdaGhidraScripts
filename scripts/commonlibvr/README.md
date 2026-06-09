@@ -128,9 +128,15 @@ idempotent, and each is **dry-run by default** with its own `*=go` flag to write
 | 2 | `symbols` | label + name FUN_/sub_ functions, apply CommonLib sigs, vtable-slot + fallback naming. Upgrades auto-inferred (DEFAULT/ANALYSIS) sigs; never clobbers USER_DEFINED/IMPORTED | (writes in-txn) |
 | 3 | `sigconflict` | where a CommonLib sig **differs** from an existing USER_DEFINED/IMPORTED one, decompile both ways and keep the cleaner (`decompile_score`) | `CLVR_SIGCONFLICT=go` |
 | 4 | `classes` | reparent flat `Class::Method` names into namespaces, create/promote GhidraClass per class, re-point straggler vftable fields | `CLVR_CLASSES=go` |
+| 5 | `thiscall` | normalize class members to proper `__thiscall` (delegates to `seed_this.py`): convert the `__fastcall`-with-explicit-`this` the symbols phase applies into `__thiscall` (auto-typed `this`), and seed a typed `this` on the non-id-bound tail | `CLVR_SEED=go` |
 
-Phase 3 writes a decision CSV (`<import>.sigconflict.csv`); `CLVR_SIGCONFLICT_MAX` caps the
-count. Phase 4 `CLVR_CLASSES_MAX` caps reparents. Pure decision logic is unit-tested
+Phase 5 **must** follow phase 4 — the GhidraClass↔struct association `classes` creates is what lets
+`__thiscall` auto-type `this`. The symbols phase deliberately leaves members as
+`__fastcall`-with-explicit-`this` (a typed `this` helps phase 3's decompile scoring, and the class
+association doesn't exist yet at symbols time); phase 5 is where that becomes the correct convention.
+See §10 for the mechanism, the `this-type-mismatch`/struct-return guards, and the
+nested-transaction rule. Phase 3 writes a decision CSV (`<import>.sigconflict.csv`);
+`CLVR_SIGCONFLICT_MAX` caps the count. Phase 4 `CLVR_CLASSES_MAX` caps reparents. Pure decision logic is unit-tested
 (`pytest scripts/commonlibvr/` — `apply_plan`, `decompile_score`); pre-commit runs ruff + these.
 
 The program is modified **in-memory only** — the MCP/transaction layer can't save, so
