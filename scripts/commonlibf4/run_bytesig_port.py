@@ -296,6 +296,10 @@ def run(targets: list[str]) -> None:
 
     src_rvas = list(name_to_src_rva.items())
 
+    # Cache masked source signatures across the target loop -- Capstone
+    # disasm of N source RVAs is otherwise repeated per target.
+    src_sig_cache_ae: dict[int, tuple] = {}
+
     for tgt in targets:
         if tgt == src_ver:
             continue  # don't port a binary to itself
@@ -327,7 +331,8 @@ def run(targets: list[str]) -> None:
                 ported2, stats2 = port_symbols(
                     unmatched, src_text_rva, src_text,
                     tgt_text_rva, tgt_text, tgt_idx,
-                    window=48, prefix_k=6, masked=True, progress_every=0)
+                    window=48, prefix_k=6, masked=True, progress_every=0,
+                    src_sig_cache=src_sig_cache_ae)
                 ported.extend(ported2)
                 print(f"    masked: ok={stats2['ok']:,} "
                       f"no_prefix={stats2['no_prefix']:,} "
@@ -361,6 +366,9 @@ def run(targets: list[str]) -> None:
     print(f"    .text RVA={src221_text_rva:#x} size={len(src221_text):,}")
     src221_rvas = list(pdb_names.items())
 
+    # Same cache trick for the 221-source pass.
+    src_sig_cache_221: dict[int, tuple] = {}
+
     for tgt in targets:
         if tgt == "221":
             continue  # already named directly by parse_commonlib_types
@@ -388,7 +396,8 @@ def run(targets: list[str]) -> None:
                 ported2, stats2 = port_symbols(
                     unmatched, src221_text_rva, src221_text,
                     tgt_text_rva, tgt_text, tgt_idx,
-                    window=48, prefix_k=6, masked=True, progress_every=0)
+                    window=48, prefix_k=6, masked=True, progress_every=0,
+                    src_sig_cache=src_sig_cache_221)
                 ported.extend(ported2)
                 print(f"    masked: ok={stats2['ok']:,} "
                       f"no_prefix={stats2['no_prefix']:,} "

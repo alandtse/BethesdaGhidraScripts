@@ -60,7 +60,22 @@ APPLY_STEPS = [
       "--program-path", "/Skyrim/SkyrimVR_1_4_15.exe"]),
     ("Skyrim SE -> AE/VR bytesig port + write-back",
      "commonlibsse/bytesig_port_combined.py",
-     ["--write-back-script"]),
+     # --target-paths so the Steam AE binary is picked unambiguously
+     # (Combined.gpr also has a GOG Edition AE that matches the broader
+     # 'skyrimae' hints).  --no-apply because the in-place renames have
+     # already been done by the prior run -- we only want the write-back.
+     ["--write-back-script",
+      "--no-apply",
+      "--target-paths",
+      "ae=/Skyrim/SkyrimAE_1_6_1170.exe",
+      "vr=/Skyrim/SkyrimVR_1_4_15.exe"]),
+    ("F4 221 -> OG/NG/AE/VR bytesig port + write-back",
+     "commonlibf4/bytesig_port_combined.py",
+     # The earlier exes/-based run_bytesig_port already did 221->AE +
+     # AE->221 script merges via run_bytesig_port.py.  This Combined
+     # variant covers OG/NG/VR (binaries not on disk for the standalone
+     # run) and also lets the 221 PDB pool reach AE in-place.
+     ["--write-back-script", "--no-apply"]),
     # A: FNV (PC build only -- Xbox debug build is PowerPC, skip)
     ("FNV apply",
      "apply_fnv_to_user_project.py",

@@ -264,7 +264,10 @@ def _merge_into_target_script(target: str, ported: list[tuple[str, int]],
 
 
 def _port_pair(src_name_to_rva, src_text_rva, src_text,
-               tgt_text_rva, tgt_text):
+               tgt_text_rva, tgt_text, src_sig_cache=None):
+    """Match source symbols into target.  ``src_sig_cache`` is a dict
+    persisted across target loops so Capstone disassembly is only done
+    once per source RVA, not once per (source, target) pair."""
     src_pairs = list(src_name_to_rva.items())
     tgt_idx = build_prefix_index(tgt_text, k=6)
     ported, stats = port_symbols(
@@ -281,7 +284,8 @@ def _port_pair(src_name_to_rva, src_text_rva, src_text,
             ported2, stats2 = port_symbols(
                 unmatched, src_text_rva, src_text,
                 tgt_text_rva, tgt_text, tgt_idx,
-                window=48, prefix_k=6, masked=True, progress_every=0)
+                window=48, prefix_k=6, masked=True, progress_every=0,
+                src_sig_cache=src_sig_cache)
             ported.extend(ported2)
             print(f"    masked: ok={stats2['ok']:,} "
                   f"no_prefix={stats2['no_prefix']:,} "
@@ -373,6 +377,9 @@ def main():
             src_prog.release(consumer)
 
         grand_total = 0
+        # Cache for masked-source signatures so Capstone disasm happens
+        # once per source RVA, shared across the target loop.
+        src_sig_cache: dict[int, tuple] = {}
         for tgt in args.targets:
             tgt_hint = VERSIONS[tgt][1]
             tgt_match = _find_program(root, tgt_hint,
@@ -389,7 +396,8 @@ def main():
                 print(f"  target .text rva={tgt_text_rva:#x} size={len(tgt_text):,}")
                 print("  Pass 1: exact 32-byte match ...")
                 ported = _port_pair(src_names, src_text_rva, src_text,
-                                    tgt_text_rva, tgt_text)
+                                    tgt_text_rva, tgt_text,
+                                    src_sig_cache=src_sig_cache)
                 if not ported:
                     print("  no matches — nothing to apply")
                     continue
