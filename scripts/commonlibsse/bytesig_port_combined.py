@@ -188,6 +188,60 @@ def _rename_in_program(program, ported: list[tuple[str, int]]) -> dict[str, int]
     return stats
 
 
+def _merge_into_target_script(target: str, ported: list[tuple[str, int]],
+                                src_tag: str) -> int:
+    """Merge (name, target_rva) entries into CommonLibImport_<TARGET>.py's
+    SYMBOLS array.  Mirrors commonlibf4/run_bytesig_port._merge_into_script
+    but with the Skyrim ``s``/``a``/``v`` RVA keys.
+
+    Tolerates either raw-JSON or _json_sym.loads-wrapped SYMBOLS literal.
+    Re-emits the wrapped form so JSON booleans round-trip safely.
+    """
+    rva_key = VERSION_TO_RVA_KEY[target]
+    script_name = VERSIONS[target][0]
+    p = GENERATED / script_name
+    if not p.is_file():
+        print(f"  {script_name}: not found, skipping write-back")
+        return 0
+    content = p.read_text(encoding="utf-8")
+    m = re.search(r"^SYMBOLS = (.+?)$", content, re.M)
+    if not m:
+        print(f"  {script_name}: no SYMBOLS array, skipping write-back")
+        return 0
+    val = m.group(1).strip()
+    wrap = _JSON_LOADS_RE.match(val)
+    if wrap is not None:
+        syms = json.loads(ast.literal_eval(wrap.group(1)))
+    else:
+        syms = json.loads(val)
+
+    by_name = {s["n"]: s for s in syms if s.get("t") == "func"}
+    added = augmented = 0
+    for name, rva in ported:
+        existing = by_name.get(name)
+        if existing is not None:
+            if rva_key not in existing:
+                existing[rva_key] = rva
+                existing.setdefault("src_bytesig", src_tag)
+                augmented += 1
+            continue
+        syms.append({
+            "n": name, "t": "func", "sig": "",
+            rva_key: rva, "src": src_tag,
+        })
+        added += 1
+    if added == 0 and augmented == 0:
+        print(f"  {script_name}: no new SYMBOLS to merge")
+        return 0
+    symbols_json = json.dumps(syms, separators=(",", ":"))
+    new_blob = "SYMBOLS = _json_sym.loads(" + repr(symbols_json) + ")"
+    content = content[:m.start()] + new_blob + content[m.end():]
+    p.write_text(content, encoding="utf-8")
+    print(f"  {script_name}: merged {augmented} augmented + {added} new "
+          f"entries ({len(ported)} ported)")
+    return augmented + added
+
+
 def _port_pair(src_name_to_rva, src_text_rva, src_text,
                tgt_text_rva, tgt_text):
     src_pairs = list(src_name_to_rva.items())
@@ -225,6 +279,13 @@ def main():
     ap.add_argument('--targets', nargs='+', default=['ae', 'vr'],
                     choices=sorted(VERSIONS),
                     help="Target variants (default: ae, vr)")
+    ap.add_argument('--write-back-script', action='store_true',
+                    help="ALSO merge ported (name, target_rva) pairs into the "
+                         "target's CommonLibImport_<VER>.py SYMBOLS array so "
+                         "the renames survive project resets / re-applies")
+    ap.add_argument('--no-apply', action='store_true',
+                    help="Skip the in-Ghidra rename pass (useful with "
+                         "--write-back-script when names are already applied)")
     args = ap.parse_args()
 
     if args.source in args.targets:
@@ -288,19 +349,25 @@ def main():
                 if not ported:
                     print("  no matches — nothing to apply")
                     continue
-                print(f"  Applying {len(ported):,} renames to {tgt_path} ...")
-                tx = tgt_prog.startTransaction(
-                    f"bytesig port {args.source}->{tgt}")
-                try:
-                    stats = _rename_in_program(tgt_prog, ported)
-                finally:
-                    tgt_prog.endTransaction(tx, True)
-                print(f"  renamed={stats['renamed']:,} "
-                      f"already_named={stats['already_named']:,} "
-                      f"no_func={stats['no_func']:,} "
-                      f"errored={stats['errored']:,}")
-                grand_total += stats['renamed']
-                tgt_prog.save(f"bytesig port {args.source}->{tgt}", monitor)
+                if args.no_apply:
+                    print(f"  --no-apply: skipping in-Ghidra rename pass "
+                          f"({len(ported):,} would-be renames)")
+                else:
+                    print(f"  Applying {len(ported):,} renames to {tgt_path} ...")
+                    tx = tgt_prog.startTransaction(
+                        f"bytesig port {args.source}->{tgt}")
+                    try:
+                        stats = _rename_in_program(tgt_prog, ported)
+                    finally:
+                        tgt_prog.endTransaction(tx, True)
+                    print(f"  renamed={stats['renamed']:,} "
+                          f"already_named={stats['already_named']:,} "
+                          f"no_func={stats['no_func']:,} "
+                          f"errored={stats['errored']:,}")
+                    grand_total += stats['renamed']
+                    tgt_prog.save(f"bytesig port {args.source}->{tgt}", monitor)
+                if args.write_back_script:
+                    _merge_into_target_script(tgt, ported, src_tag=f'{args.source.upper()}-PDB-bytesig-port')
             finally:
                 tgt_prog.release(consumer)
 

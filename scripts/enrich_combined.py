@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
 """Sequencer: enrich every game/version program inside Combined.gpr.
 
-Runs the following passes back-to-back so you only have to close
-Ghidra once.  Each step is a subprocess so a fail/skip in one step
-doesn't cascade.
+Runs all currently-supported enrichment passes back-to-back so you
+only have to close Ghidra once.  Each step is a subprocess so a fail
+or skip in one step doesn't cascade.
 
-  1. apply_f4_to_user_project   --version ae     # re-apply F4 AE (+~7k names from 221 PDB bytesig)
-  2. apply_f4_to_user_project   --version 221    # re-apply F4 1.11.221 (+~2.5k names from AE bytesig)
-  3. apply_skyrim_to_user_project --version se   # apply SE: 1.7k enums + 38k structs + 7k new symbols
-  4. apply_skyrim_to_user_project --version ae   # apply AE: same gains
-  5. apply_skyrim_to_user_project --version vr   # apply VR: same gains, was failing before shift_svr fix
-  6. commonlibsse/bytesig_port_combined          # SE -> AE/VR bytesig port (94k pool)
+Default sequence (use --skip to omit, --only to run a subset):
+
+  1. apply_f4_to_user_project    --version ae       # +~7k names from 221 PDB bytesig
+  2. apply_f4_to_user_project    --version 221      # +~2.5k names from AE bytesig
+  3. apply_skyrim_to_user_project --version se      # 1.7k enums + 38k structs + 7k symbols
+  4. apply_skyrim_to_user_project --version ae      # same gains
+  5. apply_skyrim_to_user_project --version vr      # same gains; needs shift_svr fix to be in
+  6. commonlibsse/bytesig_port_combined --write-back-script
+                                                    # SE -> AE/VR bytesig + merge back into scripts
+  7. apply_fnv_to_user_project                      # FNV PC 1.4.0.525
+  8. apply_skyrim_to_user_project --version ae      # SkyrimAE GOG Edition variant
+  9. apply_sf_to_user_project                       # Starfield 1.16.236
+ 10. apply_sf_to_user_project                       # StarfieldVR.exe
+ 11. core/run_vtable_pipeline (per binary, slow)    # RTTI walk; optional via --rtti
 
 Defaults assume C:/GhidraProjects/Combined.gpr with the user's typical
-multi-binary layout.  Each step prints its full output (no quiet mode)
-so progress is visible.
+multi-binary layout.  Each step prints full output (no quiet mode) so
+progress is visible.
 """
 from __future__ import annotations
 
@@ -29,7 +37,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_DIR / "scripts"
 
 # (label, script_relative_to_scripts_dir, extra_args)
-STEPS = [
+APPLY_STEPS = [
     ("F4 AE re-apply",
      "apply_f4_to_user_project.py",
      ["--version", "ae",
@@ -50,9 +58,41 @@ STEPS = [
      "apply_skyrim_to_user_project.py",
      ["--version", "vr",
       "--program-path", "/Skyrim/SkyrimVR_1_4_15.exe"]),
-    ("Skyrim SE -> AE/VR bytesig port",
+    ("Skyrim SE -> AE/VR bytesig port + write-back",
      "commonlibsse/bytesig_port_combined.py",
-     []),
+     ["--write-back-script"]),
+    # A: FNV (PC build only -- Xbox debug build is PowerPC, skip)
+    ("FNV apply",
+     "apply_fnv_to_user_project.py",
+     ["--program-path", "/FalloutNV/FalloutNV_1_4_0_525.exe"]),
+    # B: SkyrimAE GOG Edition (variant binary)
+    ("Skyrim AE apply -> GOG Edition",
+     "apply_skyrim_to_user_project.py",
+     ["--version", "ae",
+      "--program-path", "/Skyrim/SkyrimAE_GOG Edition.exe"]),
+    # C: Starfield (PC + VR)
+    ("Starfield apply -> 1.16.236",
+     "apply_sf_to_user_project.py",
+     ["--program-path", "/Starfield/Starfield 1.16.236"]),
+    ("Starfield apply -> StarfieldVR",
+     "apply_sf_to_user_project.py",
+     ["--program-path", "/Starfield/StarfieldVR.exe"]),
+]
+
+# D: RTTI vtable pipeline -- slow, run only when --rtti is given.
+RTTI_TARGETS = [
+    "/Fallout4/Fallout4_AE_1_11_191.exe",
+    "/Fallout4/Fallout4_1_11_221.exe",
+    "/Fallout4/Fallout4_NG_1_10_984.exe",
+    "/Fallout4/Fallout4_OG_1_10_163.exe",
+    "/Fallout4/Fallout4VR_1_2_72.exe",
+    "/Skyrim/SkyrimSE_1_5_97.exe",
+    "/Skyrim/SkyrimAE_1_6_1170.exe",
+    "/Skyrim/SkyrimAE_GOG Edition.exe",
+    "/Skyrim/SkyrimVR_1_4_15.exe",
+    "/FalloutNV/FalloutNV_1_4_0_525.exe",
+    "/Starfield/Starfield 1.16.236",
+    "/Starfield/StarfieldVR.exe",
 ]
 
 
@@ -61,30 +101,55 @@ def main():
     ap.add_argument('--project-dir',  default="C:/GhidraProjects")
     ap.add_argument('--project-name', default="Combined")
     ap.add_argument('--skip', nargs='+', default=[], metavar='STEP',
-                    help="Skip step(s) by 1-based index (e.g. --skip 1 2)")
+                    help="Skip apply-step(s) by 1-based index (e.g. --skip 1 2)")
+    ap.add_argument('--only', nargs='+', default=None, metavar='STEP',
+                    help="Run ONLY apply-step(s) by 1-based index")
+    ap.add_argument('--rtti', action='store_true',
+                    help="ALSO run RTTI vtable pipeline on each binary "
+                         "(adds ~30 min per binary -- expect 3-5 hours)")
     args = ap.parse_args()
     skip = {int(s) for s in args.skip if s.isdigit()}
+    only = {int(s) for s in args.only} if args.only else None
 
     common = ['--project-dir', args.project_dir,
               '--project-name', args.project_name]
 
     overall_start = time.time()
     results = []
-    for i, (label, script, extra) in enumerate(STEPS, 1):
+    for i, (label, script, extra) in enumerate(APPLY_STEPS, 1):
+        if only is not None and i not in only:
+            continue
         if i in skip:
             print(f"\n{'=' * 70}\nSTEP {i} SKIPPED: {label}\n{'=' * 70}")
             results.append((label, 'skipped', 0))
             continue
         script_path = SCRIPTS_DIR / script
         cmd = [sys.executable, str(script_path), *common, *extra]
-        print(f"\n{'=' * 70}\nSTEP {i}/{len(STEPS)}: {label}\n"
-              f"  cmd: {' '.join(cmd)}\n{'=' * 70}")
+        print(f"\n{'=' * 70}\nSTEP {i}/{len(APPLY_STEPS)}: {label}\n"
+              f"  cmd: {' '.join(repr(c) if ' ' in c else c for c in cmd)}\n"
+              f"{'=' * 70}")
         step_start = time.time()
         rc = subprocess.run(cmd).returncode
         elapsed = time.time() - step_start
         status = 'OK' if rc == 0 else f'FAIL (rc={rc})'
         results.append((label, status, elapsed))
         print(f"\n--- STEP {i} {status} ({elapsed:.0f}s) ---")
+
+    if args.rtti:
+        rtti_script = SCRIPTS_DIR / "core" / "run_vtable_pipeline.py"
+        for prog_path in RTTI_TARGETS:
+            label = f"RTTI walk -> {prog_path}"
+            cmd = [sys.executable, str(rtti_script),
+                   args.project_dir, args.project_name, prog_path]
+            print(f"\n{'=' * 70}\n{label}\n  cmd: "
+                  f"{' '.join(repr(c) if ' ' in c else c for c in cmd)}\n"
+                  f"{'=' * 70}")
+            step_start = time.time()
+            rc = subprocess.run(cmd).returncode
+            elapsed = time.time() - step_start
+            status = 'OK' if rc == 0 else f'FAIL (rc={rc})'
+            results.append((label, status, elapsed))
+            print(f"\n--- {label} {status} ({elapsed:.0f}s) ---")
 
     total = time.time() - overall_start
     print(f"\n{'=' * 70}\nSUMMARY ({total:.0f}s total)\n{'=' * 70}")
