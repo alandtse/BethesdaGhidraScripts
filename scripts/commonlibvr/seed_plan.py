@@ -11,7 +11,11 @@ These extra typed `this` anchors are what a downstream call-graph type-propagati
 fixpoint radiates from.
 """
 
-_PROTECTED_SOURCES = ('IMPORTED', 'USER_DEFINED')
+# IMPORTED = PDB: its calling convention may be deliberate, and a PDB symbol in a
+# class namespace can be a static or a free function, so don't reconvention it.
+# USER_DEFINED/ANALYSIS/DEFAULT members ARE convertible -- thiscall is the correct
+# convention for a member, so we fix the signature rather than leave it __fastcall.
+_PROTECTED_SOURCES = ('IMPORTED',)
 _SKIP_LEAF_PREFIX = ('operator',)
 
 
@@ -45,11 +49,12 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source,
       is_static            the method is static (no `this`) -- from CommonLib if known
       already_has_typed_this  param-0 is already a typed (class) pointer
 
-    CRITICAL: setting __thiscall on a function that ALREADY has an explicit typed
-    `this` makes Ghidra insert a SECOND auto-this and shift every parameter's
-    storage down a register (verified). So skip anything that already has a typed
-    `this` -- it's already correct; only set __thiscall where the `this` slot is
-    empty/untyped.
+    Returns ('set', ...) when the `this` slot is empty/untyped (just set __thiscall
+    and let the auto-this fill it), or ('convert', ...) when the function already
+    has an explicit typed `this` (the convention is wrong -- it should be
+    __thiscall -- so the driver removes the explicit this and sets __thiscall,
+    which avoids the double-this/storage-shift that a naive convention change
+    causes; verified clean).
     """
     if is_static:
         return ('skip', 'static-no-this')
@@ -58,9 +63,9 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source,
     if not leaf or leaf.startswith(_SKIP_LEAF_PREFIX) or '<lambda' in leaf:
         return ('skip', 'operator-or-lambda')
     if sig_source in _PROTECTED_SOURCES:
-        return ('skip', 'protected-source')   # never touch PDB / hand-curated
-    if already_has_typed_this:
-        return ('skip', 'already-has-this')   # avoid double-this / storage shift
+        return ('skip', 'imported-pdb')
     if current_convention == '__thiscall':
         return ('skip', 'already-thiscall')
+    if already_has_typed_this:
+        return ('convert', 'has-explicit-this')   # remove this + set __thiscall
     return ('set', 'ok')

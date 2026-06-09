@@ -11,11 +11,17 @@ structs -- auto-TYPES it to `Class*`. If that association does not yield a type
 id-bound signatures (vtable-walk-named / reparented functions) so a downstream
 call-graph type-propagation fixpoint has more anchors to radiate from.
 
-Non-destructive: never touches PDB/hand-curated prototypes or static members; the
-explicit fallback uses ANALYSIS source so a human edit or CommonLib re-import
-outranks it. Dry-run by default (a single transaction that is ROLLED BACK, so it
-reports the real auto-this-vs-fallback split without persisting); CLVR_SEED=go to
-apply. Decision logic is in seed_plan.py (unit-tested).
+It also CONVERTS members that already have an explicit `this` under the wrong
+convention (__fastcall): it removes the explicit `this` and sets __thiscall so the
+auto-this is the only one (no double / storage shift), since __thiscall is the
+correct convention for a member. IMPORTED (PDB) functions are left alone (their
+convention may be deliberate / they may be non-members).
+
+Non-destructive: each function is changed in its OWN transaction that commits only
+when applying AND the result verifies (param count preserved, `this` is a typed
+pointer); any anomaly/error -- or the whole run in dry-run -- rolls back. So a bad
+conversion can never persist. Dry-run by default; CLVR_SEED=go to apply. Decision
+logic is in seed_plan.py (unit-tested).
 """
 import json
 import os
@@ -62,71 +68,90 @@ def run():
     gns = cp.getGlobalNamespace()
     static_of = _static_map()
 
-    via_thiscall = via_fallback = skipped = errors = 0
+    from ghidra.program.model.data import Pointer
+    from ghidra.program.model.listing import ParameterImpl
+    via_thiscall = via_fallback = converted = anomalies = skipped = errors = 0
     reasons = {}
     sample = []
-    # Single transaction: committed when APPLY, ROLLED BACK in dry-run -- so the
-    # dry-run measures the real auto-this-vs-fallback split without persisting.
-    tx = cp.startTransaction('CommonLibVR thiscall set')
-    try:
-        for f in fm.getFunctions(True):
-            parent = f.getParentNamespace()
-            if parent is gns or parent.getSymbol() is None:
-                continue
-            if parent.getSymbol().getSymbolType() != SymbolType.CLASS:
-                continue
-            from ghidra.program.model.data import Pointer
-            cls = parent.getName()
-            leaf = _DUP.sub('', f.getName())
-            struct = dtm.getDataType(CategoryPath('/types.h'), cls)
-            conv = f.getCallingConventionName()
-            src = f.getSignatureSource()
-            srcname = src.name() if hasattr(src, 'name') else str(src)
-            is_static = static_of.get(cls + '::' + leaf, False)
-            ps0 = f.getParameters()
-            dt0 = ps0[0].getDataType() if ps0 else None
-            has_this = dt0 is not None and isinstance(dt0, Pointer) and not sp.is_untyped(dt0.getName())
+    for f in fm.getFunctions(True):
+        parent = f.getParentNamespace()
+        if parent is gns or parent.getSymbol() is None:
+            continue
+        if parent.getSymbol().getSymbolType() != SymbolType.CLASS:
+            continue
+        cls = parent.getName()
+        leaf = _DUP.sub('', f.getName())
+        struct = dtm.getDataType(CategoryPath('/types.h'), cls)
+        conv = f.getCallingConventionName()
+        src = f.getSignatureSource()
+        srcname = src.name() if hasattr(src, 'name') else str(src)
+        is_static = static_of.get(cls + '::' + leaf, False)
+        ps0 = f.getParameters()
+        dt0 = ps0[0].getDataType() if ps0 else None
+        has_this = dt0 is not None and isinstance(dt0, Pointer) and not sp.is_untyped(dt0.getName())
 
-            action, reason = sp.should_set_thiscall(
-                struct is not None, leaf, conv, srcname, is_static, has_this)
-            if action == 'skip':
-                skipped += 1
-                reasons[reason] = reasons.get(reason, 0) + 1
-                continue
-            try:
-                # Primary: __thiscall auto-inserts + auto-types `this` from the
-                # class<->struct association.
-                from ghidra.program.model.data import Pointer
+        action, reason = sp.should_set_thiscall(
+            struct is not None, leaf, conv, srcname, is_static, has_this)
+        if action == 'skip':
+            skipped += 1
+            reasons[reason] = reasons.get(reason, 0) + 1
+            continue
+
+        # Per-function transaction: a verified-good change commits only when
+        # applying; an anomaly/error (or dry-run) rolls back JUST this function, so
+        # a bad conversion can never persist.
+        kind = None
+        tag = ''
+        tx = cp.startTransaction('thiscall ' + leaf)
+        ok = False
+        try:
+            if action == 'convert':
+                before_n = len(ps0)
+                f.removeParameter(0)            # drop explicit this...
+                f.setCallingConvention('__thiscall')   # ...auto-this replaces it
+                ps = f.getParameters()
+                d0 = ps[0].getDataType() if ps else None
+                if (len(ps) == before_n and d0 is not None
+                        and isinstance(d0, Pointer) and not sp.is_untyped(d0.getName())):
+                    kind, tag, ok = 'convert', 'convert->%s' % d0.getName(), True
+                else:
+                    kind, tag = 'anomaly', 'convert-ANOMALY(%d->%d)' % (before_n, len(ps))
+            else:
                 f.setCallingConvention('__thiscall')
                 ps = f.getParameters()
-                dt0 = ps[0].getDataType() if ps else None
-                # success only if `this` is an actual (non-void/undefined) pointer
-                # -- a leftover primitive like `longlong` must still fall back.
-                if dt0 is not None and isinstance(dt0, Pointer) and not sp.is_untyped(dt0.getName()):
-                    via_thiscall += 1
-                    tag = 'thiscall->%s' % dt0.getName()
+                d0 = ps[0].getDataType() if ps else None
+                if d0 is not None and isinstance(d0, Pointer) and not sp.is_untyped(d0.getName()):
+                    kind, tag, ok = 'thiscall', 'thiscall->%s' % d0.getName(), True
                 else:
-                    # Fallback: association didn't yield a type -> set it explicitly.
                     ptr = dtm.getPointer(struct, 8)
                     if ps:
                         ps[0].setDataType(ptr, SourceType.ANALYSIS)
                         ps[0].setName('this', SourceType.ANALYSIS)
                     else:
-                        from ghidra.program.model.listing import ParameterImpl
                         f.insertParameter(0, ParameterImpl('this', ptr, cp), SourceType.ANALYSIS)
-                    via_fallback += 1
-                    tag = 'fallback->%s*' % cls
-                if len(sample) < 15:
-                    sample.append('%s::%s  [%s]' % (cls, leaf, tag))
-            except Exception:
-                errors += 1
-    finally:
-        cp.endTransaction(tx, APPLY)   # commit only when applying
+                    kind, tag, ok = 'fallback', 'fallback->%s*' % cls, True
+        except Exception:
+            kind = 'error'
+        finally:
+            cp.endTransaction(tx, APPLY and ok)   # commit only a verified change
 
-    total = via_thiscall + via_fallback
-    print('thiscall-set (%s): %s  candidates=%d  (auto-this=%d, explicit-fallback=%d) skipped=%d errors=%d'
-          % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN (rolled back)',
-             total, via_thiscall, via_fallback, skipped, errors))
+        if kind == 'convert':
+            converted += 1
+        elif kind == 'thiscall':
+            via_thiscall += 1
+        elif kind == 'fallback':
+            via_fallback += 1
+        elif kind == 'anomaly':
+            anomalies += 1
+        else:
+            errors += 1
+        if ok and len(sample) < 15:
+            sample.append('%s::%s  [%s]' % (cls, leaf, tag))
+
+    print('thiscall-set (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN (rolled back)'))
+    print('  gap-fill: auto-this=%d, explicit-fallback=%d' % (via_thiscall, via_fallback))
+    print('  convert (remove this + __thiscall): %d   ANOMALIES=%d' % (converted, anomalies))
+    print('  skipped=%d  errors=%d' % (skipped, errors))
     print('  skip reasons: %s' % reasons)
     for s in sample:
         print('   ' + s)

@@ -28,16 +28,19 @@ def test_set_thiscall_when_unprotected_non_thiscall():
     assert sp.should_set_thiscall(True, '~Actor', '__fastcall', 'ANALYSIS', False, False)[0] == 'set'
 
 
-def test_skip_protected_source():
+def test_skip_imported_pdb_only():
+    # PDB convention may be deliberate / non-member -> skip
     assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'IMPORTED', False, False) == \
-        ('skip', 'protected-source')
-    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False, False)[0] == 'skip'
+        ('skip', 'imported-pdb')
+    # but USER_DEFINED members ARE convertible (thiscall is the right convention)
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False, True)[0] == 'convert'
 
 
-def test_skip_already_has_this():
-    # already has a typed this -> setting __thiscall would double it; must skip
+def test_convert_when_explicit_this():
+    # already has an explicit typed this under the wrong convention -> remove+set
     assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'ANALYSIS', False, True) == \
-        ('skip', 'already-has-this')
+        ('convert', 'has-explicit-this')
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False, True)[0] == 'convert'
 
 
 def test_skip_already_thiscall():
