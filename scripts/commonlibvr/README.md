@@ -231,6 +231,44 @@ Working rules:
   logs keep LLM picks auditable, and a pure re-run can be *worse* (the heuristic is the fallback,
   not the ground truth).
 
+### 10. `this`-seeding + call-graph type propagation (`seed_this.py`, `propagate.py`)
+Two driving forces that widen the typed surface so 8 and the decompiler have more anchors.
+
+**`seed_this.py` — make class methods proper `__thiscall`.** For every function in a GhidraClass
+namespace with a `/types.h` struct, set the calling convention to `__thiscall`; Ghidra then
+auto-inserts a `this` param and — because the class namespace is associated with its struct —
+auto-*types* it to `Class*`. Members that already carry an explicit `this` under the wrong
+convention (`__fastcall`) are *converted*: drop the explicit `this`, set `__thiscall`, so the
+auto-`this` is the only one (no double / register-storage shift). A `this`-type-mismatch guard
+skips a `convert` whose param-0 is typed to a *different* class (a real first arg, e.g.
+`TESImageSpace::SetBaseData(BaseData*)`), and a struct-return guard skips members with a hidden
+`__return_storage_ptr__`. `seed_plan.py` holds the decision logic (unit-tested). IMPORTED (PDB)
+signatures are left alone. Applied + verified across all three: VR `__thiscall` 174→9908, AE →10237,
+SE →10978.
+
+**`propagate.py` — let the anchors radiate.** Decompile a function, read the types the decompiler's
+dataflow inferred, and where it found a *concrete named* type (struct/class pointer) for a slot the DB
+still has *generic*, commit just that slot; re-enqueue the function's callers+callees so the gain
+flows one edge out; iterate to fixpoint / `MAX_ROUNDS`. It is **filtered + surgical, deliberately NOT
+`HighFunctionDBUtil.commitParamsToDatabase`**: measuring the whole-prototype commit on this codebase
+showed it is *net-negative* — the decompiler proposes `void` returns (clobbering an honest
+`undefined`) and `longlong` params (false precision) far more than real struct pointers (~1 in 35
+class methods), and the API is all-or-nothing per function. So only `safe_refinement()` slots
+(generic → concrete named) are applied, per-slot via `setDataType`/`setReturnType`. `propagate_plan.py`
+holds the rule + the empirical rationale (unit-tested). VR dry-run: of 184 *non-protected* class
+methods (most now carry authoritative CommonLib signatures, correctly off-limits), 14 concrete
+slot-gains — e.g. `BSOpenVR::GetHMDDeviceType ret → HMDDeviceType`, `GFxZlibSupport::Func3 p1 →
+Stream*`. Dry-run by default (`CLVR_PROP=go` to apply) writes `<import>.propagated.csv`.
+
+**Transaction gotcha (applies to any write-back driver here).** The Ghidra MCP wraps each `eval` in
+its *own* outer transaction, so a script's per-function transactions are *nested* inside it — and
+Ghidra rolls back the **entire** group if any nested transaction ends with `commit=False`. A driver
+that rolled back individual anomalies therefore silently discarded its whole run while reporting
+"APPLIED". The rule both drivers now follow: **never end a transaction with `commit=False`** — dry-run
+mutates nothing (so there is nothing to roll back), and apply opens **one** transaction that is
+**always committed**, restoring any bad change in-API (`ApplyFunctionSignatureCmd`) rather than via
+rollback.
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
@@ -248,3 +286,9 @@ Working rules:
       per-struct flatten fallback). `CLVR_EMBED=0` to flatten.
 - [x] Apply for real — all four phases applied to SkyrimVR.exe (`types`/`symbols`/`sigconflict`/
       `classes`). Enrich phases documented above; pure logic unit-tested.
+- [x] `this`-seeder (`seed_this.py`) applied + verified across SE/AE/VR (`__thiscall` 174→9908 VR,
+      →10237 AE, →10978 SE; 0 anomalies/errors). Root-caused + fixed the nested-transaction
+      rollback poison (never `commit=False` under the MCP outer transaction).
+- [x] Call-graph type-propagation fixpoint (`propagate.py`) built + dry-run validated on VR
+      (14 concrete slot-gains over 184 non-protected class methods); filtered/surgical, measured
+      against the net-negative whole-prototype commit. Apply pending review.
