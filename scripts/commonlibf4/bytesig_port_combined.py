@@ -121,10 +121,15 @@ def _read_f4_221_pdb_publics() -> dict[str, int]:
     return out
 
 
-def _find_program(root, hints: list[str], stem: str = "Fallout4"):
-    """Return the domain file whose path contains any of ``hints`` and whose
-    name starts with ``stem`` (or contains ``vr`` for the VR stem).  None on
-    no match or multiple unambiguous matches.
+def _find_program(root, hints: list[str], stem: str = "Fallout4",
+                  exact_path: str | None = None):
+    """Find one program by hint substrings OR by exact path.
+
+    ``exact_path`` (e.g. ``/Fallout4/Fallout4_AE_1_11_191.exe``) bypasses
+    hint matching entirely -- useful when two binaries share the same
+    hints (e.g. NG 1.10.984 and 1.10.980, or Steam vs GOG variants) and
+    the caller wants a specific one.  Returns ``(full_path, domain_file)``
+    on a single match, ``None`` otherwise.
     """
     matches = []
 
@@ -132,17 +137,78 @@ def _find_program(root, hints: list[str], stem: str = "Fallout4"):
         for f in folder.getFiles():
             n = f.getName()
             full = prefix + "/" + n
-            if not n.lower().endswith('.exe'):
-                continue
-            if any(h in full.lower() for h in hints):
-                matches.append((full, f))
+            if exact_path is not None:
+                if full == exact_path:
+                    matches.append((full, f))
+            else:
+                if not n.lower().endswith('.exe'):
+                    continue
+                if any(h in full.lower() for h in hints):
+                    matches.append((full, f))
         for sub in folder.getFolders():
             walk(sub, prefix + "/" + sub.getName())
 
     walk(root)
     if len(matches) == 1:
         return matches[0]
+    if len(matches) > 1:
+        print(f"  AMBIGUOUS: {len(matches)} candidates matched "
+              f"{'hint' if exact_path is None else 'exact path'}; pick one via "
+              f"--source-path / --target-paths:")
+        for path, _ in matches:
+            print(f"    {path}")
     return None
+
+
+def _merge_into_target_script(target: str, ported: list[tuple[str, int]],
+                                src_tag: str) -> int:
+    """Merge (name, target_rva) entries into CommonLibImport_F4_<TARGET>.py's
+    SYMBOLS array.  Tolerates raw-JSON or _json_sym.loads-wrapped literal;
+    re-emits the wrapped form so JSON booleans round-trip safely.
+    """
+    rva_key = VERSION_TO_RVA_KEY[target]
+    script_name = VERSIONS[target][0]
+    p = GENERATED / script_name
+    if not p.is_file():
+        print(f"  {script_name}: not found, skipping write-back")
+        return 0
+    content = p.read_text(encoding="utf-8")
+    m = re.search(r"^SYMBOLS = (.+?)$", content, re.M)
+    if not m:
+        print(f"  {script_name}: no SYMBOLS array, skipping write-back")
+        return 0
+    val = m.group(1).strip()
+    wrap = _JSON_LOADS_RE.match(val)
+    if wrap is not None:
+        syms = json.loads(ast.literal_eval(wrap.group(1)))
+    else:
+        syms = json.loads(val)
+
+    by_name = {s["n"]: s for s in syms if s.get("t") == "func"}
+    added = augmented = 0
+    for name, rva in ported:
+        existing = by_name.get(name)
+        if existing is not None:
+            if rva_key not in existing:
+                existing[rva_key] = rva
+                existing.setdefault("src_bytesig", src_tag)
+                augmented += 1
+            continue
+        syms.append({
+            "n": name, "t": "func", "sig": "",
+            rva_key: rva, "src": src_tag,
+        })
+        added += 1
+    if added == 0 and augmented == 0:
+        print(f"  {script_name}: no new SYMBOLS to merge")
+        return 0
+    symbols_json = json.dumps(syms, separators=(",", ":"))
+    new_blob = "SYMBOLS = _json_sym.loads(" + repr(symbols_json) + ")"
+    content = content[:m.start()] + new_blob + content[m.end():]
+    p.write_text(content, encoding="utf-8")
+    print(f"  {script_name}: merged {augmented} augmented + {added} new "
+          f"entries ({len(ported)} ported)")
+    return augmented + added
 
 
 def _load_text_block(program):
@@ -238,10 +304,34 @@ def main():
     ap.add_argument('--targets', nargs='+', default=['og', 'ng', 'ae', 'vr'],
                     choices=sorted(VERSIONS),
                     help="Target F4 variants to enrich (default: all except 221)")
+    ap.add_argument('--source-path', default=None,
+                    help="Exact source program path (overrides hint match)")
+    ap.add_argument('--target-paths', nargs='+', default=None,
+                    metavar='VER=PATH',
+                    help="Exact target program path(s) keyed by version, e.g. "
+                         "ae=/Fallout4/Fallout4_AE_1_11_191.exe")
+    ap.add_argument('--write-back-script', action='store_true',
+                    help="Merge ported (name, target_rva) pairs into the "
+                         "target's CommonLibImport_F4_<VER>.py SYMBOLS array")
+    ap.add_argument('--no-apply', action='store_true',
+                    help="Skip the in-Ghidra rename pass")
     args = ap.parse_args()
 
     if args.source in args.targets:
         args.targets = [t for t in args.targets if t != args.source]
+
+    # Parse --target-paths VER=PATH overrides into {version: path}
+    target_path_overrides: dict[str, str] = {}
+    if args.target_paths:
+        for spec in args.target_paths:
+            if '=' not in spec:
+                print(f"  WARNING: --target-paths entry {spec!r} lacks '='; ignoring")
+                continue
+            ver, path = spec.split('=', 1)
+            if ver not in VERSIONS:
+                print(f"  WARNING: unknown version {ver!r} in --target-paths; ignoring")
+                continue
+            target_path_overrides[ver] = path
 
     src_names = _read_symbols_from_script(args.source)
     print(f"Source: F4 {args.source.upper()}")
@@ -267,7 +357,7 @@ def main():
 
         # Source program (read-only: just need .text bytes)
         src_hint = VERSIONS[args.source][1]
-        src_match = _find_program(root, src_hint)
+        src_match = _find_program(root, src_hint, exact_path=args.source_path)
         if src_match is None:
             print(f"ERROR: source {args.source} program not found in project.")
             sys.exit(1)
@@ -286,7 +376,8 @@ def main():
         grand_total = 0
         for tgt in args.targets:
             tgt_hint = VERSIONS[tgt][1]
-            tgt_match = _find_program(root, tgt_hint)
+            tgt_match = _find_program(root, tgt_hint,
+                                      exact_path=target_path_overrides.get(tgt))
             if tgt_match is None:
                 print(f"\n  {tgt.upper()}: program not found in project — skip")
                 continue
@@ -303,19 +394,27 @@ def main():
                 if not ported:
                     print("  no matches — nothing to apply")
                     continue
-                print(f"  Applying {len(ported):,} renames to {tgt_path} ...")
-                tx = tgt_prog.startTransaction(
-                    f"bytesig port {args.source}->{tgt}")
-                try:
-                    stats = _rename_in_program(tgt_prog, ported)
-                finally:
-                    tgt_prog.endTransaction(tx, True)
-                print(f"  renamed={stats['renamed']:,} "
-                      f"already_named={stats['already_named']:,} "
-                      f"no_func={stats['no_func']:,} "
-                      f"errored={stats['errored']:,}")
-                grand_total += stats['renamed']
-                tgt_prog.save(f"bytesig port {args.source}->{tgt}", monitor)
+                if args.no_apply:
+                    print(f"  --no-apply: skipping in-Ghidra rename "
+                          f"({len(ported):,} would-be renames)")
+                else:
+                    print(f"  Applying {len(ported):,} renames to {tgt_path} ...")
+                    tx = tgt_prog.startTransaction(
+                        f"bytesig port {args.source}->{tgt}")
+                    try:
+                        stats = _rename_in_program(tgt_prog, ported)
+                    finally:
+                        tgt_prog.endTransaction(tx, True)
+                    print(f"  renamed={stats['renamed']:,} "
+                          f"already_named={stats['already_named']:,} "
+                          f"no_func={stats['no_func']:,} "
+                          f"errored={stats['errored']:,}")
+                    grand_total += stats['renamed']
+                    tgt_prog.save(f"bytesig port {args.source}->{tgt}", monitor)
+                if args.write_back_script:
+                    _merge_into_target_script(
+                        tgt, ported,
+                        src_tag=f'{args.source.upper()}-PDB-bytesig-port')
             finally:
                 tgt_prog.release(consumer)
 
