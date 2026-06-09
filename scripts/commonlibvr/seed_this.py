@@ -1,18 +1,21 @@
-"""Seed typed `this` on class-namespace functions (safe replacement for the naive
-PopulateParameters).
+"""Make class-namespace functions proper `__thiscall` members (safe replacement
+for the naive PopulateParameters; the correct mechanism vs. hand-typing param-0).
 
-For each function whose parent is a GhidraClass, resolve the class struct from
-`/types.h`, and -- only when the current param-0 is untyped and the signature is
-not IMPORTED/USER_DEFINED, and the method is not static/operator -- set param-0 to
-`Class*` (named `this`) with SourceType.ANALYSIS. This extends typed-`this`
-coverage beyond CommonLib's id-bound signatures (e.g. vtable-walk-named and
-reparented functions), giving a downstream call-graph type-propagation fixpoint
-more anchors to radiate from.
+For each function whose parent is a GhidraClass with a `/types.h` struct, and only
+when the method is not static/operator and the signature is not IMPORTED/
+USER_DEFINED, set the calling convention to `__thiscall`. Ghidra then auto-inserts
+a `this` param and -- because our GhidraClass namespaces are associated with their
+structs -- auto-TYPES it to `Class*`. If that association does not yield a type
+(`this` stays untyped), FALL BACK to setting param-0 explicitly to `Class*`
+(SourceType.ANALYSIS). This extends typed-`this` coverage beyond CommonLib's
+id-bound signatures (vtable-walk-named / reparented functions) so a downstream
+call-graph type-propagation fixpoint has more anchors to radiate from.
 
-Non-destructive by construction: never clobbers PDB/hand-curated prototypes, only
-fills untyped slots, and uses ANALYSIS source so any human edit or CommonLib
-re-import outranks it. Dry-run by default (counts + sample); CLVR_SEED=go to apply.
-Decision logic is in seed_plan.py (unit-tested).
+Non-destructive: never touches PDB/hand-curated prototypes or static members; the
+explicit fallback uses ANALYSIS source so a human edit or CommonLib re-import
+outranks it. Dry-run by default (a single transaction that is ROLLED BACK, so it
+reports the real auto-this-vs-fallback split without persisting); CLVR_SEED=go to
+apply. Decision logic is in seed_plan.py (unit-tested).
 """
 import json
 import os
@@ -53,18 +56,18 @@ def _static_map():
 def run():
     from ghidra.program.model.symbol import SymbolType, SourceType
     from ghidra.program.model.data import CategoryPath
-    from ghidra.program.model.listing import ParameterImpl
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
     fm = cp.getFunctionManager()
     gns = cp.getGlobalNamespace()
     static_of = _static_map()
 
-    seeded = skipped = errors = 0
+    via_thiscall = via_fallback = skipped = errors = 0
     reasons = {}
     sample = []
-    dt_before = dtm.getDataTypeCount(True)
-    tx = cp.startTransaction('CommonLibVR this-seed') if APPLY else None
+    # Single transaction: committed when APPLY, ROLLED BACK in dry-run -- so the
+    # dry-run measures the real auto-this-vs-fallback split without persisting.
+    tx = cp.startTransaction('CommonLibVR thiscall set')
     try:
         for f in fm.getFunctions(True):
             parent = f.getParentNamespace()
@@ -75,42 +78,51 @@ def run():
             cls = parent.getName()
             leaf = _DUP.sub('', f.getName())
             struct = dtm.getDataType(CategoryPath('/types.h'), cls)
-            params = f.getParameters()
-            p0t = params[0].getDataType().getName() if params else None
+            conv = f.getCallingConventionName()
             src = f.getSignatureSource()
             srcname = src.name() if hasattr(src, 'name') else str(src)
             is_static = static_of.get(cls + '::' + leaf, False)
 
-            action, reason = sp.should_seed_this(struct is not None, leaf, p0t, srcname, is_static)
+            action, reason = sp.should_set_thiscall(struct is not None, leaf, conv, srcname, is_static)
             if action == 'skip':
                 skipped += 1
                 reasons[reason] = reasons.get(reason, 0) + 1
                 continue
-            if len(sample) < 15:
-                sample.append('%s::%s  (p0 %s -> %s*)' % (cls, leaf, p0t, cls))
-            if not APPLY:
-                seeded += 1
-                continue
             try:
-                ptr = dtm.getPointer(struct, 8)
-                if params:
-                    params[0].setDataType(ptr, SourceType.ANALYSIS)
-                    params[0].setName('this', SourceType.ANALYSIS)
+                # Primary: __thiscall auto-inserts + auto-types `this` from the
+                # class<->struct association.
+                from ghidra.program.model.data import Pointer
+                f.setCallingConvention('__thiscall')
+                ps = f.getParameters()
+                dt0 = ps[0].getDataType() if ps else None
+                # success only if `this` is an actual (non-void/undefined) pointer
+                # -- a leftover primitive like `longlong` must still fall back.
+                if dt0 is not None and isinstance(dt0, Pointer) and not sp.is_untyped(dt0.getName()):
+                    via_thiscall += 1
+                    tag = 'thiscall->%s' % dt0.getName()
                 else:
-                    f.insertParameter(0, ParameterImpl('this', ptr, cp), SourceType.ANALYSIS)
-                seeded += 1
+                    # Fallback: association didn't yield a type -> set it explicitly.
+                    ptr = dtm.getPointer(struct, 8)
+                    if ps:
+                        ps[0].setDataType(ptr, SourceType.ANALYSIS)
+                        ps[0].setName('this', SourceType.ANALYSIS)
+                    else:
+                        from ghidra.program.model.listing import ParameterImpl
+                        f.insertParameter(0, ParameterImpl('this', ptr, cp), SourceType.ANALYSIS)
+                    via_fallback += 1
+                    tag = 'fallback->%s*' % cls
+                if len(sample) < 15:
+                    sample.append('%s::%s  [%s]' % (cls, leaf, tag))
             except Exception:
                 errors += 1
     finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)
+        cp.endTransaction(tx, APPLY)   # commit only when applying
 
-    dt_after = dtm.getDataTypeCount(True)
-    print('this-seed (%s): %s  seeded=%d skipped=%d errors=%d'
-          % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN', seeded, skipped, errors))
+    total = via_thiscall + via_fallback
+    print('thiscall-set (%s): %s  candidates=%d  (auto-this=%d, explicit-fallback=%d) skipped=%d errors=%d'
+          % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN (rolled back)',
+             total, via_thiscall, via_fallback, skipped, errors))
     print('  skip reasons: %s' % reasons)
-    print('  data types %d -> %d (%s)'
-          % (dt_before, dt_after, 'unchanged' if dt_before == dt_after else 'changed'))
     for s in sample:
         print('   ' + s)
 

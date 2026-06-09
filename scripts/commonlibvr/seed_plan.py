@@ -26,15 +26,22 @@ def is_untyped(typename):
     return t == '' or t.startswith('undefined') or t == 'void'
 
 
-def should_seed_this(class_known, leaf, param0_typename, sig_source, is_static):
-    """Decide whether to set param-0 to `Class*`. Returns (action, reason) where
-    action is 'seed' or 'skip'.
+def should_set_thiscall(class_known, leaf, current_convention, sig_source, is_static):
+    """Decide whether to make a function a `__thiscall` member. Returns
+    (action, reason) where action is 'set' or 'skip'.
 
-      class_known      a /types.h struct for the class exists
-      leaf             the method short name (to exclude operators/lambdas)
-      param0_typename  current type of param 0 (None if the function has none)
-      sig_source       'IMPORTED'/'USER_DEFINED'/'ANALYSIS'/'DEFAULT'
-      is_static        the method is static (no `this`) -- from CommonLib if known
+    Setting `__thiscall` makes Ghidra auto-insert a `this` param and, when the
+    GhidraClass is associated with its struct (it is, for our `/types.h` types),
+    auto-TYPE it to `Class*` -- the proper OO mechanism, vs. building the param by
+    hand. The driver verifies the auto-`this` actually typed and falls back to
+    explicit typing if not (see is_untyped).
+
+      class_known         a /types.h struct for the class exists (so auto-this can
+                          resolve a type)
+      leaf                method short name (to exclude operators/lambdas)
+      current_convention  the function's calling convention name ('__fastcall'...)
+      sig_source          'IMPORTED'/'USER_DEFINED'/'ANALYSIS'/'DEFAULT'
+      is_static           the method is static (no `this`) -- from CommonLib if known
     """
     if is_static:
         return ('skip', 'static-no-this')
@@ -43,7 +50,7 @@ def should_seed_this(class_known, leaf, param0_typename, sig_source, is_static):
     if not leaf or leaf.startswith(_SKIP_LEAF_PREFIX) or '<lambda' in leaf:
         return ('skip', 'operator-or-lambda')
     if sig_source in _PROTECTED_SOURCES:
-        return ('skip', 'protected-source')   # never clobber PDB / hand-curated
-    if not is_untyped(param0_typename):
-        return ('skip', 'already-typed')
-    return ('seed', 'ok')
+        return ('skip', 'protected-source')   # never touch PDB / hand-curated
+    if current_convention == '__thiscall':
+        return ('skip', 'already-thiscall')
+    return ('set', 'ok')

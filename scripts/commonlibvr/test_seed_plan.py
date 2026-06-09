@@ -21,28 +21,28 @@ def test_is_untyped():
     assert not sp.is_untyped('NiNode *64')
 
 
-def test_seed_when_untyped_and_unprotected():
-    assert sp.should_seed_this(True, 'ClearData', 'undefined8', 'ANALYSIS', False)[0] == 'seed'
-    assert sp.should_seed_this(True, 'ClearData', None, 'DEFAULT', False)[0] == 'seed'
+def test_set_thiscall_when_unprotected_non_thiscall():
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'ANALYSIS', False)[0] == 'set'
+    assert sp.should_set_thiscall(True, 'ClearData', '__cdecl', 'DEFAULT', False)[0] == 'set'
     # constructors/destructors take a this too
-    assert sp.should_seed_this(True, '~Actor', 'void *', 'ANALYSIS', False)[0] == 'seed'
+    assert sp.should_set_thiscall(True, '~Actor', '__fastcall', 'ANALYSIS', False)[0] == 'set'
 
 
 def test_skip_protected_source():
-    assert sp.should_seed_this(True, 'ClearData', 'undefined8', 'IMPORTED', False) == \
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'IMPORTED', False) == \
         ('skip', 'protected-source')
-    assert sp.should_seed_this(True, 'ClearData', None, 'USER_DEFINED', False)[0] == 'skip'
+    assert sp.should_set_thiscall(True, 'ClearData', '__fastcall', 'USER_DEFINED', False)[0] == 'skip'
 
 
-def test_skip_already_typed():
-    assert sp.should_seed_this(True, 'ClearData', 'Actor *', 'ANALYSIS', False) == \
-        ('skip', 'already-typed')
+def test_skip_already_thiscall():
+    assert sp.should_set_thiscall(True, 'ClearData', '__thiscall', 'ANALYSIS', False) == \
+        ('skip', 'already-thiscall')
 
 
 def test_skip_static_operator_unknown_class():
-    assert sp.should_seed_this(True, 'GetSingleton', None, 'ANALYSIS', True)[0] == 'skip'
-    assert sp.should_seed_this(True, 'operator==', None, 'ANALYSIS', False)[0] == 'skip'
-    assert sp.should_seed_this(False, 'ClearData', None, 'ANALYSIS', False) == \
+    assert sp.should_set_thiscall(True, 'GetSingleton', '__fastcall', 'ANALYSIS', True)[0] == 'skip'
+    assert sp.should_set_thiscall(True, 'operator==', '__fastcall', 'ANALYSIS', False)[0] == 'skip'
+    assert sp.should_set_thiscall(False, 'ClearData', '__fastcall', 'ANALYSIS', False) == \
         ('skip', 'class-type-not-found')
 
 
