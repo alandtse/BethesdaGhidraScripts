@@ -886,7 +886,17 @@ def _infer_commonlib_script(program_name):
         return 'CommonLibImport_F4_VR.py'
     if 'falloutnv' in n:
         return 'CommonLibImport_FNV.py'
+    if 'skyrimae' in n and 'gog' in n:
+        # GOG builds have different RVAs than Steam 1.6.1170 -- use the
+        # relib-re-keyed variant (1.6.1179 is the current GOG release).
+        return 'CommonLibImport_AE_GOG_1_6_1179.py'
+    if 'skyrimae' in n:
+        return 'CommonLibImport_AE.py'
     if 'skyrimse' in n:
+        # Bethesda names both SE and AE binaries SkyrimSE.exe; disambiguate
+        # by embedded version tag, defaulting to AE (current Steam build).
+        if '1_5_97' in n or '1.5.97' in n:
+            return 'CommonLibImport_SE.py'
         return 'CommonLibImport_AE.py'
     if 'skyrimvr' in n:
         return 'CommonLibImport_VR.py'
@@ -912,6 +922,10 @@ def _infer_commonlib_script(program_name):
 _COMMONLIB_APPLY_SCRIPTS = {
     'CommonLibImport_SE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'se']),
     'CommonLibImport_AE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'ae']),
+    'CommonLibImport_AE_GOG_1_6_1179.py':
+        ('apply_skyrim_to_user_project.py',
+         ['--version', 'ae', '--script',
+          str(GHIDRA_SCRIPTS_DIR / 'CommonLibImport_AE_GOG_1_6_1179.py')]),
     'CommonLibImport_VR.py':     ('apply_skyrim_to_user_project.py', ['--version', 'vr']),
     'CommonLibImport_F4_OG.py':  ('apply_f4_to_user_project.py',  ['--version', 'og']),
     'CommonLibImport_F4_NG.py':  ('apply_f4_to_user_project.py',  ['--version', 'ng']),

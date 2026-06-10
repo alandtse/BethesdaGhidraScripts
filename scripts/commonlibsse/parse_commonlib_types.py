@@ -163,7 +163,8 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
 
 
 def run_version(version, symbols_json, fallback_symbols_json='[]',
-                address_lib_map=None, pdb_structs=None, pdb_enums=None):
+                address_lib_map=None, pdb_structs=None, pdb_enums=None,
+                gog_variants=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -263,6 +264,40 @@ def run_version(version, symbols_json, fallback_symbols_json='[]',
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source, address_lib_map=address_lib_map)
     print('Output: {} ({} enums, {} structs)'.format(output_path, n_enums, n_structs))
+
+    # --- GOG / extra-AE-build variants ---
+    # ``gog_variants`` is [(label, build_db, rev_1170), ...].  Every AE-keyed
+    # symbol is re-keyed through its address-library ID (stable across all
+    # AE builds): 1.6.1170-RVA -> ID -> build-RVA.  Types/vtables are byte-
+    # identical across AE builds, so we reuse this parse's AST results and
+    # only swap the offsets.  Closes the gap where the GOG Edition binary
+    # was applied with Steam 1.6.1170 offsets.
+    import json as _json
+    for label, build_db, rev_1170 in (gog_variants or []):
+        def _rekey(json_blob):
+            out = []
+            kept = dropped = 0
+            for s in _json.loads(json_blob):
+                a = s.get('a')
+                ai = s.get('ai') or (rev_1170.get(a) if a else None)
+                if ai is None or ai not in build_db:
+                    dropped += 1
+                    continue
+                ns = dict(s)
+                ns['a'] = build_db[ai]
+                ns['ai'] = ai
+                out.append(ns)
+                kept += 1
+            return _json.dumps(out, separators=(',', ':')), kept, dropped
+        sym_blob, k1, d1 = _rekey(symbols_json)
+        fb_blob, k2, d2 = _rekey(fallback_symbols_json)
+        variant_path = output_path.replace('.py', '_{}.py'.format(label))
+        generate_script(enums, structs, vtable_structs, variant_path,
+                        version, sym_blob, fb_blob, template_source,
+                        address_lib_map=address_lib_map)
+        print('Output: {} (re-keyed {} symbols + {} fallbacks; '
+              'dropped {}+{} without a {} mapping)'.format(
+                  variant_path, k1, k2, d1, d2, label))
 
 
 def _detect_exe_versions():
@@ -432,6 +467,53 @@ def main():
     print('Added {} new symbols from SE PDB, merged SE offset into {} existing'.format(
         pdb_added, pdb_merged))
 
+    # --- Structured signatures from SkyrimSE.pdb --globals ---
+    # The globals stream is the only part of this PDB carrying full
+    # function signatures (ret + callconv + args).  Attach parsed 'sd'
+    # descriptors to every SE-keyed symbol so the generated scripts apply
+    # typed signatures (mirrors FNV's Xbox-PDB sig pipeline).
+    sigs_path = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_func_sigs.json')
+    if os.path.isfile(sigs_path):
+        import json as _j
+        sys.path.insert(0, os.path.join(PROJECT_DIR, 'scripts', 'commonlibnvse'))
+        try:
+            from pdb_sig_to_structured import parse_sig as _parse_sig
+            rva_sigs = _j.loads(open(sigs_path, encoding='utf-8').read())
+            types_known = set()
+            enums_known = set()
+            tp = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_types.json')
+            ep = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_enums.json')
+            if os.path.isfile(tp):
+                types_known = set(_j.loads(open(tp, encoding='utf-8').read()))
+            if os.path.isfile(ep):
+                for cls in _j.loads(open(ep, encoding='utf-8').read()):
+                    enums_known.add(cls)
+                    enums_known.add(cls.replace('::', '_'))
+            n_sd = n_sd_fail = 0
+            for s in symbols:
+                if s.get('sd') or s.get('t') != 'func':
+                    continue
+                se_off = s.get('s')
+                if not se_off:
+                    continue
+                rec = rva_sigs.get('0x{:08X}'.format(se_off))
+                if not rec:
+                    continue
+                try:
+                    sd = _parse_sig(rec['sig'], types_known, enums_known, {})
+                except Exception:
+                    sd = None
+                if sd is not None:
+                    s['sd'] = sd
+                    n_sd += 1
+                else:
+                    n_sd_fail += 1
+            print('Attached {} structured sigs from PDB globals '
+                  '({} unparseable)'.format(n_sd, n_sd_fail))
+        except ImportError as e:
+            print('  WARNING: sig parser unavailable ({}); skipping '
+                  'globals-sig attach'.format(e))
+
     # Normalize __ → :: in all names
     for s in symbols:
         if '__' in s['n']:
@@ -568,9 +650,28 @@ def main():
                 type(e).__name__, e))
             pdb_enums = {}
 
+    # --- GOG AE builds from skyrimae.relib (meh321's all-builds ID DB) ---
+    # The relib carries per-build ID->RVA maps for every AE release.  We
+    # emit re-keyed variants of the AE script for the GOG builds so the
+    # GOG Edition binary gets correct offsets instead of Steam 1.6.1170's.
+    gog_variants = []
+    relib_path = os.path.join(PROJECT_DIR, 'extern',
+                              'AddressLibraryDatabase', 'skyrimae.relib')
+    if os.path.isfile(relib_path):
+        from address_library import load_relib_version
+        rev_1170 = {rva: i for i, rva in addr_lib.ae_db.items()}
+        for label, build in (('GOG_1_6_1179', (1, 6, 1179, 0)),
+                             ('GOG_1_6_1170', (1, 6, 1170, 0, 1))):
+            db = load_relib_version(relib_path, build)
+            if db:
+                gog_variants.append((label, db, rev_1170))
+                print('Loaded relib build {}: {:,} entries'.format(
+                    '.'.join(str(x) for x in build), len(db)))
+
     for version in ('se', 'ae', 'svr'):
         run_version(version, symbols_json, fb_for[version],
-                    pdb_structs=pdb_structs, pdb_enums=pdb_enums)
+                    pdb_structs=pdb_structs, pdb_enums=pdb_enums,
+                    gog_variants=gog_variants if version == 'ae' else None)
 
 
 if __name__ == '__main__':

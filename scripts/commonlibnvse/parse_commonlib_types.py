@@ -263,7 +263,11 @@ def main():
                     continue
                 extra_structs, _, _ = convert_pdb_types(
                     Path(extra_path),
-                    Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None)
+                    Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None,
+                    # Typedefs are build-independent; without them every
+                    # alias-typed field degrades to bytes:N in the 3
+                    # non-Debug builds' structs.
+                    Path(pdb_typedefs_json) if os.path.isfile(pdb_typedefs_json) else None)
                 for cls, st in extra_structs.items():
                     if cls in structs:
                         continue

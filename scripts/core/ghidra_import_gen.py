@@ -1253,6 +1253,15 @@ def _import_fallback_symbols():
             if not f:
                 DisassembleCommand(addr, None, True).applyTo(currentProgram)
                 f = fm.getFunctionAt(addr)
+            if not f and s.get('t') == 'func':
+                # Disassembly alone doesn't promote the address to a
+                # function -- create one explicitly (same recovery the
+                # primary pass uses; rescues the label-only "no_func"
+                # cases, e.g. 3,333 on Skyrim VR).
+                try:
+                    f = createFunction(addr, None)
+                except:
+                    f = None
 
             sig_target = None
             was_renamed = False

@@ -80,10 +80,13 @@ APPLY_STEPS = [
     ("FNV apply",
      "apply_fnv_to_user_project.py",
      ["--program-path", "/FalloutNV/FalloutNV_1_4_0_525.exe"]),
-    # B: SkyrimAE GOG Edition (variant binary)
+    # B: SkyrimAE GOG Edition (variant binary).  Uses the relib-re-keyed
+    # GOG script -- the plain AE script carries Steam 1.6.1170 offsets
+    # which land at wrong addresses on GOG builds.
     ("Skyrim AE apply -> GOG Edition",
      "apply_skyrim_to_user_project.py",
      ["--version", "ae",
+      "--script", str(SCRIPTS_DIR.parent / "ghidrascripts" / "CommonLibImport_AE_GOG_1_6_1179.py"),
       "--program-path", "/Skyrim/SkyrimAE_GOG Edition.exe"]),
     # C: Starfield (PC only).
     # DO NOT apply the SF script to StarfieldVR.exe: it embeds PC 1.16.x
