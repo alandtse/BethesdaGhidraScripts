@@ -53,36 +53,47 @@ def test_should_apply_field_refuses_clobber_generic_lowconf_mismatch():
 
 
 def test_coverage_delta_and_progress():
-    before = {'thiscall': 100, 'named_fields': 50, 'unk_fields': 200, 'typed_params': 30}
-    after = {'thiscall': 110, 'named_fields': 58, 'unk_fields': 188, 'typed_params': 34}
+    before = {'thiscall': 100, 'named_field_bytes': 500, 'unk_field_bytes': 2000, 'typed_params': 30}
+    after = {'thiscall': 110, 'named_field_bytes': 524, 'unk_field_bytes': 1976, 'typed_params': 34}
     d = pp.coverage_delta(before, after)
-    assert d == {'thiscall': 10, 'named_fields': 8, 'unk_fields': -12, 'typed_params': 4}
-    # progress = 10 + 8 + 4 - (-12) = 34
-    assert pp.progress(d) == 34
+    assert d == {'thiscall': 10, 'named_field_bytes': 24, 'unk_field_bytes': -24, 'typed_params': 4}
+    # progress = thiscall 10 + typed_params 4 - unk_field_bytes(-24) = 38 (named not scored)
+    assert pp.progress(d) == 38
 
 
 def test_is_converged():
     big = pp.coverage_delta(
-        {'thiscall': 0, 'named_fields': 0, 'unk_fields': 100, 'typed_params': 0},
-        {'thiscall': 5, 'named_fields': 5, 'unk_fields': 90, 'typed_params': 5})
-    assert not pp.is_converged(big)            # progress 25 >= 5
+        {'thiscall': 0, 'unk_field_bytes': 1000, 'typed_params': 0},
+        {'thiscall': 5, 'unk_field_bytes': 900, 'typed_params': 5})
+    assert not pp.is_converged(big)            # progress 5 + 100 = 110 >= 5
     tiny = pp.coverage_delta(
-        {'thiscall': 10, 'named_fields': 10, 'unk_fields': 100, 'typed_params': 10},
-        {'thiscall': 11, 'named_fields': 11, 'unk_fields': 99, 'typed_params': 10})
-    assert pp.is_converged(tiny)               # progress 3 in [0,5)
+        {'thiscall': 10, 'unk_field_bytes': 1000, 'typed_params': 10},
+        {'thiscall': 11, 'unk_field_bytes': 997, 'typed_params': 10})
+    assert pp.is_converged(tiny)               # progress 1 + 3 = 4 in [0,5)
     # exact fixpoint
     same = pp.coverage_delta({'thiscall': 1}, {'thiscall': 1})
     assert pp.is_converged(same)
 
 
+def test_byte_metric_no_false_regression_on_fragmentation():
+    # The bug we caught: applying 2 NiColor fields cleanly resolved 24 bytes, but the
+    # COMPONENT count rose (fragmentation) and read as a regression. In BYTES the same
+    # apply is unambiguous forward progress -- unknown bytes strictly fell.
+    d = pp.coverage_delta(
+        {'thiscall': 9909, 'named_field_bytes': 1000000, 'unk_field_bytes': 9024, 'typed_params': 17974},
+        {'thiscall': 9909, 'named_field_bytes': 1000024, 'unk_field_bytes': 9000, 'typed_params': 17974})
+    assert pp.progress(d) == 24                 # +24 bytes resolved, not -12
+    assert not pp.is_regression(d)
+
+
 def test_regression_is_not_convergence():
-    # named_fields dropped / unk rose -> negative progress: a regression, NOT a fixpoint
+    # A genuine regression: unknown bytes ROSE (something added undefined) -> not a fixpoint
     reg = pp.coverage_delta(
-        {'thiscall': 100, 'named_fields': 145915, 'unk_fields': 1127, 'typed_params': 18282},
-        {'thiscall': 100, 'named_fields': 145904, 'unk_fields': 1128, 'typed_params': 18282})
-    assert pp.progress(reg) == -12
+        {'thiscall': 100, 'unk_field_bytes': 1127, 'typed_params': 18282},
+        {'thiscall': 100, 'unk_field_bytes': 1227, 'typed_params': 18282})
+    assert pp.progress(reg) == -100
     assert pp.is_regression(reg)
-    assert not pp.is_converged(reg)            # the bug we caught: must not claim converged
+    assert not pp.is_converged(reg)
 
 
 if __name__ == '__main__':

@@ -78,8 +78,14 @@ def should_apply_field(cur_name, cur_type, inferred_type, inferred_len, slot_len
 
 
 # Coverage metrics that should monotonically improve until the cycle converges.
-# thiscall/named_fields/typed_params go UP; unk_fields goes DOWN.
-COVERAGE_KEYS = ('thiscall', 'named_fields', 'unk_fields', 'typed_params')
+# Field coverage is measured in BYTES, not component count: carving a typed field
+# out of a larger `undefined` region fragments the remainder into more components,
+# so a component COUNT can rise even when real RE was added -- a false regression.
+# Bytes are conserved (a 12-byte field typed = 12 fewer unknown bytes, always), so
+# unk_field_bytes shrinks monotonically. thiscall/typed_params go UP; unk_field_bytes
+# goes DOWN; named_field_bytes is reported but NOT scored (it mirrors unk_field_bytes,
+# so scoring both would double-count a single resolved field).
+COVERAGE_KEYS = ('thiscall', 'named_field_bytes', 'unk_field_bytes', 'typed_params')
 
 
 def coverage_delta(before, after):
@@ -88,13 +94,12 @@ def coverage_delta(before, after):
 
 
 def progress(delta):
-    """Single scalar of forward progress in a cycle: gains in the
-    higher-is-better metrics plus the shrink in unknown fields (a negative
-    unk_fields delta is positive progress)."""
+    """Single scalar of forward progress in a cycle: more thiscall members and
+    typed params, fewer unknown struct bytes (a negative unk_field_bytes delta is
+    positive progress)."""
     return (delta.get('thiscall', 0)
-            + delta.get('named_fields', 0)
             + delta.get('typed_params', 0)
-            - delta.get('unk_fields', 0))
+            - delta.get('unk_field_bytes', 0))
 
 
 def is_regression(delta):

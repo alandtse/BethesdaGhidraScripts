@@ -64,7 +64,11 @@ def _concrete(typename):
 
 def measure_coverage(cp):
     """Snapshot the four coverage metrics from the live program (no decompile --
-    cheap; safe to call any time, including dry-run)."""
+    cheap; safe to call any time, including dry-run).
+
+    Struct coverage is in BYTES, not component count: carving a typed field out of a
+    larger `undefined` run fragments the remainder into more components, so a count
+    rises even when RE was added. Bytes are conserved -- the only robust signal."""
     from ghidra.program.model.symbol import SymbolType
     fm = cp.getFunctionManager()
     gns = cp.getGlobalNamespace()
@@ -79,7 +83,7 @@ def measure_coverage(cp):
         for prm in f.getParameters():
             if _concrete(prm.getDataType().getName()):
                 typed_params += 1
-    named_fields = unk_fields = 0
+    named_field_bytes = unk_field_bytes = 0
     for dt in dtm.getAllDataTypes():
         if dt.getClass().getSimpleName() != 'StructureDB':
             continue
@@ -87,16 +91,14 @@ def measure_coverage(cp):
             continue
         for i in range(dt.getNumComponents()):
             c = dt.getComponent(i)
-            if c.getLength() < 8:
-                continue
             fn = c.getFieldName() or ''
             tn = c.getDataType().getName()
             if fn.startswith(('unk', 'pad')) or 'undefined' in tn:
-                unk_fields += 1
+                unk_field_bytes += c.getLength()
             elif _concrete(tn):
-                named_fields += 1
-    return {'thiscall': thiscall, 'named_fields': named_fields,
-            'unk_fields': unk_fields, 'typed_params': typed_params}
+                named_field_bytes += c.getLength()
+    return {'thiscall': thiscall, 'named_field_bytes': named_field_bytes,
+            'unk_field_bytes': unk_field_bytes, 'typed_params': typed_params}
 
 
 def _run_stage(name, env, cp, monitor):
@@ -156,15 +158,15 @@ def run():
     try:
         with open(COVERAGE_CSV, 'w', newline='') as fh:
             w = csv.writer(fh)
-            w.writerow(['cycle', 'thiscall', 'named_fields', 'unk_fields',
-                        'typed_params', 'd_thiscall', 'd_named_fields',
-                        'd_unk_fields', 'd_typed_params', 'progress'])
+            w.writerow(['cycle', 'thiscall', 'named_field_bytes', 'unk_field_bytes',
+                        'typed_params', 'd_thiscall', 'd_named_field_bytes',
+                        'd_unk_field_bytes', 'd_typed_params', 'progress'])
             for cyc, snap, delta in snapshots:
                 d = delta or {}
-                w.writerow([cyc, snap['thiscall'], snap['named_fields'],
-                            snap['unk_fields'], snap['typed_params'],
-                            d.get('thiscall', ''), d.get('named_fields', ''),
-                            d.get('unk_fields', ''), d.get('typed_params', ''),
+                w.writerow([cyc, snap['thiscall'], snap['named_field_bytes'],
+                            snap['unk_field_bytes'], snap['typed_params'],
+                            d.get('thiscall', ''), d.get('named_field_bytes', ''),
+                            d.get('unk_field_bytes', ''), d.get('typed_params', ''),
                             pl.progress(d) if delta else ''])
         print('\n  coverage trace -> %s' % COVERAGE_CSV)
     except Exception as e:
