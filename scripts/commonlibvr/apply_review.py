@@ -61,6 +61,20 @@ def _resolve_type(dtm, by_name, name):
     return dt
 
 
+def _struct_metrics(s):
+    """(length, protected_bytes): bytes carrying RE we must not lose (non-unk*/pad*
+    name AND non-undefined type). Improve-or-nop invariant: length unchanged AND
+    protected_bytes not decreased after an apply."""
+    pb = 0
+    for i in range(s.getNumComponents()):
+        c = s.getComponent(i)
+        fn = c.getFieldName() or ''
+        tn = c.getDataType().getName()
+        if not fn.startswith(('unk', 'pad')) and 'undefined' not in tn:
+            pb += c.getLength()
+    return s.getLength(), pb
+
+
 def run():
     from ghidra.program.model.data import CategoryPath
     cp = currentProgram  # noqa: F821
@@ -123,10 +137,28 @@ def run():
                 if digits.lower().startswith(pre):
                     digits = digits[len(pre):]
                     break
+            new_name = 'fld%s' % (digits or ('%X' % off))
             if APPLY:
+                # PROVABLE improve-or-nop: validate on a detached copy first; only
+                # touch the live struct if length is unchanged and no RE is lost.
+                base = _struct_metrics(struct)
                 try:
-                    struct.replaceAtOffset(off, dt, dt.getLength(),
-                                           'fld%s' % (digits or ('%X' % off)),
+                    test = struct.copy(dtm)
+                    test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
+                    tm = _struct_metrics(test)
+                except Exception as e:
+                    skipped += 1
+                    if len(samples) < 25:
+                        samples.append('ERROR %s +0x%X %s: %s' % (cls, off, dec, str(e)[:40]))
+                    continue
+                if tm[0] != base[0] or tm[1] < base[1]:
+                    skipped += 1
+                    if len(samples) < 25:
+                        samples.append('UNSAFE %s +0x%X %s would change struct size/RE'
+                                       % (cls, off, dec))
+                    continue
+                try:
+                    struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
                                            'clvr-review ' + dec)
                     applied += 1
                 except Exception as e:

@@ -7,9 +7,12 @@ CommonLib still marks `unkNN` -- net-new RE that exists only because the typed
 scaffold gave the decompiler anchors to propagate from. Feed the results back to
 CommonLib, re-import, and the next cycle propagates one level deeper.
 
-NON-DESTRUCTIVE: FillOutStructureHelper.processStructure returns an in-memory
-Structure; nothing is ever applied to the program. No transaction is opened. The
-program's data types are asserted unchanged at the end.
+NON-DESTRUCTIVE: mining calls processStructure with createNewStructure=TRUE so it
+builds a THROWAWAY structure to read -- it never fills out (and grows) the live
+typed struct (createNewStructure=False does, silently, with no new type created).
+The apply step additionally validates every field on a detached copy first and only
+touches the live struct when the change is provably improve-or-nop (length
+unchanged, no RE lost). Read-only mode (default) writes only a CSV.
 
 Generalized: runtime is taken from the program name (offset key s/a/v), CommonLib
 structs/symbols from the generated import. Run it on SE/AE/VR, any CommonLib
@@ -83,6 +86,24 @@ def _useful(tn):
     return tn not in ('char', 'byte', 'bool', 'void')
 
 
+def _struct_metrics(s):
+    """(length, protected_bytes) for a structure. protected_bytes = bytes of
+    components that carry RE we must not lose: a real (non-unk*/pad*) field name AND a
+    non-undefined type. The improve-or-nop invariant for an apply is: length UNCHANGED
+    and protected_bytes NOT DECREASED. A good apply (unk slot -> named concrete field,
+    same size) raises protected_bytes; a struct-growth changes length; a clobber of a
+    real field drops protected_bytes. So checking these two on a sandbox copy proves an
+    apply can only improve the struct or be skipped -- never degrade it."""
+    pb = 0
+    for i in range(s.getNumComponents()):
+        c = s.getComponent(i)
+        fn = c.getFieldName() or ''
+        tn = c.getDataType().getName()
+        if not fn.startswith(('unk', 'pad')) and 'undefined' not in tn:
+            pb += c.getLength()
+    return s.getLength(), pb
+
+
 def run():
     from ghidra.app.decompiler import DecompInterface
     from ghidra.app.decompiler.util import FillOutStructureHelper
@@ -153,7 +174,13 @@ def run():
                 hv = lsm.getParamSymbol(pidx).getHighVariable()
                 if hv is None:
                     continue
-                st = helper.processStructure(hv, f, False, FOLLOW, decomp)
+                # createNewStructure=TRUE: build a THROWAWAY structure from the
+                # dataflow and return it to read. With False the helper fills out the
+                # variable's EXISTING type IN PLACE -- which silently GREW live
+                # /types.h structs during mining (it doubled MapMenu 0x30560->0x60880,
+                # undetected because no new *type* is created). True keeps mining
+                # truly read-only.
+                st = helper.processStructure(hv, f, True, FOLLOW, decomp)
                 if st is None:
                     continue
                 funcs_done += 1
@@ -242,23 +269,34 @@ def run():
                         digits = digits[len(pre):]
                         break
                 new_name = 'fld%s' % (digits or ('%X' % off))
-                # HARD no-growth guard: the new field must fit entirely within the
-                # struct's current bounds. replaceAtOffset GROWS a struct if the type
-                # extends past the end -- that once doubled MapMenu (0x30560 ->
-                # 0x60880) with ~197k undefined bytes. Skip anything out of bounds,
-                # and if a replace ever changes the struct length, stop applying to
-                # that struct to contain the damage.
-                if off + dt.getLength() > struct.getLength():
-                    apply_skips['out-of-bounds'] += 1
+                # PROVABLE improve-or-nop: never mutate the live struct on faith.
+                # First apply this one field to a DETACHED COPY of the current struct
+                # and require the invariant (length unchanged, protected bytes not
+                # decreased). Only if the sandbox proves it safe do we apply to the
+                # live struct. This catches struct-growth/clobber regardless of cause
+                # (it is how MapMenu's 0x30560->0x60880 doubling would have been
+                # rejected). A failure leaves the live struct untouched (nop).
+                base = _struct_metrics(struct)
+                try:
+                    test = struct.copy(dtm)
+                    tc = test.getComponentAt(off)
+                    if tc is None or tc.getOffset() != off:
+                        apply_skips['no-slot'] += 1
+                        continue
+                    test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
+                    tm = _struct_metrics(test)
+                except Exception:
+                    apply_skips['copy-error'] += 1
                     continue
-                before_len = struct.getLength()
+                if tm[0] != base[0] or tm[1] < base[1]:
+                    apply_skips['unsafe(would-degrade)'] += 1
+                    continue
                 try:
                     struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
                                            'clvr-discovered ' + info['type'])
-                    if struct.getLength() != before_len:
-                        apply_skips['GREW-STRUCT(bug)'] += 1
-                        print('  !! %s grew 0x%X->0x%X applying +0x%X %s -- skipping rest'
-                              % (cls, before_len, struct.getLength(), off, info['type']))
+                    # paranoia: live result must match the proven-safe sandbox
+                    if _struct_metrics(struct) != tm:
+                        apply_skips['live-mismatch(bug)'] += 1
                         continue
                     applied += 1
                     if len(apply_samples) < 15:
