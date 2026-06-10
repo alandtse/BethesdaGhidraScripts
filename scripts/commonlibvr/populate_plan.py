@@ -102,6 +102,18 @@ def progress(delta):
             - delta.get('unk_field_bytes', 0))
 
 
+def is_struct_change_safe(before, after):
+    """Improve-or-nop guard for a single struct apply. `before`/`after` are
+    (length, protected_bytes) snapshots of the struct (protected_bytes = bytes in
+    real, non-unk*/pad*, non-undefined fields). The change is safe ONLY if the struct
+    did not grow OR shrink AND lost no protected RE -- a good apply just turns an
+    unknown slot into a named field at the same size. The drivers compute these on a
+    DETACHED struct.copy() and apply to the live struct only when this returns True,
+    so an apply can never grow a struct (the MapMenu 0x30560->0x60880 corruption) or
+    clobber existing RE -- it can only improve the struct or be skipped."""
+    return after[0] == before[0] and after[1] >= before[1]
+
+
 def is_regression(delta):
     """Negative net progress -- a pass made the program WORSE by the metrics. Never
     a fixpoint; a signal that the apply did something destructive and the loop

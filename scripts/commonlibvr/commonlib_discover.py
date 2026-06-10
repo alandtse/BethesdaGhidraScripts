@@ -288,7 +288,7 @@ def run():
                 except Exception:
                     apply_skips['copy-error'] += 1
                     continue
-                if tm[0] != base[0] or tm[1] < base[1]:
+                if not pl.is_struct_change_safe(base, tm):
                     apply_skips['unsafe(would-degrade)'] += 1
                     continue
                 try:

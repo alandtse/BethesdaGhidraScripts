@@ -34,6 +34,9 @@ import importlib.util as _ilu  # noqa: E402
 _rspec = _ilu.spec_from_file_location('clvr_review_plan', os.path.join(SCRIPT_DIR, 'review_plan.py'))
 rp = _ilu.module_from_spec(_rspec)
 _rspec.loader.exec_module(rp)
+_pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
+pl = _ilu.module_from_spec(_pspec)
+_pspec.loader.exec_module(pl)
 
 
 def _resolve_type(dtm, by_name, name):
@@ -151,7 +154,7 @@ def run():
                     if len(samples) < 25:
                         samples.append('ERROR %s +0x%X %s: %s' % (cls, off, dec, str(e)[:40]))
                     continue
-                if tm[0] != base[0] or tm[1] < base[1]:
+                if not pl.is_struct_change_safe(base, tm):
                     skipped += 1
                     if len(samples) < 25:
                         samples.append('UNSAFE %s +0x%X %s would change struct size/RE'

@@ -86,6 +86,19 @@ def test_byte_metric_no_false_regression_on_fragmentation():
     assert not pp.is_regression(d)
 
 
+def test_is_struct_change_safe():
+    # good apply: unknown slot -> named field, same length, more protected bytes
+    assert pp.is_struct_change_safe((0x100, 200), (0x100, 208))
+    # nop: nothing changed
+    assert pp.is_struct_change_safe((0x100, 200), (0x100, 200))
+    # GROWTH (the MapMenu 0x30560->0x60880 bug) -> unsafe, even if protected rose
+    assert not pp.is_struct_change_safe((0x30560, 200), (0x60880, 9999))
+    # shrink -> unsafe
+    assert not pp.is_struct_change_safe((0x100, 200), (0xF0, 200))
+    # clobbered existing RE (protected dropped) at same length -> unsafe
+    assert not pp.is_struct_change_safe((0x100, 200), (0x100, 192))
+
+
 def test_regression_is_not_convergence():
     # A genuine regression: unknown bytes ROSE (something added undefined) -> not a fixpoint
     reg = pp.coverage_delta(
