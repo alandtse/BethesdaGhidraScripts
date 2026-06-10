@@ -307,6 +307,33 @@ fields** (`TESObjectCELL +0xB0 → TESForm*`, `TES +0x2A8 → NavMeshInfoMap*`, 
 NiPointer<NiAVObject>`), converging in 3 cycles. Non-destructive: only fills unknown slots with same-size
 types, never creates a type, one always-committed transaction (never `commit=False`).
 
+### 12. Optional LLM review — break the convergence plateau (`apply_review.py`)
+The automated cycle (11) converges against rules it can express; what's left sits in skip buckets,
+chiefly **`generic-size-only`** — offsets where the decompiler is sure a pointer-sized field EXISTS
+(many functions agree) but could only infer a size, not a semantic type. Naming those is a judgement
+call, so the loop hands them to a human/LLM via the established decision-log pattern (§9):
+
+- **`commonlib_discover.py` emits `<import>.review_queue.csv`** every run: one row per
+  size-only-consensus field (`is_review_worthy` — `named` False and `total ≥ 2` observers; single weak
+  hits are left for more discovery first), strongest-evidence first, with the *observing functions* as
+  the reviewer's leads (`observed_in`) and a blank `decision_type`.
+- **A human/LLM fills `decision_type`** with a concrete Ghidra type (or `skip`) after reading those
+  functions — the irreducible judgement tail.
+- **`apply_review.py` writes the decisions back** (`CLVR_REVIEW_APPLY=go`): resolves the type string
+  (pointer/`*64` decoration handled, `/types.h` preferred), and fills the slot under the same
+  non-destructive guards as the automated apply (unknown slot only, exact size only) — but with no
+  confidence/generic filter, because the human IS the authority. Renamed `fld*`, commented
+  `clvr-review`. `review_plan.py` holds the pure decisions (`is_review_worthy`/`parse_decision`,
+  unit-tested).
+
+Why it matters: each resolved field is a **new anchor**, so the next cycle discovers more from it —
+review raises the ceiling, then the cycle converges to a higher fixpoint. The loop is
+**cycle → fill queue → `apply_review` → re-cycle**, optional and zero-cost if unused. It also produces
+exactly the human-grade, authoritative fields you'd export to CommonLib first. Validated on VR: a
+40-class discover queued **19** size-only fields (e.g. `BGSSaveLoadManager +0xA0`, observed in
+`Load_Impl`/`GetSaveVersion`); `apply_review` resolves `TESForm *`, reports unresolved type names, and
+rejects size-mismatches — all before writing.
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)

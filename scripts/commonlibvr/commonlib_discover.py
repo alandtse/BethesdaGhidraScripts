@@ -54,6 +54,15 @@ _spec.loader.exec_module(dp)
 _pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
 pl = _ilu.module_from_spec(_pspec)
 _pspec.loader.exec_module(pl)
+_rspec = _ilu.spec_from_file_location('clvr_review_plan', os.path.join(SCRIPT_DIR, 'review_plan.py'))
+rp = _ilu.module_from_spec(_rspec)
+_rspec.loader.exec_module(rp)
+
+# The optional LLM-review queue: fields the decompiler is sure EXIST (consensus) but
+# could only size, not name -- a ranked worklist for a human/LLM to assign a type
+# (applied authoritatively by apply_review.py). Always written; cheap, and the apply
+# step is opt-in. <import>.review_queue.csv unless overridden.
+REVIEW_CSV = os.environ.get('CLVR_DISCOVER_REVIEW_CSV', IMPORT_PATH + '.review_queue.csv')
 
 
 def _unk_offsets(dt):
@@ -123,6 +132,7 @@ def run():
 
     observations = []
     dt_by_typename = {}                  # inferred typename -> its live DataType
+    evidence = {}                        # (cls, offset) -> [observing function names]
     classes_done = funcs_done = 0
     total_classes = min(len(by_class), MAX_CLASSES) if MAX_CLASSES else len(by_class)
     per = 'ALL' if PER_CLASS <= 0 else str(PER_CLASS)
@@ -159,6 +169,9 @@ def run():
                     if c.getOffset() in offs and _useful(tn):
                         observations.append((cl, c.getOffset(), tn))
                         dt_by_typename.setdefault(tn, c.getDataType())
+                        ev = evidence.setdefault((cl, c.getOffset()), [])
+                        if f.getName() not in ev and len(ev) < 6:
+                            ev.append(f.getName())   # who saw it -> reviewer's leads
             except Exception:
                 continue
     decomp.dispose()
@@ -171,6 +184,33 @@ def run():
                     'confidence', 'votes', 'total_observations'])
         for cls, off, cur, typ, conf, votes, total in rows:
             w.writerow([cls, '0x%X' % off, cur, typ, conf, votes, total])
+
+    # Optional LLM-review queue: fields the decompiler is sure EXIST (consensus
+    # across functions) but could only size, not name. These are exactly the
+    # auto-skipped `generic-size-only` cases -- a ranked worklist for a human/LLM to
+    # assign a type, applied authoritatively by apply_review.py. Strongest evidence
+    # first; `decision_type` is blank for the reviewer to fill. (Named fields are
+    # auto-applied; single weak observations are left for more discovery first.)
+    review = []
+    for (cls, off), info in aggregated.items():
+        worthy, _why = rp.is_review_worthy(info['named'], info['total'], info['votes'])
+        if worthy:
+            review.append((cls, off, info))
+    review.sort(key=lambda r: rp.review_rank(r[2]['total'], r[2]['votes']), reverse=True)
+    review_n = 0
+    try:
+        with open(REVIEW_CSV, 'w', newline='') as fh:
+            w = csv.writer(fh)
+            w.writerow(['class', 'offset', 'current_name', 'size_only_guess',
+                        'votes', 'total_observations', 'observed_in', 'decision_type'])
+            for cls, off, info in review:
+                w.writerow([cls, '0x%X' % off,
+                            unk_by_class.get(cls, {}).get(off, ''), info['type'],
+                            info['votes'], info['total'],
+                            ' '.join(evidence.get((cls, off), [])[:6]), ''])
+                review_n += 1
+    except Exception as e:
+        print('  (review queue write failed: %s)' % e)
 
     # APPLY: write high-confidence named fields into the /types.h structs so the
     # next cycle propagates from them. Only fills an unknown slot with a concrete
@@ -244,6 +284,8 @@ def run():
     print('  data-type count %d -> %d (%s; apply only retypes fields, never creates)'
           % (dt_before, dt_after, 'unchanged' if dt_before == dt_after else 'CHANGED'))
     print('  -> ' + OUT_CSV)
+    print('  LLM-review queue: %d size-only-consensus fields need a type'
+          ' (fill decision_type, then apply_review.py) -> %s' % (review_n, REVIEW_CSV))
 
 
 run()
