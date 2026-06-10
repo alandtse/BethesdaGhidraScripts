@@ -32,9 +32,16 @@ SCRIPT_DIR = os.environ.get(
     'CLVR_SCRIPT_DIR',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
 OUT_CSV = os.environ.get('CLVR_DISCOVER_CSV', IMPORT_PATH + '.discovered_fields.csv')
-PER_CLASS = int(os.environ.get('CLVR_DISCOVER_PER_CLASS', '4') or 4)
+# Per class, how many functions to mine. 0 = ALL (default): vfuncs and methods are
+# where a class reveals its own field layout, so walk them all -- sampling just
+# leaves fields undiscovered. Set a positive N only to cap runtime; functions are
+# ordered `this`-methods first so a cap still mines the class's own methods.
+PER_CLASS = int(os.environ.get('CLVR_DISCOVER_PER_CLASS', '0') or 0)
 MAX_CLASSES = int(os.environ.get('CLVR_DISCOVER_MAX_CLASSES', '0') or 0)
-FOLLOW = os.environ.get('CLVR_DISCOVER_FOLLOW', '0') == '1'
+# Follow the class pointer into the functions it is passed to (callee review):
+# FillOutStructureHelper observes field accesses one call-edge deeper. Default on;
+# set 0 to disable for speed.
+FOLLOW = os.environ.get('CLVR_DISCOVER_FOLLOW', '1') == '1'
 # Default is read-only (write a CSV only). CLVR_DISCOVER_APPLY=go also WRITES the
 # high-confidence named fields into the /types.h structs -- the edge that lets the
 # in-Ghidra population cycle compound (a newly-typed field is an anchor next pass).
@@ -88,18 +95,26 @@ def run():
             unk_by_class[dt.getName()] = offs
             struct_by_class[dt.getName()] = dt
 
-    # Function pool: EVERY function whose param-0 is a pointer to a class-with-
-    # unknowns -- i.e. anything the enrichment gave a typed `this`, not just
-    # CommonLib's id-bound symbols. This is what scales the cycle: the more of the
-    # program is typed, the bigger the discovery surface next pass.
-    by_class = {}
+    # Function pool: every function with a pointer to a class-with-unknowns in ANY
+    # parameter (not just param-0). param-0 is the class's own `this` (its methods
+    # and vfuncs -- the richest field-layout source); a non-0 param is a function
+    # that takes the class as an argument (a caller / cross-class user that still
+    # reads its fields). We mine the matching param in each. Entries are ordered
+    # `this`-first so a PER_CLASS cap still mines the class's own methods before the
+    # argument-takers. Callee review is the FillOutStructureHelper FOLLOW flag below.
+    def _base(tn):
+        return tn.rstrip('64').rstrip(' *') if tn else ''
+
+    by_class = {}                            # cls -> [(function, param_index), ...]
     for f in fm.getFunctions(True):
-        ps = f.getParameters()
-        if not ps:
-            continue
-        base_t = ps[0].getDataType().getName().rstrip('64').rstrip(' *')
-        if base_t in unk_by_class:
-            by_class.setdefault(base_t, []).append(f)
+        seen_cls = set()
+        for idx, p in enumerate(f.getParameters()):
+            base_t = _base(p.getDataType().getName())
+            if base_t in unk_by_class and base_t not in seen_cls:
+                seen_cls.add(base_t)
+                by_class.setdefault(base_t, []).append((f, idx))
+    for cl in by_class:                      # `this`-methods (idx 0) first
+        by_class[cl].sort(key=lambda fi: fi[1])
 
     dt_before = dtm.getDataTypeCount(True)
     decomp = DecompInterface()
@@ -110,8 +125,10 @@ def run():
     dt_by_typename = {}                  # inferred typename -> its live DataType
     classes_done = funcs_done = 0
     total_classes = min(len(by_class), MAX_CLASSES) if MAX_CLASSES else len(by_class)
-    print('Discovery: %d structs have unknown fields; %d of them have typed methods to mine.'
-          % (len(unk_by_class), len(by_class)))
+    per = 'ALL' if PER_CLASS <= 0 else str(PER_CLASS)
+    print('Discovery: %d structs have unknown fields; %d have functions to mine '
+          '(per-class=%s, callee-follow=%s).'
+          % (len(unk_by_class), len(by_class), per, FOLLOW))
     for cl, fns in by_class.items():
         if MAX_CLASSES and classes_done >= MAX_CLASSES:
             break
@@ -122,15 +139,15 @@ def run():
             print('  [%d/%d classes] functions=%d observations=%d'
                   % (classes_done, total_classes, funcs_done, len(observations)))
         offs = unk_by_class[cl]
-        for f in fns[:PER_CLASS]:
+        for f, pidx in (fns if PER_CLASS <= 0 else fns[:PER_CLASS]):
             try:
                 r = decomp.decompileFunction(f, 45, monitor)  # noqa: F821
                 if not (r and r.decompileCompleted()):
                     continue
                 lsm = r.getHighFunction().getLocalSymbolMap()
-                if lsm.getNumParams() < 1:
+                if lsm.getNumParams() <= pidx:
                     continue
-                hv = lsm.getParamSymbol(0).getHighVariable()
+                hv = lsm.getParamSymbol(pidx).getHighVariable()
                 if hv is None:
                     continue
                 st = helper.processStructure(hv, f, False, FOLLOW, decomp)
