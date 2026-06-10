@@ -96,6 +96,122 @@ def _make_symbols(funcs, labels):
     return symbols
 
 
+SF_IMAGE_BASE = 0x140000000
+# The offline naming corpus in refs/ was produced against this binary.
+CORPUS_SOURCE_VERSION = (1, 16, 236, 0)
+
+
+def _build_fallback_symbols(addr_lib, sf_version, verbose=True):
+    """Assemble FALLBACK_SYMBOLS from the two on-disk name pools:
+
+      1. ``extern/AddressLibraryDatabase/starfield.rename`` -- meh321's
+         curated ID->name database (~974 entries).  ID-keyed, so it
+         resolves against ANY versionlib: fully version-portable.
+      2. ``refs/sf116_named_from_combined_final.csv`` -- the offline
+         enrichment corpus (~64k ``0xVA,name`` rows: byte-sig + BSim +
+         RTTI-walk names harvested from the user's Combined project).
+         VA-keyed against 1.16.236; when the detected exe is a different
+         patch the RVAs are remapped 236-RVA -> ID -> detected-RVA via
+         the two versionlibs.
+
+    Fallback symbols only ever rename FUN_/sub_ placeholders at apply
+    time, so lower-confidence corpus names are safe to ship.
+    """
+    out = []
+    by_rva = set()
+
+    # --- 1. starfield.rename (curated, ID-keyed -- takes priority) ---
+    rename_path = os.path.join(PROJECT_DIR, 'extern',
+                               'AddressLibraryDatabase', 'starfield.rename')
+    n_rename = 0
+    if os.path.isfile(rename_path):
+        with open(rename_path, 'r', encoding='utf-8', errors='replace') as f:
+            for ln in f:
+                parts = ln.split(None, 1)
+                if len(parts) != 2 or not parts[0].isdigit():
+                    continue  # version header / malformed
+                rva = addr_lib.sf_db.get(int(parts[0]))
+                if not rva or rva in by_rva:
+                    continue
+                name = parts[1].strip()
+                # meh321 wildcard convention: trailing _* means "append
+                # address" -- drop it; Ghidra names must be unique anyway
+                # and the apply path suffixes on collision.
+                if name.endswith('_*'):
+                    name = name[:-2]
+                if not name:
+                    continue
+                out.append({'n': name, 't': 'func', 'sig': '',
+                            'sf': rva, 'src': 'starfield.rename'})
+                by_rva.add(rva)
+                n_rename += 1
+    if verbose:
+        print('Fallback pool 1 (starfield.rename): {} resolved'.format(n_rename))
+
+    # --- 2. offline corpus (VA-keyed at 1.16.236) ---
+    corpus_path = os.path.join(SCRIPT_DIR, 'refs',
+                               'sf116_named_from_combined_final.csv')
+    n_corpus = n_remap_miss = 0
+    if os.path.isfile(corpus_path):
+        det = tuple(sf_version) + (0,) * (4 - len(sf_version))
+        same_build = det[:4] == CORPUS_SOURCE_VERSION
+        rev_236 = None
+        det_db = None
+        if not same_build:
+            # Remap chain: corpus 236-RVA -> versionlib ID -> detected RVA.
+            try:
+                src_lib = AddressLibrary()
+                src_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'),
+                                 pe_version=CORPUS_SOURCE_VERSION)
+                rev_236 = {rva: i for i, rva in src_lib.sf_db.items()}
+                det_db = addr_lib.sf_db
+                if verbose:
+                    print('Corpus remap active: 1.16.236 -> {} via versionlib IDs'
+                          .format('.'.join(str(x) for x in det[:4])))
+            except FileNotFoundError:
+                print('WARNING: no versionlib for 1.16.236 -- corpus names '
+                      'skipped (cannot remap to detected build).')
+                rev_236 = {}
+        with open(corpus_path, 'r', encoding='utf-8', errors='replace') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('target_va'):
+                    continue
+                parts = ln.split(',', 1)
+                if len(parts) != 2:
+                    continue
+                try:
+                    va = int(parts[0], 16)
+                except ValueError:
+                    continue
+                rva236 = va - SF_IMAGE_BASE
+                if rva236 <= 0:
+                    continue
+                if same_build:
+                    rva = rva236
+                else:
+                    id_ = rev_236.get(rva236) if rev_236 else None
+                    rva = det_db.get(id_) if (id_ is not None and det_db) else None
+                    if rva is None:
+                        n_remap_miss += 1
+                        continue
+                if rva in by_rva:
+                    continue
+                name = parts[1].strip()
+                if not name:
+                    continue
+                out.append({'n': name, 't': 'func', 'sig': '',
+                            'sf': rva, 'src': 'sf116_corpus'})
+                by_rva.add(rva)
+                n_corpus += 1
+    if verbose:
+        print('Fallback pool 2 (sf116 corpus): {} loaded{}'.format(
+            n_corpus,
+            ', {} dropped (no ID remap)'.format(n_remap_miss) if n_remap_miss else ''))
+        print('Total fallback symbols: {}'.format(len(out)))
+    return out
+
+
 def _try_clang_types(verbose=True):
     """Best-effort clang AST parse of CommonLibSF headers.
 
@@ -237,7 +353,19 @@ def main():
               '(labels-only run -- needs clang.exe for AST-based vtable '
               'inference to produce anchorable structs).')
 
-    # 6. Generate the Ghidra Jython import script
+    # 6. Fallback symbols: starfield.rename + the offline naming corpus.
+    # Primary CommonLibSF symbols win on RVA collision at apply time
+    # (fallbacks only rename FUN_/sub_ placeholders).
+    print()
+    fallback_symbols = _build_fallback_symbols(addr_lib, sf_version)
+    primary_rvas = {s['sf'] for s in symbols if s.get('sf')}
+    fallback_symbols = [s for s in fallback_symbols
+                        if s['sf'] not in primary_rvas]
+    print('Fallback symbols after primary-RVA dedup: {}'.format(
+        len(fallback_symbols)))
+    fallback_symbols_json = _json.dumps(fallback_symbols, separators=(',', ':'))
+
+    # 7. Generate the Ghidra Jython import script
     from ghidra_import_gen import generate_script
     output_path = os.path.join(OUTPUT_DIR, 'CommonLibImport_SF.py')
     n_enums, n_structs = generate_script(
@@ -245,13 +373,14 @@ def main():
         output_path,
         version='sf',
         symbols_json=symbols_json,
-        fallback_symbols_json='[]',
+        fallback_symbols_json=fallback_symbols_json,
         template_source=template_source,
         project_name='CommonLibSF',
     )
     print('\nWrote {}'.format(output_path))
-    print('  {} enums, {} structs, {} vtable structs, {} symbols'.format(
-        n_enums, n_structs, len(vtable_structs), len(symbols)))
+    print('  {} enums, {} structs, {} vtable structs, {} symbols, {} fallback'.format(
+        n_enums, n_structs, len(vtable_structs), len(symbols),
+        len(fallback_symbols)))
 
 
 if __name__ == '__main__':

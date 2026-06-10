@@ -206,6 +206,11 @@ def _merge_into_script(target: str, target_rva_key: str,
     script.write_text(content, encoding="utf-8")
     print(f"  {fname}: merged {augmented} augmented + {added} new entries "
           f"({len(ported)} ported)")
+
+    # Persist so parse_commonlib_types.py re-merges on regen (union, first-win).
+    from bytesig_port_combined import _persist_ported_csv
+    _persist_ported_csv(
+        _SCRIPT_DIR / "refs" / f"bytesig_ported_{target}.csv", ported, src_tag)
     return augmented + added
 
 

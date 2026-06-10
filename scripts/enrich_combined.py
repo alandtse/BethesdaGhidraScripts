@@ -85,13 +85,15 @@ APPLY_STEPS = [
      "apply_skyrim_to_user_project.py",
      ["--version", "ae",
       "--program-path", "/Skyrim/SkyrimAE_GOG Edition.exe"]),
-    # C: Starfield (PC + VR)
+    # C: Starfield (PC only).
+    # DO NOT apply the SF script to StarfieldVR.exe: it embeds PC 1.16.x
+    # offsets and a previous run wrote 62k labels at wrong addresses into
+    # the VR program (vtbl read_fail=25,687 -- offsets don't exist there).
+    # If that pollution is still present, revert the StarfieldVR.exe
+    # program to a pre-2026-06-09 version via its Ghidra history.
     ("Starfield apply -> 1.16.236",
      "apply_sf_to_user_project.py",
      ["--program-path", "/Starfield/Starfield 1.16.236"]),
-    ("Starfield apply -> StarfieldVR",
-     "apply_sf_to_user_project.py",
-     ["--program-path", "/Starfield/StarfieldVR.exe"]),
 ]
 
 # D: RTTI vtable pipeline -- slow, run only when --rtti is given.

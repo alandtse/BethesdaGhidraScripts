@@ -208,7 +208,40 @@ def _merge_into_target_script(target: str, ported: list[tuple[str, int]],
     p.write_text(content, encoding="utf-8")
     print(f"  {script_name}: merged {augmented} augmented + {added} new "
           f"entries ({len(ported)} ported)")
+
+    # Persist ported pairs so parse_commonlib_types.py re-merges them on
+    # regen (the script-side merge above is otherwise wiped).  Union-merged
+    # first-win by RVA so multiple port passes accumulate.
+    refs_csv = REPO_DIR / "scripts" / "commonlibf4" / "refs" / f"bytesig_ported_{target}.csv"
+    _persist_ported_csv(refs_csv, ported, src_tag)
     return augmented + added
+
+
+def _persist_ported_csv(refs_csv: Path, ported: list[tuple[str, int]],
+                        src_tag: str) -> None:
+    """Union-merge (rva -> name,src) rows into a refs CSV (first-win)."""
+    rows: dict[int, tuple[str, str]] = {}
+    if refs_csv.is_file():
+        for ln in refs_csv.read_text(encoding="utf-8").splitlines():
+            if not ln or ln.startswith("#"):
+                continue
+            parts = ln.split(",", 2)
+            if len(parts) < 2:
+                continue
+            try:
+                rows[int(parts[0], 16)] = (parts[1], parts[2] if len(parts) > 2 else "")
+            except ValueError:
+                continue
+    n_before = len(rows)
+    for name, rva in ported:
+        rows.setdefault(rva, (name, src_tag))
+    refs_csv.parent.mkdir(parents=True, exist_ok=True)
+    with refs_csv.open("w", encoding="utf-8") as fh:
+        fh.write("# bytesig-ported names: 0xRVA,name,src\n")
+        for rva in sorted(rows):
+            name, tag = rows[rva]
+            fh.write(f"0x{rva:08X},{name},{tag}\n")
+    print(f"  persisted {len(rows):,} pairs (+{len(rows) - n_before:,} new) -> {refs_csv}")
 
 
 def _load_text_block(program):

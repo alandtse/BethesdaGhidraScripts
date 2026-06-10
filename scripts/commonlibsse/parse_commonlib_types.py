@@ -484,6 +484,46 @@ def main():
         'svr': '[]',
     }
 
+    # --- Persisted bytesig-port results (refs/bytesig_ported_<ver>.csv) ---
+    # Written by commonlibsse/bytesig_port_combined.py --write-back-script.
+    # Merging here makes the ported names survive regeneration: previously
+    # they only lived inside the generated scripts and every regen wiped
+    # them until the ~42-min port was re-run.
+    def _merge_bytesig_csv(fb_json, csv_name, rva_key):
+        csv_path = os.path.join(SCRIPT_DIR, 'refs', csv_name)
+        if not os.path.isfile(csv_path):
+            return fb_json
+        existing = _json.loads(fb_json)
+        used = {s.get(rva_key) for s in existing if s.get(rva_key)}
+        n_added = 0
+        with open(csv_path, encoding='utf-8') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#'):
+                    continue
+                parts = ln.split(',', 2)
+                if len(parts) < 2:
+                    continue
+                try:
+                    rva = int(parts[0], 16)
+                except ValueError:
+                    continue
+                if rva in used:
+                    continue
+                used.add(rva)
+                existing.append({'n': parts[1], 't': 'func', 'sig': '',
+                                 rva_key: rva,
+                                 'src': parts[2] if len(parts) > 2 else 'bytesig-port'})
+                n_added += 1
+        if n_added:
+            print('  merged {} persisted bytesig names from {}'.format(
+                n_added, csv_name))
+        return _json.dumps(existing, separators=(',', ':'))
+
+    fb_for['ae']  = _merge_bytesig_csv(fb_for['ae'],  'bytesig_ported_ae.csv', 'a')
+    fb_for['svr'] = _merge_bytesig_csv(fb_for['svr'], 'bytesig_ported_vr.csv', 'v')
+    fb_for['se']  = _merge_bytesig_csv(fb_for['se'],  'bytesig_ported_se.csv', 's')
+
     # --- SkyrimSE.pdb-derived type layouts (Bethesda's full class hierarchy) ---
     # Parse once, share across SE/AE/VR.  CommonLibSSE documents only the
     # public-facing classes; the PDB exposes ~19k internal Bethesda types

@@ -449,6 +449,15 @@ def _load_pc_vtable_labels(path: Path) -> List[Tuple[int, str]]:
         cls = parts[2].strip()
         if not cls:
             continue
+        # rtti_extra rows carry partially-mangled template names like
+        # ``?$SettingT@VGameSettingCollection`` -- sanitize to a Ghidra-
+        # legal identifier (mirrors pdb_types_to_pipeline normalization).
+        cls = re.sub(r'[^\w]', '_', cls)
+        while '__' in cls:
+            cls = cls.replace('__', '_')
+        cls = cls.strip('_')
+        if not cls:
+            continue
         out.append((rva, 'VTABLE_' + cls))
     return out
 
@@ -575,7 +584,8 @@ def build_fallback_symbols() -> List[dict]:
     thunks        = _load_constructor_names(REFS_DIR / 'fnv_thunk_names.csv')  # same format
     globals_      = _load_global_labels(REFS_DIR / 'fnv_global_label_names.csv')
     ghidra_globs  = _load_global_labels(REFS_DIR / 'fnv_ghidra_global_names.csv')
-    pc_vtables    = _load_pc_vtable_labels(REFS_DIR / 'fnv_pc_vtables.txt')
+    pc_vtables    = (_load_pc_vtable_labels(REFS_DIR / 'fnv_pc_vtables.txt')
+                     + _load_pc_vtable_labels(REFS_DIR / 'fnv_pc_vtables_rtti_extra.txt'))
 
     # Address -> (name, source).  Earlier source wins on collision.
     by_addr: Dict[int, Tuple[str, str]] = {}
