@@ -286,21 +286,26 @@ kept for write-back traceability) so it leaves the discovery surface. A field ty
 anchor the decompiler propagates from in cycle N+1.
 
 `populate_cycle.py` runs, each cycle: **thiscall → propagate → discover+apply**, then snapshots four
-coverage metrics — `__thiscall` members and concrete-typed params/fields (up), still-unknown
-`/types.h` fields (down) — and computes a single `progress` scalar. It stops at the **fixpoint**
-(`0 ≤ progress < MIN_GAIN`, diminishing returns) and, crucially, treats **negative progress as a
-REGRESSION, not convergence** — a stage made the program worse, stop and inspect. Decision logic is in
-`populate_plan.py` (unit-tested); export back to CommonLib is deliberately out of scope (drive the live
-program to a stable, maximally-populated state first). Dry-run prints a coverage snapshot;
-`CLVR_CYCLE=go` runs the loop. Writes `<import>.coverage.csv` (per-cycle trace).
+coverage metrics — `__thiscall` members and concrete-typed params (up), still-unknown vs concrete
+`/types.h` **bytes** (struct coverage is byte-based, not component count: carving a typed field out of a
+larger `undefined` run fragments the remainder into more components, so a *count* can rise on a clean
+apply — a false regression; bytes are conserved) — and computes one `progress` scalar. It stops at the
+**fixpoint** (`0 ≤ progress < MIN_GAIN`, diminishing returns) and treats **negative progress as a
+REGRESSION, not convergence** — a stage made the program worse, stop and inspect. **Per-stage skip:**
+coverage is measured after each stage, and once a stage moves no metric it is marked done and skipped in
+later cycles — `thiscall`/`propagate` converge in cycle 1, so only `discover` keeps re-running (without
+this, AE re-decompiled propagate's ~7800-function seed every cycle for ~11 min / 0 gain). Decision logic
+is in `populate_plan.py` (unit-tested); export back to CommonLib is deliberately out of scope (drive the
+live program to a stable, maximally-populated state first). Dry-run prints a coverage snapshot;
+`CLVR_CYCLE=go` runs the loop. Writes `<import>.coverage.csv`.
 
-The coverage meter earned its keep on the first run: it caught a metric keyed on field *name* (applied
-fields kept their `unk` name, so progress read as a **regression** and the loop nearly declared a
-fixpoint on going backwards). Fixed by renaming on apply + a stricter generic filter (`void *64` is no
-more RE than the `unkNN` it would replace). VR validation: cycle 1 applied **14 fields** (`CombatGroup
-+0x50 → AITimer`, `Sky +0x15C → NiColor`, `BSSynchronizedClipGenerator +0xE0 → hkQsTransform`),
-progress +12; cycle 2 found nothing new and **converged**. Non-destructive: only fills unknown slots
-with same-size types, never creates a type, one always-committed transaction (never `commit=False`).
+The coverage meter earned its keep twice. First it caught a metric keyed on field *name* (applied fields
+kept their `unk` name, so progress read as a regression). Then, fixed to bytes, it caught a *real*
+fragmentation artifact in the component count. VR: applies ~14 fields (`CombatGroup +0x50 → AITimer`,
+`BSSynchronizedClipGenerator +0xE0 → hkQsTransform`) then converges. SE is richer — cycle 1 applies **41
+fields** (`TESObjectCELL +0xB0 → TESForm*`, `TES +0x2A8 → NavMeshInfoMap*`, `BGSCameraShot +0xA8 →
+NiPointer<NiAVObject>`), converging in 3 cycles. Non-destructive: only fills unknown slots with same-size
+types, never creates a type, one always-committed transaction (never `commit=False`).
 
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched

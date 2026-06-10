@@ -130,13 +130,32 @@ def run():
         print('\nDRY: coverage snapshot only. Set CLVR_CYCLE=go to run the apply '
               'loop (thiscall -> propagate -> discover+apply) to convergence.')
     else:
+        # Stages in order. thiscall and propagate converge in cycle 1 (nothing left
+        # to convert / no new concrete params); only discover keeps compounding. So
+        # measure coverage after EACH stage and, once a stage moves no metric, mark
+        # it done and skip it in later cycles -- this avoids re-decompiling propagate's
+        # whole seed every cycle (on AE that is ~7800 functions / ~11 min for 0 gain).
+        STAGES = [('seed_this.py', {'CLVR_SEED': 'go'}),
+                  ('propagate.py', {'CLVR_PROP': 'go'}),
+                  ('commonlib_discover.py', {'CLVR_DISCOVER_APPLY': 'go'})]
+        active = {name: True for name, _ in STAGES}
         prev = base
         for cyc in range(1, MAX_CYCLES + 1):
             print('\n########## CYCLE %d/%d ##########' % (cyc, MAX_CYCLES))
-            _run_stage('seed_this.py', {'CLVR_SEED': 'go'}, cp, mon)
-            _run_stage('propagate.py', {'CLVR_PROP': 'go'}, cp, mon)
-            _run_stage('commonlib_discover.py', {'CLVR_DISCOVER_APPLY': 'go'}, cp, mon)
-            cur = measure_coverage(cp)
+            cov = prev
+            for name, env in STAGES:
+                if not active[name]:
+                    print('  (skip %s -- converged in an earlier cycle)' % name)
+                    continue
+                _run_stage(name, env, cp, mon)
+                after = measure_coverage(cp)
+                stage_delta = pl.coverage_delta(cov, after)
+                cov = after
+                if all(v == 0 for v in stage_delta.values()):
+                    active[name] = False
+                    print('  --> %s changed nothing; marking converged (skip henceforth)'
+                          % name)
+            cur = cov
             delta = pl.coverage_delta(prev, cur)
             prog = pl.progress(delta)
             snapshots.append((cyc, cur, delta))
@@ -147,6 +166,9 @@ def run():
                 print('  >>> REGRESSION (progress %d < 0): a stage made the program '
                       'WORSE by the metrics. Stopping for inspection -- NOT a fixpoint.'
                       % prog)
+                break
+            if not any(active.values()):
+                print('  >>> CONVERGED: every stage is a no-op after %d cycles' % cyc)
                 break
             if pl.is_converged(delta, MIN_GAIN):
                 print('  >>> CONVERGED (0 <= progress %d < min_gain %d) after %d cycles'
