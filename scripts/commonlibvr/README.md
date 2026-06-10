@@ -355,6 +355,28 @@ one review populates all three. Dry-run by default (`CLVR_XVER_APPLY=go`); run p
 / AE 7 (e.g. `Crime +0x18 -> TESBoundObject*`, `INFO_RUNTIME_DATA` matched VR Ghidra `+0x5C` to
 CommonLib `0x70`), 0 type-conflicts, VR unknown bytes 83835 -> 83749 (monotonic, no growth).
 
+### 14. Constructor mining (`ctor_mine.py`) — high-accuracy field names + types from ctors
+The discovery cycle (11) infers field TYPES from dataflow but only SIZES the opaque ones, and can
+mis-type them (it guessed `Crime +0x58` was a `TESFaction*`; reading the constructor showed `0x58` is a
+4-byte scalar and the real faction is `0x60`). A class CONSTRUCTOR is the highest-signal source: it
+assigns each member from a typed, named parameter (`this->Object_18 = a_object`,
+`a_object:TESBoundObject*`), so one decompile yields a field's NAME and TYPE together.
+
+For each `/types.h` class with unknown fields, this finds its constructor (param-0 is the class, name
+looks like a ctor -- `ctor_plan.is_ctor`), picks the one that assigns the most fields, and reads the
+`this->field@offset = a_param` assignments out of the pcode (STORE whose address back-traces to
+`this + offset` and whose value traces to a parameter). It writes proposals -- (class, offset, type,
+name, slot_state) -- to `<import>.ctor_fields.csv`, unknown-slot fills first. **READ-ONLY**: only
+decompiles + writes a CSV. Decision logic (`is_ctor`, `field_label`, `best_ctor`) is in `ctor_plan.py`
+(unit-tested). A gotcha learned here: match `this`/params by NAME, not HighVariable identity -- Ghidra
+hands out distinct HighVariable objects for param-0's body instances, so `is paramHighVar` fails.
+
+Feed the proposals into the review queue / cross-version apply: a human rubber-stamps real names+types
+instead of guessing. Validated on SE: of 6208 unk-bearing classes only 24 have a clearly-named ctor
+(coverage is gated by ctor identification), but the proposals are trustworthy -- it reproduced
+`Crime +0x18 -> TESBoundObject* object`, added `+0x20 count` / `+0x40 owner:TESForm*` /
+`CombatBehaviorIdle +0x4 interval` (net-new), and proposed nothing for `0x58` (correctly).
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
