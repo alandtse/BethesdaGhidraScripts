@@ -283,10 +283,15 @@ def classify(st, live):
 
     if gsize == 0:
         status = 'GEN_EMPTY'
+    elif _is_stub(best, emembers):
+        # An empty existing struct (no defined members) must be FILLED, not reused --
+        # even when its size already matches the generated one. AE had pre-existing
+        # same-size stub shells; the old `esize == gsize -> MATCH` check ran first and
+        # reused the empty stubs (~2263 structs left as undefined, e.g. Crime), so the
+        # CommonLib layout was never applied. Stub detection must precede MATCH.
+        status = 'STUB_UPGRADE'
     elif esize == gsize:
         status = 'MATCH'
-    elif _is_stub(best, emembers):
-        status = 'STUB_UPGRADE'
     elif _extends(emembers, gen_members, gsize):
         status = 'EXTENDS'
     elif vftable_loss:

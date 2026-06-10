@@ -72,14 +72,24 @@ def test_reuse_and_protect_are_never_filled():
 
 
 def test_replace_actions_populate_staging():
-    structs = [_st('S', 8), _st('E', 8), _st('V', 8)]
-    status = {'S': 'STUB_UPGRADE', 'E': 'EXTENDS', 'V': 'DIVERGENT'}
+    # EXTENDS / DIVERGENT stage a new shell and swap via replaceDataType.
+    structs = [_st('E', 8), _st('V', 8)]
+    status = {'E': 'EXTENDS', 'V': 'DIVERGENT'}
     fill_list, staging, created = _run(structs, status)
-    assert set(staging.keys()) == {'S', 'E', 'V'}
+    assert set(staging.keys()) == {'E', 'V'}
     for name, (sdt, existing) in staging.items():
         assert sdt == ('STAGE', name)
         assert existing == ('EXISTING', name)
-    assert len(fill_list) == 3      # all three staged shells get filled
+    assert len(fill_list) == 2
+
+
+def test_stub_upgrade_fills_existing_in_place():
+    # STUB_UPGRADE must FILL the existing empty stub in place -- NOT stage + swap
+    # (replaceDataType per stub is ~2-3s each; hours for AE's ~8700 stubs).
+    structs = [_st('S', 8)]
+    fill_list, staging, created = _run(structs, {'S': 'STUB_UPGRADE'})
+    assert staging == {}                                   # no staging / replaceDataType
+    assert fill_list == [(('EXISTING', 'S'), _st('S', 8))]  # fills the EXISTING type
 
 
 def test_new_creates_shell_and_fills():

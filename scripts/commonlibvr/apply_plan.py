@@ -10,7 +10,11 @@ ACTION = {
     'NEW': 'CREATE',
     'MATCH': 'REUSE',
     'GEN_EMPTY': 'REUSE',
-    'STUB_UPGRADE': 'REPLACE',
+    'STUB_UPGRADE': 'FILL',   # existing is an EMPTY same-size stub -> define its fields
+                              # IN PLACE (fast replaceAtOffset); no replaceDataType /
+                              # reference rewiring is needed (the type identity is kept).
+                              # Staging+replaceDataType per stub would be ~2-3s each
+                              # (rescans all functions) -- hours for AE's ~8700 stubs.
     'EXTENDS': 'REPLACE',
     'DIVERGENT': 'REPLACE',
     'DOUBLED': 'REPLACE',   # existing == 2x generated: import doubling artifact, generated correct
@@ -171,6 +175,11 @@ def select_fill_targets(structs, classify_fn, live, create_struct, stage_struct,
         action = action_map.get(c['status'], 'PROTECT')
         if action == 'CREATE':
             dt = create_struct(name, gsize, st[2])   # st[2] = generated category
+            fill_list.append((dt, st))
+        elif action == 'FILL':
+            # existing empty stub: fill its fields IN PLACE (no staging, no
+            # replaceDataType). The same-size existing type IS the keeper.
+            dt = c['best']
             fill_list.append((dt, st))
         elif action == 'REPLACE':
             dt = stage_struct(name, gsize, c['best'])

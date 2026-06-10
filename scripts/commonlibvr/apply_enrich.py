@@ -129,7 +129,7 @@ def run():
         print('plan CSV write failed:', e)
 
     print('\n=== apply plan ({} structs) ==='.format(len(STRUCTS)))
-    for a in ('CREATE', 'REUSE', 'REPLACE', 'PROTECT'):
+    for a in ('CREATE', 'FILL', 'REUSE', 'REPLACE', 'PROTECT'):
         print('  {:9s} {}'.format(a, counts.get(a, 0)))
     print('  (+ {} enums, {} vtable structs to create/reuse)'.format(len(ENUMS), len(VTABLES)))
     prot = [p for p in plan if p[2] == 'PROTECT']
