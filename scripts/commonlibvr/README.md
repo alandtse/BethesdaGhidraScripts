@@ -334,6 +334,27 @@ exactly the human-grade, authoritative fields you'd export to CommonLib first. V
 `Load_Impl`/`GetSaveVersion`); `apply_review` resolves `TESForm *`, reports unresolved type names, and
 rejects size-mismatches — all before writing.
 
+### 13. Cross-version field propagation (`crossver.py`) — one runtime's win populates all three
+The population cycle (11) and review (12) resolve fields per-program; this carries a field
+resolved in ONE runtime to the SAME field in the others (SE <-> AE <-> VR). The three share
+CommonLib's class layout but at DIFFERENT Ghidra offsets (VR structs are larger, fields shift); what
+is stable is the **CommonLib offset encoded in the field name** (`unkNN`/`padNN`, and the population
+apply's `fldNN` keeps those digits). So propagation keys on the NAME, not the raw offset.
+
+Two modes (`CLVR_XVER`): **export** writes a runtime's resolved `/types.h` fields
+(`is_resolved` — offset-keyed name + concrete type) to `<import>.resolved_fields.csv`; **apply** reads
+every sibling export, reconciles per `(class, cl_offset)` across runtimes (`pick_best_type` — consensus
+wins, conflicts flagged), and fills the current runtime's still-unknown field at that CommonLib offset.
+Run export on all three, then apply on all three. Decision logic is in `crossver_plan.py` (unit-tested:
+`field_key`, `is_resolved`/`is_unknown_target`, `pick_best_type`).
+
+Reuses the **improve-or-nop guarantee** (validate on a `struct.copy()`, `is_struct_change_safe`, never
+grow/clobber). Because LLM review decisions become resolved `fldNN` fields, this propagates them too —
+one review populates all three. Dry-run by default (`CLVR_XVER_APPLY=go`); run programs SEQUENTIALLY
+(the env race). Validated: SE/AE/VR exported 257/223/278 resolved fields; cross-apply added VR 9 / SE 3
+/ AE 7 (e.g. `Crime +0x18 -> TESBoundObject*`, `INFO_RUNTIME_DATA` matched VR Ghidra `+0x5C` to
+CommonLib `0x70`), 0 type-conflicts, VR unknown bytes 83835 -> 83749 (monotonic, no growth).
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
