@@ -275,6 +275,33 @@ mutates nothing (so there is nothing to roll back), and apply opens **one** tran
 **always committed**, restoring any bad change in-API (`ApplyFunctionSignatureCmd`) rather than via
 rollback.
 
+### 11. Population cycle — close the loop inside Ghidra (`populate_cycle.py`)
+The forward import, the widening (10), the propagation (10) and the discovery (8) are stages; this
+**orchestrates them into a convergent loop that never leaves Ghidra**, and measures when it is done.
+The missing edge was that `commonlib_discover.py` was read-only — it found field types but never wrote
+them back, so nothing compounded. It now has an **apply mode** (`CLVR_DISCOVER_APPLY=go`): for each
+high-confidence *named* field it fills the unknown `/types.h` slot with that concrete same-size type
+(`should_apply_field`) and renames the field off its `unk*/pad*` prefix (`unk50 → fld50`, offset digits
+kept for write-back traceability) so it leaves the discovery surface. A field typed in cycle N is an
+anchor the decompiler propagates from in cycle N+1.
+
+`populate_cycle.py` runs, each cycle: **thiscall → propagate → discover+apply**, then snapshots four
+coverage metrics — `__thiscall` members and concrete-typed params/fields (up), still-unknown
+`/types.h` fields (down) — and computes a single `progress` scalar. It stops at the **fixpoint**
+(`0 ≤ progress < MIN_GAIN`, diminishing returns) and, crucially, treats **negative progress as a
+REGRESSION, not convergence** — a stage made the program worse, stop and inspect. Decision logic is in
+`populate_plan.py` (unit-tested); export back to CommonLib is deliberately out of scope (drive the live
+program to a stable, maximally-populated state first). Dry-run prints a coverage snapshot;
+`CLVR_CYCLE=go` runs the loop. Writes `<import>.coverage.csv` (per-cycle trace).
+
+The coverage meter earned its keep on the first run: it caught a metric keyed on field *name* (applied
+fields kept their `unk` name, so progress read as a **regression** and the loop nearly declared a
+fixpoint on going backwards). Fixed by renaming on apply + a stricter generic filter (`void *64` is no
+more RE than the `unkNN` it would replace). VR validation: cycle 1 applied **14 fields** (`CombatGroup
++0x50 → AITimer`, `Sky +0x15C → NiColor`, `BSSynchronizedClipGenerator +0xE0 → hkQsTransform`),
+progress +12; cycle 2 found nothing new and **converged**. Non-destructive: only fills unknown slots
+with same-size types, never creates a type, one always-committed transaction (never `commit=False`).
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
@@ -295,6 +322,9 @@ rollback.
 - [x] `this`-seeder (`seed_this.py`) applied + verified across SE/AE/VR (`__thiscall` 174→9908 VR,
       →10237 AE, →10978 SE; 0 anomalies/errors). Root-caused + fixed the nested-transaction
       rollback poison (never `commit=False` under the MCP outer transaction).
-- [x] Call-graph type-propagation fixpoint (`propagate.py`) built + dry-run validated on VR
-      (14 concrete slot-gains over 184 non-protected class methods); filtered/surgical, measured
-      against the net-negative whole-prototype commit. Apply pending review.
+- [x] Call-graph type-propagation fixpoint (`propagate.py`) built + applied SE/AE/VR (34 concrete
+      slot-gains; AE proved 7803 PDB-named seeds → 3 gains, so the lever is discovery, not propagation);
+      filtered/surgical, measured against the net-negative whole-prototype commit.
+- [x] In-Ghidra population cycle (`populate_cycle.py` + discover apply-mode) — orchestrates
+      thiscall→propagate→discover+apply to a coverage fixpoint; regression-aware. VR demo: cycle 1
+      +14 fields, cycle 2 converged. CommonLib export still out of scope (deliberate).

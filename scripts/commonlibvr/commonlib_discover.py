@@ -35,11 +35,18 @@ OUT_CSV = os.environ.get('CLVR_DISCOVER_CSV', IMPORT_PATH + '.discovered_fields.
 PER_CLASS = int(os.environ.get('CLVR_DISCOVER_PER_CLASS', '4') or 4)
 MAX_CLASSES = int(os.environ.get('CLVR_DISCOVER_MAX_CLASSES', '0') or 0)
 FOLLOW = os.environ.get('CLVR_DISCOVER_FOLLOW', '0') == '1'
+# Default is read-only (write a CSV only). CLVR_DISCOVER_APPLY=go also WRITES the
+# high-confidence named fields into the /types.h structs -- the edge that lets the
+# in-Ghidra population cycle compound (a newly-typed field is an anchor next pass).
+APPLY = os.environ.get('CLVR_DISCOVER_APPLY', 'dry').lower() == 'go'
 
 import importlib.util as _ilu  # noqa: E402
 _spec = _ilu.spec_from_file_location('clvr_discover_plan', os.path.join(SCRIPT_DIR, 'discover_plan.py'))
 dp = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(dp)
+_pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
+pl = _ilu.module_from_spec(_pspec)
+_pspec.loader.exec_module(pl)
 
 
 def _unk_offsets(dt):
@@ -70,6 +77,7 @@ def run():
 
     # harvest surface: live /types.h structs with unknown pointer-sized fields
     unk_by_class = {}
+    struct_by_class = {}                 # name -> live StructureDB (for apply)
     for dt in dtm.getAllDataTypes():
         if dt.getClass().getSimpleName() != 'StructureDB':
             continue
@@ -78,6 +86,7 @@ def run():
         offs = _unk_offsets(dt)
         if offs:
             unk_by_class[dt.getName()] = offs
+            struct_by_class[dt.getName()] = dt
 
     # Function pool: EVERY function whose param-0 is a pointer to a class-with-
     # unknowns -- i.e. anything the enrichment gave a typed `this`, not just
@@ -98,6 +107,7 @@ def run():
     helper = FillOutStructureHelper(cp, monitor)  # noqa: F821
 
     observations = []
+    dt_by_typename = {}                  # inferred typename -> its live DataType
     classes_done = funcs_done = 0
     total_classes = min(len(by_class), MAX_CLASSES) if MAX_CLASSES else len(by_class)
     print('Discovery: %d structs have unknown fields; %d of them have typed methods to mine.'
@@ -131,6 +141,7 @@ def run():
                     tn = c.getDataType().getName()
                     if c.getOffset() in offs and _useful(tn):
                         observations.append((cl, c.getOffset(), tn))
+                        dt_by_typename.setdefault(tn, c.getDataType())
             except Exception:
                 continue
     decomp.dispose()
@@ -143,6 +154,55 @@ def run():
                     'confidence', 'votes', 'total_observations'])
         for cls, off, cur, typ, conf, votes, total in rows:
             w.writerow([cls, '0x%X' % off, cur, typ, conf, votes, total])
+
+    # APPLY: write high-confidence named fields into the /types.h structs so the
+    # next cycle propagates from them. Only fills an unknown slot with a concrete
+    # same-size type (should_apply_field); never creates a type (so the data-type
+    # count is still invariant) and never clobbers existing RE.
+    applied = 0
+    apply_samples = []
+    apply_skips = collections.Counter()
+    if APPLY:
+        tx = cp.startTransaction('discover-apply fields')
+        try:
+            for (cls, off), info in aggregated.items():
+                struct = struct_by_class.get(cls)
+                dt = dt_by_typename.get(info['type'])
+                if struct is None or dt is None:
+                    apply_skips['unresolved'] += 1
+                    continue
+                comp = struct.getComponentAt(off)
+                if comp is None or comp.getOffset() != off:
+                    apply_skips['no-slot'] += 1
+                    continue
+                cur_name = comp.getFieldName() or ''
+                ok, why = pl.should_apply_field(
+                    cur_name, comp.getDataType().getName(), info['type'],
+                    dt.getLength(), comp.getLength(), info['confidence'])
+                if not ok:
+                    apply_skips[why] += 1
+                    continue
+                # Rename off the unk*/pad* prefix so the field LEAVES the discovery
+                # surface (won't be re-mined, and the coverage metric counts it as
+                # resolved). Keep the offset digits for write-back traceability:
+                # 'unk58' -> 'fld58'.
+                digits = ''.join(ch for ch in cur_name if ch.isalnum())
+                for pre in ('unk', 'pad', 'off_'):
+                    if digits.lower().startswith(pre):
+                        digits = digits[len(pre):]
+                        break
+                new_name = 'fld%s' % (digits or ('%X' % off))
+                try:
+                    struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
+                                           'clvr-discovered ' + info['type'])
+                    applied += 1
+                    if len(apply_samples) < 15:
+                        apply_samples.append('%s +0x%X %s -> %s %s'
+                                             % (cls, off, cur_name, new_name, info['type']))
+                except Exception:
+                    apply_skips['replace-error'] += 1
+        finally:
+            cp.endTransaction(tx, True)   # always commit; never poison the group
 
     high = sum(1 for r in rows if r[4] == 'high')
     named = sum(1 for r in rows if r[3] not in dp.GENERIC_TYPES)
@@ -157,8 +217,15 @@ def run():
           % (classes_with_hits, len(unk_by_class)))
     print('  top classes by yield: %s'
           % ', '.join('%s(%d)' % (c, n) for c, n in per_class.most_common(6)))
-    print('  NON-DESTRUCTIVE: data types %d -> %d (%s)'
-          % (dt_before, dt_after, 'unchanged' if dt_before == dt_after else 'CHANGED!'))
+    if APPLY:
+        print('  APPLIED %d fields into /types.h structs   skips=%s'
+              % (applied, dict(apply_skips)))
+        for s in apply_samples:
+            print('     ' + s)
+    else:
+        print('  READ-ONLY (CLVR_DISCOVER_APPLY=go to write fields into structs)')
+    print('  data-type count %d -> %d (%s; apply only retypes fields, never creates)'
+          % (dt_before, dt_after, 'unchanged' if dt_before == dt_after else 'CHANGED'))
     print('  -> ' + OUT_CSV)
 
 
