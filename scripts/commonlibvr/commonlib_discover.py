@@ -32,16 +32,15 @@ SCRIPT_DIR = os.environ.get(
     'CLVR_SCRIPT_DIR',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
 OUT_CSV = os.environ.get('CLVR_DISCOVER_CSV', IMPORT_PATH + '.discovered_fields.csv')
-# Per class, how many functions to mine. 0 = ALL (default): vfuncs and methods are
-# where a class reveals its own field layout, so walk them all -- sampling just
-# leaves fields undiscovered. Set a positive N only to cap runtime; functions are
-# ordered `this`-methods first so a cap still mines the class's own methods.
+# Per class, how many `this`-methods/vfuncs to mine. 0 = ALL (default): a class
+# reveals its field layout through its own methods, so walk them all. Set a positive
+# N only to cap runtime (mines the first N in address order).
 PER_CLASS = int(os.environ.get('CLVR_DISCOVER_PER_CLASS', '0') or 0)
 MAX_CLASSES = int(os.environ.get('CLVR_DISCOVER_MAX_CLASSES', '0') or 0)
 # Follow the class pointer into the functions it is passed to (callee review):
-# FillOutStructureHelper observes field accesses one call-edge deeper. Default on;
-# set 0 to disable for speed.
-FOLLOW = os.environ.get('CLVR_DISCOVER_FOLLOW', '1') == '1'
+# FillOutStructureHelper observes field accesses one call-edge deeper. Default OFF
+# (it roughly 20x's runtime for mostly size-only gains); set 1 to enable.
+FOLLOW = os.environ.get('CLVR_DISCOVER_FOLLOW', '0') == '1'
 # Default is read-only (write a CSV only). CLVR_DISCOVER_APPLY=go also WRITES the
 # high-confidence named fields into the /types.h structs -- the edge that lets the
 # in-Ghidra population cycle compound (a newly-typed field is an anchor next pass).
@@ -104,26 +103,20 @@ def run():
             unk_by_class[dt.getName()] = offs
             struct_by_class[dt.getName()] = dt
 
-    # Function pool: every function with a pointer to a class-with-unknowns in ANY
-    # parameter (not just param-0). param-0 is the class's own `this` (its methods
-    # and vfuncs -- the richest field-layout source); a non-0 param is a function
-    # that takes the class as an argument (a caller / cross-class user that still
-    # reads its fields). We mine the matching param in each. Entries are ordered
-    # `this`-first so a PER_CLASS cap still mines the class's own methods before the
-    # argument-takers. Callee review is the FillOutStructureHelper FOLLOW flag below.
-    def _base(tn):
-        return tn.rstrip('64').rstrip(' *') if tn else ''
-
-    by_class = {}                            # cls -> [(function, param_index), ...]
+    # Function pool: functions whose param-0 (`this`) is a pointer to a class-with-
+    # unknowns -- the class's own methods and vfuncs, where it reveals its field
+    # layout. Mining a NON-this param (a function that merely takes the class as an
+    # argument) was tried and REVERTED: it let FillOutStructureHelper infer offsets
+    # past the struct's true end, and the apply grew the struct (MapMenu 0x30560 ->
+    # 0x60880, ~197k undefined bytes). `this`-only is the validated, safe surface.
+    by_class = {}                            # cls -> [(function, 0), ...]
     for f in fm.getFunctions(True):
-        seen_cls = set()
-        for idx, p in enumerate(f.getParameters()):
-            base_t = _base(p.getDataType().getName())
-            if base_t in unk_by_class and base_t not in seen_cls:
-                seen_cls.add(base_t)
-                by_class.setdefault(base_t, []).append((f, idx))
-    for cl in by_class:                      # `this`-methods (idx 0) first
-        by_class[cl].sort(key=lambda fi: fi[1])
+        ps = f.getParameters()
+        if not ps:
+            continue
+        base_t = ps[0].getDataType().getName().rstrip('64').rstrip(' *')
+        if base_t in unk_by_class:
+            by_class.setdefault(base_t, []).append((f, 0))
 
     dt_before = dtm.getDataTypeCount(True)
     decomp = DecompInterface()
@@ -249,9 +242,24 @@ def run():
                         digits = digits[len(pre):]
                         break
                 new_name = 'fld%s' % (digits or ('%X' % off))
+                # HARD no-growth guard: the new field must fit entirely within the
+                # struct's current bounds. replaceAtOffset GROWS a struct if the type
+                # extends past the end -- that once doubled MapMenu (0x30560 ->
+                # 0x60880) with ~197k undefined bytes. Skip anything out of bounds,
+                # and if a replace ever changes the struct length, stop applying to
+                # that struct to contain the damage.
+                if off + dt.getLength() > struct.getLength():
+                    apply_skips['out-of-bounds'] += 1
+                    continue
+                before_len = struct.getLength()
                 try:
                     struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
                                            'clvr-discovered ' + info['type'])
+                    if struct.getLength() != before_len:
+                        apply_skips['GREW-STRUCT(bug)'] += 1
+                        print('  !! %s grew 0x%X->0x%X applying +0x%X %s -- skipping rest'
+                              % (cls, before_len, struct.getLength(), off, info['type']))
+                        continue
                     applied += 1
                     if len(apply_samples) < 15:
                         apply_samples.append('%s +0x%X %s -> %s %s'
