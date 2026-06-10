@@ -10,11 +10,13 @@ ACTION = {
     'NEW': 'CREATE',
     'MATCH': 'REUSE',
     'GEN_EMPTY': 'REUSE',
-    'STUB_UPGRADE': 'FILL',   # existing is an EMPTY same-size stub -> define its fields
+    'STUB_FILL': 'FILL',      # existing is an EMPTY SAME-SIZE stub -> define its fields
                               # IN PLACE (fast replaceAtOffset); no replaceDataType /
-                              # reference rewiring is needed (the type identity is kept).
-                              # Staging+replaceDataType per stub would be ~2-3s each
-                              # (rescans all functions) -- hours for AE's ~8700 stubs.
+                              # reference rewiring (type identity kept, size unchanged).
+                              # Staging+replaceDataType per stub is ~2-3s each (rescans
+                              # all functions) -- hours for AE's ~16.9k same-size stubs.
+    'STUB_UPGRADE': 'REPLACE',  # empty stub of a DIFFERENT size -> must resize, so
+                                # stage a correctly-sized shell and swap it in.
     'EXTENDS': 'REPLACE',
     'DIVERGENT': 'REPLACE',
     'DOUBLED': 'REPLACE',   # existing == 2x generated: import doubling artifact, generated correct

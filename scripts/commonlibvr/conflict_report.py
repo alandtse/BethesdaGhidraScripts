@@ -283,15 +283,19 @@ def classify(st, live):
 
     if gsize == 0:
         status = 'GEN_EMPTY'
-    elif _is_stub(best, emembers):
-        # An empty existing struct (no defined members) must be FILLED, not reused --
-        # even when its size already matches the generated one. AE had pre-existing
-        # same-size stub shells; the old `esize == gsize -> MATCH` check ran first and
-        # reused the empty stubs (~2263 structs left as undefined, e.g. Crime), so the
-        # CommonLib layout was never applied. Stub detection must precede MATCH.
-        status = 'STUB_UPGRADE'
+    elif _is_stub(best, emembers) and esize == gsize:
+        # An empty existing struct (no defined members) of the RIGHT size must be
+        # FILLED in place, not reused. AE had pre-existing same-size stub shells; the
+        # old `esize == gsize -> MATCH` check ran first and reused the empty stubs
+        # (~16.9k structs left as undefined, e.g. Crime), so the CommonLib layout was
+        # never applied. Same-size stub detection must precede MATCH (fill in place,
+        # no resize -> the fast FILL action).
+        status = 'STUB_FILL'
     elif esize == gsize:
         status = 'MATCH'
+    elif _is_stub(best, emembers):
+        # empty stub of the WRONG size -> resize + fill via stage/replaceDataType.
+        status = 'STUB_UPGRADE'
     elif _extends(emembers, gen_members, gsize):
         status = 'EXTENDS'
     elif vftable_loss:
@@ -327,7 +331,7 @@ def run():
     live = build_live(dtm)
 
     rows = []
-    counts = {'NEW': 0, 'MATCH': 0, 'STUB_UPGRADE': 0, 'EXTENDS': 0,
+    counts = {'NEW': 0, 'MATCH': 0, 'STUB_FILL': 0, 'STUB_UPGRADE': 0, 'EXTENDS': 0,
               'GEN_EMPTY': 0, 'DIVERGENT': 0, 'VFTABLE_LOSS': 0, 'HANDCURATED': 0}
     div_dir = {'gen_larger': 0, 'gen_smaller': 0}
     for st in STRUCTS:
@@ -359,7 +363,7 @@ def run():
 
     total = len(STRUCTS)
     print('\n=== conflict summary ({} generated structs) ==='.format(total))
-    for k in ('NEW', 'MATCH', 'GEN_EMPTY', 'STUB_UPGRADE', 'EXTENDS',
+    for k in ('NEW', 'MATCH', 'GEN_EMPTY', 'STUB_FILL', 'STUB_UPGRADE', 'EXTENDS',
               'DIVERGENT', 'DOUBLED', 'HANDCURATED', 'VFTABLE_LOSS',
               'SUSPICIOUS', 'EMBED_BASE'):
         print('  {:13s} {}'.format(k, counts.get(k, 0)))
