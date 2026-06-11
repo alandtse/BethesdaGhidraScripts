@@ -34,12 +34,22 @@ def test_bitfield_skipped():
     assert wp.demangle_type('uint:18') == (None, 'bitfield', False)
 
 
-def test_template_reported_not_safe():
-    cpp, kind, safe = wp.demangle_type('NiPointer_NiSourceTexture_')
+def test_smart_pointer_is_safe_both_forms():
+    # proper C++ form Ghidra also emits: strip RE::, treat as an 8-byte slot
+    cpp, kind, safe = wp.demangle_type('NiPointer<RE::NiAVObject>')
+    assert kind == 'smartptr' and safe is True and cpp == 'NiPointer<NiAVObject>'
+    # mangled form -> same
+    cpp2, kind2, safe2 = wp.demangle_type('NiPointer_NiSourceTexture_')
+    assert kind2 == 'smartptr' and safe2 is True and cpp2 == 'NiPointer<NiSourceTexture>'
+    cpp3, _k, safe3 = wp.demangle_type('BSTSmartPointer<RE::MapCameraStates::Exit>')
+    assert safe3 is True and cpp3 == 'BSTSmartPointer<MapCameraStates::Exit>'
+
+
+def test_container_template_reported_not_safe():
+    # sized containers are spelled but not auto-safe (size varies / may need a merge)
+    cpp, kind, safe = wp.demangle_type('BSTArray<RE::NiPointer<RE::NiAVObject>>')
     assert kind == 'template' and safe is False
-    assert cpp == 'NiPointer<NiSourceTexture>'
-    cpp2, _k, safe2 = wp.demangle_type('BSTArray_BGSPerk__')
-    assert safe2 is False and cpp2.startswith('BSTArray<')
+    assert cpp == 'BSTArray<NiPointer<NiAVObject>>'
 
 
 def test_inline_class_not_auto_safe():

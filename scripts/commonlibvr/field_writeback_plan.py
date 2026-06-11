@@ -31,6 +31,13 @@ PRIM = {
     'undefined8': 'std::uint64_t', 'pointer': 'void*',
 }
 
+# single-arg engine smart pointers: a fixed 8-byte slot, same width as a placeholder.
+SMART_PTRS = {'NiPointer', 'NiTSmartPointer', 'BSTSmartPointer', 'GPtr',
+              'BSTAutoPointer', 'NiTPointer'}
+# other known wrappers we can spell from the mangled form but not auto-size here.
+_OTHER_WRAPS = {'BSTArray', 'NiTArray', 'BSTSmallArray', 'BSScrapArray', 'BSSimpleList',
+                'BSTHashMap'}
+
 
 def demangle_type(tn):
     """Ghidra type name -> (cpp_type, kind, safe). cpp_type is the C++ spelling (None
@@ -59,11 +66,25 @@ def demangle_type(tn):
     low = t.lower()
     if low in PRIM:
         return (PRIM[low], 'primitive', True)
-    # known template wrappers: best-effort C++ spelling, but NOT auto-safe (the `_`
-    # mangling is ambiguous: trailing `_` is `>` and could hide a `*`).
-    mtpl = re.match(r'^(NiPointer|NiTArray|BSTArray|BSTSmallArray|GPtr|BSTHashMap)_(.+?)_*$', t)
-    if mtpl:
-        return ('%s<%s>' % (mtpl.group(1), mtpl.group(2).rstrip('_')), 'template', False)
+    # already-proper-C++ template (Ghidra also emits these, e.g.
+    # `NiPointer<RE::NiAVObject>`). Strip the RE:: qualifier (CommonLib headers spell
+    # types unqualified inside `namespace RE`) and classify by the wrapper:
+    if '<' in t:
+        wrap = t.split('<', 1)[0].split('::')[-1].strip()
+        cpp = t.replace('RE::', '')
+        # a single-arg engine SMART POINTER is a fixed 8-byte slot -> auto-safe.
+        if wrap in SMART_PTRS:
+            return (cpp, 'smartptr', True)
+        # sized containers / maps: spelled but size varies -> reported (a same-or-merge
+        # size decision is the driver's, not auto-safe here).
+        return (cpp, 'template', False)
+    # `_`-mangled template form. Map the known smart pointers to the safe path; other
+    # wrappers stay reported (the `_` mangling is ambiguous: trailing `_` is `>`/`*>`).
+    mtpl = re.match(r'^([A-Za-z_]\w*)_(.+?)_*$', t)
+    if mtpl and mtpl.group(1) in (SMART_PTRS | _OTHER_WRAPS):
+        cpp = '%s<%s>' % (mtpl.group(1), mtpl.group(2).rstrip('_'))
+        return (cpp, 'smartptr' if mtpl.group(1) in SMART_PTRS else 'template',
+                mtpl.group(1) in SMART_PTRS)
     # a bare class name: an INLINE member needs the full definition -> report, don't
     # auto-write (a forward declaration is not enough for a non-pointer member).
     if re.match(r'^[A-Za-z_]\w*$', t):

@@ -53,10 +53,18 @@ _SZ = {'std::uint8_t': 1, 'std::int8_t': 1, 'std::byte': 1, 'byte': 1, 'char': 1
        'double': 8, 'std::uintptr_t': 8, 'std::intptr_t': 8}
 
 
+_SMART = {'NiPointer', 'NiTSmartPointer', 'BSTSmartPointer', 'GPtr', 'BSTAutoPointer',
+          'NiTPointer'}
+
+
 def _sizeof(t):
-    """Byte size of a primitive/pointer type, or None if unknown."""
+    """Byte size of a primitive/pointer/smart-pointer type, or None if unknown."""
     if t.endswith('*'):
         return 8
+    if '<' in t:                                      # template
+        if t.split('<', 1)[0].split('::')[-1] in _SMART:
+            return 8                                  # engine smart pointer slot
+        return None                                   # other containers: size varies
     return _SZ.get(t)
 
 
@@ -111,17 +119,21 @@ def _match_brace(text, open_idx):
     return -1
 
 
+_BUILTIN = {'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int8_t', 'int16_t',
+            'int32_t', 'int64_t', 'uintptr_t', 'intptr_t', 'char', 'bool', 'float',
+            'double', 'void', 'std', 'RE', 'size_t'}
+
+
 def _type_known(text, cpp):
-    """The base class name of a pointer/inline type is already referenced in the file
-    (forward-decl or include) -- so writing it won't fail to compile."""
-    base = cpp.replace('*', '').replace('std::', '').strip()
-    if base in ('std::uint8_t', 'uint8_t', 'std::uint16_t', 'std::uint32_t',
-                'std::uint64_t', 'std::int8_t', 'std::int16_t', 'std::int32_t',
-                'std::int64_t', 'char', 'bool', 'float', 'double', 'void'):
-        return True
-    if not re.match(r'^[A-Za-z_]\w*$', base):     # arrays/templates handled by caller
-        return True
-    return re.search(r'\b%s\b' % re.escape(base), text) is not None
+    """Every class identifier in the C++ type (wrapper + inner, e.g. NiPointer AND
+    NiAVObject in `NiPointer<NiAVObject>`) is already referenced in the file -- so the
+    rewrite compiles without us injecting includes/forward-decls."""
+    for ident in re.findall(r'[A-Za-z_]\w*', cpp):
+        if ident in _BUILTIN:
+            continue
+        if not re.search(r'\b%s\b' % re.escape(ident), text):
+            return False
+    return True
 
 
 def run():
