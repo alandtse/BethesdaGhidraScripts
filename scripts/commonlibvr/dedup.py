@@ -1,0 +1,136 @@
+"""Duplicate-type deduper -- merge duplicates into the canonical type so references
+(signatures, struct fields) point at the populated CommonLib type.
+
+A program with its MS PDB loaded carries duplicate STRUCT types per name: Ghidra's
+auto-conflict copies (`X.conflict`) and the `/SkyrimSE.pdb/X` vs `/types.h/X` twins.
+References to a duplicate miss the RE on the canonical type (132 of ~2.5k AE typed
+signatures pointed at `/SkyrimSE.pdb/*` twins; PDB struct fields point at `*.conflict`).
+`dtm.replaceDataType(dup, keeper)` merges a duplicate away AND rewires every reference
+to the keeper -- so they finally resolve to the canonical populated type.
+
+Two SAFE passes (only unambiguous same-size merges; size-conflicts are flagged, never
+auto-merged -- the in-memory `Memory::Allocate` size is ground truth, not CommonLib or
+the PDB blindly):
+  A. `X.conflict*` -> `X` in the SAME category (Ghidra's conflict copy IS a dup of the
+     same-category, same-name type). Same size only.
+  B. `/SkyrimSE.pdb/X` -> the UNIQUE same-size `/types.h/X` (skip if 0 or >1 /types.h
+     candidates -- ambiguous leaf like nested RUNTIME_DATA/Data/Entry).
+
+NON-DESTRUCTIVE intent: only merges types proven duplicate (same size); never changes a
+layout. Dry-run by default (counts + a <import>.dedup_conflicts.csv of size-disagreeing
+groups for binary review); CLVR_DEDUP=go to apply. replaceDataType is SLOW (~2-3s each,
+rescans all functions) -- applied in batched transactions. Run programs SEQUENTIALLY.
+"""
+import csv
+import os
+
+IMPORT_PATH = os.environ.get(
+    'CLVR_IMPORT',
+    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
+SCRIPT_DIR = os.environ.get(
+    'CLVR_SCRIPT_DIR',
+    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+APPLY = os.environ.get('CLVR_DEDUP', 'dry').lower() == 'go'
+BATCH = int(os.environ.get('CLVR_DEDUP_BATCH', '40') or 40)
+CONFLICT_CSV = IMPORT_PATH + '.dedup_conflicts.csv'
+
+import importlib.util as _ilu  # noqa: E402
+_dspec = _ilu.spec_from_file_location('clvr_dedup_plan', os.path.join(SCRIPT_DIR, 'dedup_plan.py'))
+dp = _ilu.module_from_spec(_dspec)
+_dspec.loader.exec_module(dp)
+
+
+def run():
+    from ghidra.program.model.data import Structure
+    cp = currentProgram  # noqa: F821
+    dtm = cp.getDataTypeManager()
+
+    structs = [d for d in dtm.getAllDataTypes() if isinstance(d, Structure)]
+
+    # Pass A: .conflict copies -> same-category base, grouped by (category, base leaf)
+    by_qual = {}
+    for d in structs:
+        key = (str(d.getCategoryPath()), dp.base_name(d.getName()))
+        by_qual.setdefault(key, []).append(d)
+
+    merges = []        # (dup_dt, keeper_dt)
+    conflicts = []     # (name, [(size, category), ...])
+    for (_cat, _bn), dts in by_qual.items():
+        if len(dts) < 2:
+            continue
+        variants = [{'key': i, 'name': d.getName(), 'category': str(d.getCategoryPath()),
+                     'size': d.getLength(), 'ndefined': d.getNumDefinedComponents()}
+                    for i, d in enumerate(dts)]
+        keeper_key, merge_keys, conflict, _reason = dp.plan_merge(variants)
+        if conflict:
+            conflicts.append((dts[0].getName(), [(d.getLength(), str(d.getCategoryPath())) for d in dts]))
+            continue
+        for mk in merge_keys:
+            merges.append((dts[mk], dts[keeper_key]))
+
+    # Pass B: /SkyrimSE.pdb/X -> the UNIQUE same-size /types.h/X (by leaf name)
+    typesh_by_leaf = {}
+    for d in structs:
+        if 'types.h' in str(d.getCategoryPath()):
+            typesh_by_leaf.setdefault(d.getName(), []).append(d)
+    pdb_twin = pdb_ambig = 0
+    for d in structs:
+        if 'SkyrimSE.pdb' not in str(d.getCategoryPath()):
+            continue
+        cand = typesh_by_leaf.get(d.getName(), [])
+        if len(cand) == 1 and cand[0].getLength() == d.getLength() and cand[0] is not d:
+            merges.append((d, cand[0]))
+            pdb_twin += 1
+        elif cand:
+            pdb_ambig += 1
+
+    # de-dup the merge list (a dt could be both a .conflict AND a pdb twin target)
+    seen = set()
+    uniq = []
+    for m, k in merges:
+        mp = m.getPathName()
+        if mp in seen or m is k:
+            continue
+        seen.add(mp)
+        uniq.append((m, k))
+
+    print('dedup (%s): %d duplicate merges queued (pass A .conflict + pass B pdb-twin=%d, '
+          'pdb-ambiguous-skipped=%d), %d size-conflict groups flagged'
+          % (cp.getName(), len(uniq), pdb_twin, pdb_ambig, len(conflicts)))
+    for m, k in uniq[:15]:
+        print('   merge %s -> %s' % (m.getPathName(), k.getPathName()))
+
+    try:
+        with open(CONFLICT_CSV, 'w', newline='') as fh:
+            w = csv.writer(fh)
+            w.writerow(['name', 'variant_sizes_and_categories'])
+            for nm, info in conflicts:
+                w.writerow([nm, ' | '.join('0x%X@%s' % (s, c) for s, c in info)])
+    except Exception as e:
+        print('  (conflict CSV write failed: %s)' % e)
+
+    if not APPLY:
+        print('  DRY-RUN: no merges applied. Set CLVR_DEDUP=go to apply.')
+        print('  size-conflicts (binary-verify) -> %s' % CONFLICT_CSV)
+        return
+
+    done = err = 0
+    for i in range(0, len(uniq), BATCH):
+        batch = uniq[i:i + BATCH]
+        tx = cp.startTransaction('dedup batch %d' % (i // BATCH))
+        try:
+            for m, k in batch:
+                try:
+                    dtm.replaceDataType(m, k, False)
+                    done += 1
+                except Exception:
+                    err += 1
+        finally:
+            cp.endTransaction(tx, True)
+        if (i // BATCH) % 5 == 0:
+            monitor.setMessage('dedup %d/%d merged' % (done, len(uniq)))  # noqa: F821
+            print('  ... %d/%d merged' % (done, len(uniq)))
+    print('dedup APPLIED: %d merged, %d errors. size-conflicts -> %s' % (done, err, CONFLICT_CSV))
+
+
+run()
