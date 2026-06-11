@@ -26,6 +26,7 @@ functions for deeper inference, slower; default 0).
 """
 import collections
 import csv
+import json
 import os
 
 IMPORT_PATH = os.environ.get(
@@ -59,6 +60,20 @@ _pspec.loader.exec_module(pl)
 _rspec = _ilu.spec_from_file_location('clvr_review_plan', os.path.join(SCRIPT_DIR, 'review_plan.py'))
 rp = _ilu.module_from_spec(_rspec)
 _rspec.loader.exec_module(rp)
+_ispec = _ilu.spec_from_file_location('clvr_discover_incremental_plan',
+                                      os.path.join(SCRIPT_DIR, 'discover_incremental_plan.py'))
+ip = _ilu.module_from_spec(_ispec)
+_ispec.loader.exec_module(ip)
+
+# INCREMENTAL discovery (skip re-mining classes whose dependency closure was untouched
+# since last pass -- see discover_incremental_plan). DIRTY: a file of class names (one
+# per line) the orchestrator wants re-mined this pass; empty/absent = full pass. STATE:
+# persisted per-class refs (what each class dereferences) so the orchestrator can
+# compute the next dirty set. CHANGED: the classes whose struct this pass modified,
+# the seed for the next pass's dirty computation.
+DIRTY_FILE = os.environ.get('CLVR_DISCOVER_DIRTY', '')
+STATE_JSON = os.environ.get('CLVR_DISCOVER_STATE', IMPORT_PATH + '.discover_state.json')
+CHANGED_JSON = os.environ.get('CLVR_DISCOVER_CHANGED', IMPORT_PATH + '.discover_changed.json')
 
 # The optional LLM-review queue: fields the decompiler is sure EXIST (consensus) but
 # could only size, not name -- a ranked worklist for a human/LLM to assign a type
@@ -139,6 +154,21 @@ def run():
         if base_t in unk_by_class:
             by_class.setdefault(base_t, []).append((f, 0))
 
+    # Incremental scope: if the orchestrator handed us a dirty-class list, mine only
+    # those (intersected with classes that actually still have unknowns + methods).
+    # Cycle 1 / standalone runs leave it empty -> full cold pass.
+    if DIRTY_FILE and os.path.exists(DIRTY_FILE):
+        try:
+            with open(DIRTY_FILE) as fh:
+                want = set(line.strip() for line in fh if line.strip())
+        except Exception:
+            want = set()
+        if want:
+            full = len(by_class)
+            by_class = {c: v for c, v in by_class.items() if c in want}
+            print('Incremental discovery: mining %d/%d dirty classes (from %s).'
+                  % (len(by_class), full, DIRTY_FILE))
+
     dt_before = dtm.getDataTypeCount(True)
     decomp = DecompInterface()
     decomp.openProgram(cp)
@@ -147,6 +177,7 @@ def run():
     observations = []
     dt_by_typename = {}                  # inferred typename -> its live DataType
     evidence = {}                        # (cls, offset) -> [observing function names]
+    mined_state = {}                     # cls -> {'refs': [base type names it derefs]}
     classes_done = funcs_done = 0
     total_classes = min(len(by_class), MAX_CLASSES) if MAX_CLASSES else len(by_class)
     per = 'ALL' if PER_CLASS <= 0 else str(PER_CLASS)
@@ -163,7 +194,14 @@ def run():
             print('  [%d/%d classes] functions=%d observations=%d'
                   % (classes_done, total_classes, funcs_done, len(observations)))
         offs = unk_by_class[cl]
+        cls_observed = set()                 # offsets seen this class -> early-exit
+        cls_refs = mined_state.setdefault(cl, {'refs': []})['refs']
         for f, pidx in (fns if PER_CLASS <= 0 else fns[:PER_CLASS]):
+            # Per-class early-exit: once every unknown offset has been observed, more
+            # methods of this class can only re-observe the same fields -- stop mining
+            # it. Full recall (we have all offsets), strictly less decompilation.
+            if cls_observed.issuperset(offs):
+                break
             try:
                 r = decomp.decompileFunction(f, 45, monitor)  # noqa: F821
                 if not (r and r.decompileCompleted()):
@@ -188,7 +226,14 @@ def run():
                     tn = c.getDataType().getName()
                     if c.getOffset() in offs and _useful(tn):
                         observations.append((cl, c.getOffset(), tn))
+                        cls_observed.add(c.getOffset())
                         dt_by_typename.setdefault(tn, c.getDataType())
+                        # refs: base type this class dereferences -> dependency edge
+                        # for incremental invalidation (when one of these classes
+                        # changes layout, re-mine cl next pass).
+                        bt = ip.base_type(tn)
+                        if bt and bt not in cls_refs:
+                            cls_refs.append(bt)
                         ev = evidence.setdefault((cl, c.getOffset()), [])
                         if f.getName() not in ev and len(ev) < 6:
                             ev.append(f.getName())   # who saw it -> reviewer's leads
@@ -239,6 +284,7 @@ def run():
     applied = 0
     apply_samples = []
     apply_skips = collections.Counter()
+    changed_classes = set()              # structs this pass modified -> next dirty seed
     if APPLY:
         tx = cp.startTransaction('discover-apply fields')
         try:
@@ -299,6 +345,7 @@ def run():
                         apply_skips['live-mismatch(bug)'] += 1
                         continue
                     applied += 1
+                    changed_classes.add(cls)
                     if len(apply_samples) < 15:
                         apply_samples.append('%s +0x%X %s -> %s %s'
                                              % (cls, off, cur_name, new_name, info['type']))
@@ -332,6 +379,25 @@ def run():
     print('  -> ' + OUT_CSV)
     print('  LLM-review queue: %d size-only-consensus fields need a type'
           ' (fill decision_type, then apply_review.py) -> %s' % (review_n, REVIEW_CSV))
+
+    # Persist incremental state for the orchestrator: merge this pass's per-class refs
+    # into the prior state (carrying forward classes a warm pass skipped), and record
+    # the structs we changed so the next pass can compute its dirty set. Best-effort --
+    # a write failure just forces the next pass to run cold.
+    try:
+        prior = {}
+        if os.path.exists(STATE_JSON):
+            with open(STATE_JSON) as fh:
+                prior = (json.load(fh) or {}).get('classes', {})
+        merged = ip.merge_state(prior, mined_state)
+        with open(STATE_JSON, 'w') as fh:
+            json.dump({'version': 1, 'classes': merged}, fh)
+        with open(CHANGED_JSON, 'w') as fh:
+            json.dump({'changed': sorted(changed_classes)}, fh)
+        print('  incremental state: %d classes tracked, %d changed this pass -> %s'
+              % (len(merged), len(changed_classes), STATE_JSON))
+    except Exception as e:
+        print('  (incremental state write failed: %s -- next pass runs cold)' % e)
 
 
 run()

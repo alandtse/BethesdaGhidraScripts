@@ -43,10 +43,50 @@ MAX_CYCLES = int(os.environ.get('CLVR_CYCLE_MAX', '5') or 5)
 MIN_GAIN = int(os.environ.get('CLVR_CYCLE_MIN_GAIN', '5') or 5)
 COVERAGE_CSV = os.environ.get('CLVR_CYCLE_CSV', IMPORT_PATH + '.coverage.csv')
 
+import json  # noqa: E402
 import importlib.util as _ilu  # noqa: E402
 _pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
 pl = _ilu.module_from_spec(_pspec)
 _pspec.loader.exec_module(pl)
+_ispec = _ilu.spec_from_file_location('clvr_discover_incremental_plan',
+                                      os.path.join(SCRIPT_DIR, 'discover_incremental_plan.py'))
+ip = _ilu.module_from_spec(_ispec)
+_ispec.loader.exec_module(ip)
+
+# Incremental-discovery sidecars (written by commonlib_discover.py, read here to
+# decide the next cycle's dirty set). The dirty file is what we HAND BACK to the next
+# discover pass.
+DISCOVER_STATE = IMPORT_PATH + '.discover_state.json'
+DISCOVER_CHANGED = IMPORT_PATH + '.discover_changed.json'
+DISCOVER_DIRTY = IMPORT_PATH + '.discover_dirty.txt'
+
+
+def _plan_next_discover_dirty(sig_changed):
+    """After a cycle's discover stage, decide what the NEXT cycle's discover should
+    re-mine. Returns the dirty-file path to set as CLVR_DISCOVER_DIRTY, or '' for a
+    full (cold) pass. Cold whenever a signature-changing stage (thiscall/propagate) ran
+    this cycle -- that path isn't captured by the struct-deref dependency model -- or
+    when compute_dirty says cold/many-changed."""
+    if sig_changed:
+        return ''                              # callee-sig path live -> mine everything
+    try:
+        with open(DISCOVER_STATE) as fh:
+            classes = (json.load(fh) or {}).get('classes', {})
+        with open(DISCOVER_CHANGED) as fh:
+            changed = set((json.load(fh) or {}).get('changed', []))
+    except Exception:
+        return ''                              # missing sidecar -> safe cold pass
+    dirty, reason = ip.compute_dirty(classes, changed)
+    if dirty is None:
+        print('  next discover: COLD (%s)' % reason)
+        return ''
+    if not dirty:
+        print('  next discover: nothing dirty (%s) -- discover will no-op' % reason)
+    with open(DISCOVER_DIRTY, 'w') as fh:
+        fh.write('\n'.join(sorted(dirty)))
+    print('  next discover: %d dirty classes (%s) -> %s'
+          % (len(dirty), reason, DISCOVER_DIRTY))
+    return DISCOVER_DIRTY
 
 
 def _concrete(typename):
@@ -140,21 +180,40 @@ def run():
                   ('commonlib_discover.py', {'CLVR_DISCOVER_APPLY': 'go'})]
         active = {name: True for name, _ in STAGES}
         prev = base
+        # Incremental discovery: cycle 1 is cold (no dirty file). After each cycle we
+        # compute the next cycle's dirty class set from discover's sidecars. Clear any
+        # stale dirty file so cycle 1 mines everything.
+        next_dirty = ''
+        try:
+            if os.path.exists(DISCOVER_DIRTY):
+                os.remove(DISCOVER_DIRTY)
+        except Exception:
+            pass
         for cyc in range(1, MAX_CYCLES + 1):
             print('\n########## CYCLE %d/%d ##########' % (cyc, MAX_CYCLES))
             cov = prev
+            sig_changed = False              # did a thiscall/propagate stage move metrics?
             for name, env in STAGES:
                 if not active[name]:
                     print('  (skip %s -- converged in an earlier cycle)' % name)
                     continue
+                if name == 'commonlib_discover.py':
+                    # hand the precomputed dirty set to discover (cold when '')
+                    env = dict(env, CLVR_DISCOVER_DIRTY=next_dirty)
                 _run_stage(name, env, cp, mon)
                 after = measure_coverage(cp)
                 stage_delta = pl.coverage_delta(cov, after)
                 cov = after
+                moved = any(v != 0 for v in stage_delta.values())
+                if name != 'commonlib_discover.py' and moved:
+                    sig_changed = True       # signatures changed -> next discover cold
                 if all(v == 0 for v in stage_delta.values()):
                     active[name] = False
                     print('  --> %s changed nothing; marking converged (skip henceforth)'
                           % name)
+            # decide what the next cycle's discover re-mines
+            next_dirty = (_plan_next_discover_dirty(sig_changed)
+                          if active['commonlib_discover.py'] else '')
             cur = cov
             delta = pl.coverage_delta(prev, cur)
             prog = pl.progress(delta)
