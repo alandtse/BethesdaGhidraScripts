@@ -75,6 +75,27 @@ def build_by_name(dtm):
     return by_name
 
 
+def unk_offsets(dt):
+    """Pointer-sized offsets a /types.h struct still leaves unknown (unk/pad field name
+    or undefined type) -- the harvest surface for field discovery. {offset: cur_name}."""
+    offs = {}
+    for i in range(dt.getNumComponents()):
+        c = dt.getComponent(i)
+        fn = c.getFieldName() or ''
+        tn = c.getDataType().getName()
+        if c.getLength() >= 8 and (fn.startswith(('unk', 'pad')) or 'undefined' in tn):
+            offs[c.getOffset()] = fn or ('off_%X' % c.getOffset())
+    return offs
+
+
+def useful_typename(tn):
+    """A decompiler-inferred type worth recording: not undefined, not an array, not a
+    bare scalar/void (those carry no class RE)."""
+    if not tn or 'undefined' in tn or '[' in tn:
+        return False
+    return tn not in ('char', 'byte', 'bool', 'void')
+
+
 def param0_class_name(func):
     """Base type name of a function's param-0 (`this`), stripped of pointer/`*64`
     decoration -- '' if the function has no parameters. The key for grouping a class's
