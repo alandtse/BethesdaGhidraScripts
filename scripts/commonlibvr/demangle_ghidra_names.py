@@ -17,13 +17,25 @@ default (reports rename/merge counts + samples); CLVR_DEMANGLE=go to apply. repl
 is slow (rescans functions) -- merges run in batched transactions. Run per program.
 """
 import csv
+import glob
 import os
+import re
 
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\commonlib_typed_members.csv')
+RE_DIR = os.environ.get('CLVR_RE_DIR', r'E:\Documents\source\repos\CommonLibVR\include\RE')
 APPLY = os.environ.get('CLVR_DEMANGLE', 'dry').lower() == 'go'
 BATCH = int(os.environ.get('CLVR_DEMANGLE_BATCH', '40') or 40)
+
+# engine template wrappers whose `Wrapper<...>` spellings the import mangles -- scanned
+# from EVERY context (members, params, returns, nested), not just struct members.
+_WRAPS = ('NiPointer', 'NiTSmartPointer', 'BSTSmartPointer', 'GPtr', 'BSTAutoPointer',
+          'NiTPointer', 'BSTArray', 'NiTArray', 'BSTSmallArray', 'BSScrapArray',
+          'BSSimpleList', 'BSTHashMap', 'BSTScatterTable', 'NiTPrimitiveArray', 'NiRect',
+          'BSTSet', 'BSTTuple', 'BSTSingletonSDM', 'BSTStaticArray', 'BSTObjectArrayBase',
+          'NiTObjectArray', 'BSTHashMap2', 'BSTBTreeNode')
+_WRAP_RE = re.compile(r'\b(' + '|'.join(_WRAPS) + r')<')
 
 
 def mangle(proper):
@@ -35,17 +47,48 @@ def mangle(proper):
     return out
 
 
-def _proper_names():
-    """Collect CommonLib's proper template spellings (the `<>`-form member types)."""
+def _scan_headers(re_dir):
+    """Every `Wrapper<...>` template spelling in the headers, balanced-bracket matched
+    so nested templates come out whole (BSTArray<NiPointer<NiAVObject>>)."""
     propers = set()
-    if not os.path.exists(MEMBERS_CSV):
-        return propers
-    for r in csv.DictReader(open(MEMBERS_CSV)):
-        t = r['cpp_type'].strip()
-        while t.endswith('*'):
-            t = t[:-1].strip()
-        if '<' in t:
-            propers.add(t.replace('RE::', ''))
+    for path in glob.glob(os.path.join(re_dir, '**', '*.h'), recursive=True):
+        try:
+            text = open(path, encoding='utf-8', errors='replace').read()
+        except Exception:
+            continue
+        for m in _WRAP_RE.finditer(text):
+            j = m.end() - 1                            # at the '<'
+            depth = 0
+            while j < len(text):
+                if text[j] == '<':
+                    depth += 1
+                elif text[j] == '>':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                elif text[j] in ';{}\n' and depth == 1:
+                    j = -1                             # malformed -> bail
+                    break
+                j += 1
+            if j > 0 and depth == 0:
+                spell = re.sub(r'\s+', ' ', text[m.start():j + 1]).replace('RE::', '').strip()
+                propers.add(spell)
+    return propers
+
+
+def _proper_names():
+    """CommonLib's proper template spellings -- from member types AND a full header scan
+    (params/returns/nested), so the de-mangle covers every mangled type, not just
+    members."""
+    propers = set()
+    if os.path.exists(MEMBERS_CSV):
+        for r in csv.DictReader(open(MEMBERS_CSV)):
+            t = r['cpp_type'].strip()
+            while t.endswith('*'):
+                t = t[:-1].strip()
+            if '<' in t:
+                propers.add(t.replace('RE::', ''))
+    propers |= _scan_headers(RE_DIR)
     return propers
 
 
