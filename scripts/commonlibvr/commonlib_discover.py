@@ -151,6 +151,36 @@ def run():
             print('Incremental discovery: mining %d/%d dirty classes (from %s).'
                   % (len(by_class), full, DIRTY_FILE))
 
+    # GLOBAL-EDGE refs (capstone): a class that references a typed global `g_T : T *`
+    # dereferences T through it (`g_T->field`), a dependency the `this`-field refs can't
+    # see -- it is why singleton keystones (TES via gTES, ProcessLists, ...) showed 0
+    # dependents in the unlock triage. Precompute once: map each function that
+    # references a typed-/types.h-pointer global to that global's class, so the mining
+    # loop can add it to the referencing class's refs (making the global's class a
+    # dependency the triage scores and the dirty-tracking invalidates on).
+    from ghidra.program.model.data import Pointer, Structure
+    listing = cp.getListing()
+    rm = cp.getReferenceManager()
+    func_globals = {}                        # function entry offset -> set(class name)
+    gcount = 0
+    di = listing.getDefinedData(True)
+    while di.hasNext():
+        d = di.next()
+        t = d.getDataType()
+        if not isinstance(t, Pointer):
+            continue
+        base = t.getDataType()
+        if not (isinstance(base, Structure) and 'types.h' in str(base.getCategoryPath())):
+            continue
+        gcls = base.getName()
+        gcount += 1
+        for ref in rm.getReferencesTo(d.getAddress()):
+            fn = fm.getFunctionContaining(ref.getFromAddress())
+            if fn is not None:
+                func_globals.setdefault(fn.getEntryPoint().getOffset(), set()).add(gcls)
+    print('Global-edge refs: %d typed globals -> %d functions carry a global dependency.'
+          % (gcount, len(func_globals)))
+
     dt_before = dtm.getDataTypeCount(True)
     decomp = DecompInterface()
     decomp.openProgram(cp)
@@ -178,6 +208,12 @@ def run():
         offs = unk_by_class[cl]
         cls_observed = set()                 # offsets seen this class -> early-exit
         cls_refs = mined_state.setdefault(cl, {'refs': []})['refs']
+        # global-edge: every typed-global class any of this class's methods reaches is a
+        # dependency (ungated by early-exit -- this is graph data, not field mining).
+        for f0, _pi in fns:
+            for gcls in func_globals.get(f0.getEntryPoint().getOffset(), ()):
+                if gcls != cl and gcls not in cls_refs:
+                    cls_refs.append(gcls)
         for f, pidx in (fns if PER_CLASS <= 0 else fns[:PER_CLASS]):
             # Per-class early-exit: once every unknown offset has been observed, more
             # methods of this class can only re-observe the same fields -- stop mining
