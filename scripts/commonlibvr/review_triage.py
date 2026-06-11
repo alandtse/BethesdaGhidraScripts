@@ -31,6 +31,10 @@ SCRIPT_DIR = os.environ.get(
 STATE_JSON = os.environ.get('CLVR_DISCOVER_STATE', IMPORT_PATH + '.discover_state.json')
 REVIEW_CSV = os.environ.get('CLVR_DISCOVER_REVIEW_CSV', IMPORT_PATH + '.review_queue.csv')
 OUT_CSV = IMPORT_PATH + '.review_triaged.csv'
+# CLVR_TRIAGE_APPLY=go also LANDS the cross-version free answers: it runs crossver in
+# apply mode (which size-checks + improve-or-nop fills each unknown field already
+# resolved in a sibling runtime) -- free RE that needs no LLM judgement.
+APPLY_FREE = os.environ.get('CLVR_TRIAGE_APPLY', 'dry').lower() == 'go'
 
 import importlib.util as _ilu  # noqa: E402
 
@@ -121,9 +125,25 @@ def run():
               % (f['unlock_score'], f['dependents'], f['class'], f['offset'],
                  f['size_only_guess'], ' *' if f['is_pointer'] else '', tag))
     print('  -> ' + OUT_CSV)
-    if free:
-        print('  %d cross-version free answers -> run crossver.py apply to land them '
-              'without LLM review.' % free)
+    if free and not APPLY_FREE:
+        print('  %d cross-version free answers -> set CLVR_TRIAGE_APPLY=go (or run '
+              'crossver.py apply) to land them without LLM review.' % free)
+
+    # auto-apply the free answers by running crossver in apply mode (size-checked,
+    # improve-or-nop). It propagates EVERY sibling-resolved field, a superset of the
+    # ones surfaced above -- strictly more free RE.
+    if APPLY_FREE and free:
+        print('\n  CLVR_TRIAGE_APPLY=go -> landing cross-version free answers via crossver:')
+        env = dict(os.environ)
+        env['CLVR_XVER'] = 'apply'
+        env['CLVR_XVER_APPLY'] = 'go'
+        os.environ.update(env)
+        g = dict(globals())
+        g['__name__'] = '__main__'
+        g['currentProgram'] = cp
+        g['monitor'] = monitor  # noqa: F821
+        with open(os.path.join(SCRIPT_DIR, 'crossver.py')) as fh:
+            exec(compile(fh.read(), 'crossver.py', 'exec'), g)
 
 
 run()

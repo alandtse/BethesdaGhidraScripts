@@ -206,16 +206,22 @@ def run():
                 funcs_done += 1
                 for c in st.getComponents():
                     tn = c.getDataType().getName()
-                    if c.getOffset() in offs and _useful(tn):
+                    if not _useful(tn):
+                        continue
+                    # refs: EVERY class type this method dereferences through `this`,
+                    # at ANY offset (not only the unknown ones). This is the dependency
+                    # edge the incremental cycle invalidates on and the unlock-surface
+                    # triage scores -- capturing all of them (a) fixes an
+                    # under-invalidation soundness gap (a class that derefs T at a
+                    # KNOWN offset still must re-mine when T's layout improves) and
+                    # (b) densifies the graph so transitive unlock is meaningful.
+                    bt = ip.base_type(tn)
+                    if bt and bt not in cls_refs:
+                        cls_refs.append(bt)
+                    if c.getOffset() in offs:
                         observations.append((cl, c.getOffset(), tn))
                         cls_observed.add(c.getOffset())
                         dt_by_typename.setdefault(tn, c.getDataType())
-                        # refs: base type this class dereferences -> dependency edge
-                        # for incremental invalidation (when one of these classes
-                        # changes layout, re-mine cl next pass).
-                        bt = ip.base_type(tn)
-                        if bt and bt not in cls_refs:
-                            cls_refs.append(bt)
                         ev = evidence.setdefault((cl, c.getOffset()), [])
                         if f.getName() not in ev and len(ev) < 6:
                             ev.append(f.getName())   # who saw it -> reviewer's leads
