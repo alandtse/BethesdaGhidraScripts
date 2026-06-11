@@ -46,6 +46,7 @@ def demangle_type(tn):
     t = (tn or '').strip()
     if not t:
         return (None, 'unknown', False)
+    t = re.sub(r'\.conflict\d*', '', t)               # drop Ghidra dedup residual suffix
     # bitfield 'byte:2' / 'uint:18' -- member is a bitfield; never auto-rewrite
     if re.match(r'^\w+:\d+$', t):
         return (None, 'bitfield', False)
@@ -82,7 +83,12 @@ def demangle_type(tn):
     # wrappers stay reported (the `_` mangling is ambiguous: trailing `_` is `>`/`*>`).
     mtpl = re.match(r'^([A-Za-z_]\w*)_(.+?)_*$', t)
     if mtpl and mtpl.group(1) in (SMART_PTRS | _OTHER_WRAPS):
-        cpp = '%s<%s>' % (mtpl.group(1), mtpl.group(2).rstrip('_'))
+        # recursively demangle the inner so the mangled form canonicalizes to the same
+        # spelling as the proper-C++ form (BSTArray_NiPointer_NiAVObject__ ==
+        # BSTArray<NiPointer<NiAVObject>>), so cross-runtime spelling isn't a conflict.
+        inner_cpp, _ik, _is = demangle_type(mtpl.group(2).rstrip('_'))
+        inner = inner_cpp if isinstance(inner_cpp, str) else mtpl.group(2).rstrip('_')
+        cpp = '%s<%s>' % (mtpl.group(1), inner)
         return (cpp, 'smartptr' if mtpl.group(1) in SMART_PTRS else 'template',
                 mtpl.group(1) in SMART_PTRS)
     # a bare class name: an INLINE member needs the full definition -> report, don't
@@ -128,10 +134,16 @@ def reconcile(rows_by_runtime):
     return out
 
 
+_ONE_BYTE = {'std::uint8_t', 'std::int8_t', 'char', 'std::byte'}
+
+
 def _norm(cpp, kind):
-    """A hashable identity for a demangled type, to detect cross-runtime disagreement."""
+    """A hashable identity for a demangled type, to detect a REAL cross-runtime
+    disagreement (not a spelling one). Byte-wide bases (byte/char/uint8) are treated as
+    equivalent -- `byte[96]` vs `char[96]` is the same layout, not a conflict."""
     if cpp is None:
         return ('none', kind)
     if kind == 'array':
-        return ('array', cpp[0], cpp[2])
+        base = 'i8' if cpp[0] in _ONE_BYTE else cpp[0]
+        return ('array', base, cpp[2])
     return ('t', cpp)
