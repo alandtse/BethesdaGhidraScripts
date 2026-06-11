@@ -49,15 +49,16 @@ _CONF_RANK = {'high': 2, 'medium': 1, 'low': 0}
 
 
 def _accept(row):
-    """Return the chosen type string for a row, or None to skip. An explicit
-    decision_type wins; otherwise auto-accept the inferred type if its confidence
-    clears ACCEPT_CONF. `skip`/blank with no auto-accept -> None."""
+    """Return (type_string, is_explicit) for a row, or (None, False) to skip. An
+    explicit reviewer decision_type wins and is honored verbatim; otherwise auto-accept
+    the inferred base type if its confidence clears ACCEPT_CONF. `skip`/blank with no
+    auto-accept -> skip."""
     dec = rp.parse_decision(row.get('decision_type'))
     if dec is not None:
-        return dec
+        return (dec, True)
     if ACCEPT_CONF in _CONF_RANK and _CONF_RANK.get(row.get('confidence', 'low'), 0) >= _CONF_RANK[ACCEPT_CONF]:
-        return row.get('inferred_type') or None
-    return None
+        return (row.get('inferred_type') or None, False)
+    return (None, False)
 
 
 def _span_undefined(listing, addr, length):
@@ -77,8 +78,6 @@ def _span_undefined(listing, addr, length):
 
 
 def run():
-    from ghidra.program.model.data import DataUtilities
-    ClearDataMode = DataUtilities.ClearDataMode
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
     listing = cp.getListing()
@@ -102,7 +101,7 @@ def run():
     tx = cp.startTransaction('apply global types') if APPLY else None
     try:
         for row in rows:
-            chosen = _accept(row)
+            chosen, is_explicit = _accept(row)
             if not chosen:
                 skips['no-decision'] = skips.get('no-decision', 0) + 1
                 continue
@@ -111,9 +110,17 @@ def run():
             if base is None:
                 skips['unresolved-type'] = skips.get('unresolved-type', 0) + 1
                 continue
-            # pointer slot vs inline singleton: T * vs T
-            is_ptr = str(row.get('is_pointer', '0')) == '1'
-            dt = dtm.getPointer(base, 8) if (is_ptr and not chosen.strip().endswith('*')) else base
+            # Choose pointer-slot (T *) vs inline (T). An explicit reviewer decision is
+            # honored verbatim (resolve_type already applied any `*` they wrote). For an
+            # AUTO-ACCEPTED type we default to a pointer SLOT: engine singleton globals
+            # are overwhelmingly `g<Name>` pointers (8-byte slots), the in-pcode
+            # is_pointer signal is unreliable (Ghidra folds the load), and an 8-byte T*
+            # is non-destructive -- it cannot clobber an adjacent slot the way a large
+            # inline struct could. Inline typing requires an explicit `T` decision.
+            if is_explicit:
+                dt = base
+            else:
+                dt = base if chosen.strip().endswith('*') else dtm.getPointer(base, 8)
             # non-destructive: only type undefined bytes
             if not _span_undefined(listing, addr, dt.getLength()):
                 skips['occupied(defined-data)'] = skips.get('occupied(defined-data)', 0) + 1
@@ -127,18 +134,19 @@ def run():
                         dirty_classes.add(c)
             if APPLY:
                 try:
-                    DataUtilities.createData(cp, addr, dt, dt.getLength(), False,
-                                             ClearDataMode.CLEAR_ALL_CONFLICTING_DATA)
+                    # clear the (guaranteed-undefined) span, then lay down the type
+                    end = addr.add(dt.getLength() - 1)
+                    listing.clearCodeUnits(addr, end, False)
+                    listing.createData(addr, dt)
                     # name a still-default (DAT_*) symbol for readability
                     sym = cp.getSymbolTable().getPrimarySymbol(addr)
                     if sym is not None and sym.getSource().toString() == 'DEFAULT':
                         from ghidra.program.model.symbol import SourceType
-                        nm = 'g_' + row['inferred_type'] + ('Ptr' if is_ptr else '')
-                        sym.setName(nm, SourceType.USER_DEFINED)
+                        sym.setName('g_' + row['inferred_type'], SourceType.USER_DEFINED)
                 except Exception as e:
                     skips['write-error'] = skips.get('write-error', 0) + 1
                     if len(samples) < 20:
-                        samples.append('ERROR 0x%X %s: %s' % (addr.getOffset(), chosen, str(e)[:40]))
+                        samples.append('ERROR 0x%X %s: %s' % (addr.getOffset(), chosen, str(e)[:60]))
                     continue
             typed += 1
             if len(samples) < 20:
