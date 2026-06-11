@@ -64,6 +64,9 @@ _ispec = _ilu.spec_from_file_location('clvr_discover_incremental_plan',
                                       os.path.join(SCRIPT_DIR, 'discover_incremental_plan.py'))
 ip = _ilu.module_from_spec(_ispec)
 _ispec.loader.exec_module(ip)
+_gspec = _ilu.spec_from_file_location('clvr_ghidra_util', os.path.join(SCRIPT_DIR, 'clvr_ghidra_util.py'))
+gu = _ilu.module_from_spec(_gspec)
+_gspec.loader.exec_module(gu)
 
 # INCREMENTAL discovery (skip re-mining classes whose dependency closure was untouched
 # since last pass -- see discover_incremental_plan). DIRTY: a file of class names (one
@@ -101,24 +104,6 @@ def _useful(tn):
     return tn not in ('char', 'byte', 'bool', 'void')
 
 
-def _struct_metrics(s):
-    """(length, protected_bytes) for a structure. protected_bytes = bytes of
-    components that carry RE we must not lose: a real (non-unk*/pad*) field name AND a
-    non-undefined type. The improve-or-nop invariant for an apply is: length UNCHANGED
-    and protected_bytes NOT DECREASED. A good apply (unk slot -> named concrete field,
-    same size) raises protected_bytes; a struct-growth changes length; a clobber of a
-    real field drops protected_bytes. So checking these two on a sandbox copy proves an
-    apply can only improve the struct or be skipped -- never degrade it."""
-    pb = 0
-    for i in range(s.getNumComponents()):
-        c = s.getComponent(i)
-        fn = c.getFieldName() or ''
-        tn = c.getDataType().getName()
-        if not fn.startswith(('unk', 'pad')) and 'undefined' not in tn:
-            pb += c.getLength()
-    return s.getLength(), pb
-
-
 def run():
     from ghidra.app.decompiler import DecompInterface
     from ghidra.app.decompiler.util import FillOutStructureHelper
@@ -147,11 +132,8 @@ def run():
     # 0x60880, ~197k undefined bytes). `this`-only is the validated, safe surface.
     by_class = {}                            # cls -> [(function, 0), ...]
     for f in fm.getFunctions(True):
-        ps = f.getParameters()
-        if not ps:
-            continue
-        base_t = ps[0].getDataType().getName().rstrip('64').rstrip(' *')
-        if base_t in unk_by_class:
+        base_t = gu.param0_class_name(f)
+        if base_t and base_t in unk_by_class:
             by_class.setdefault(base_t, []).append((f, 0))
 
     # Incremental scope: if the orchestrator handed us a dirty-class list, mine only
@@ -322,7 +304,7 @@ def run():
                 # live struct. This catches struct-growth/clobber regardless of cause
                 # (it is how MapMenu's 0x30560->0x60880 doubling would have been
                 # rejected). A failure leaves the live struct untouched (nop).
-                base = _struct_metrics(struct)
+                base = gu.struct_metrics(struct)
                 try:
                     test = struct.copy(dtm)
                     tc = test.getComponentAt(off)
@@ -330,7 +312,7 @@ def run():
                         apply_skips['no-slot'] += 1
                         continue
                     test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
-                    tm = _struct_metrics(test)
+                    tm = gu.struct_metrics(test)
                 except Exception:
                     apply_skips['copy-error'] += 1
                     continue
@@ -341,7 +323,7 @@ def run():
                     struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
                                            'clvr-discovered ' + info['type'])
                     # paranoia: live result must match the proven-safe sandbox
-                    if _struct_metrics(struct) != tm:
+                    if gu.struct_metrics(struct) != tm:
                         apply_skips['live-mismatch(bug)'] += 1
                         continue
                     applied += 1

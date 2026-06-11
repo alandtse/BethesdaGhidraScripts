@@ -37,45 +37,9 @@ _rspec.loader.exec_module(rp)
 _pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
 pl = _ilu.module_from_spec(_pspec)
 _pspec.loader.exec_module(pl)
-
-
-def _resolve_type(dtm, by_name, name):
-    """Resolve a reviewer's type string (e.g. `Actor *`, `NavMeshInfoMap *64`,
-    `BSTArray<RE::TESForm *>`) to a live DataType. Strips Ghidra pointer/width
-    decoration to a base name, looks it up (preferring /types.h), and re-applies the
-    pointer depth. Returns None if the base name is not found (reported for fixup)."""
-    t = name.strip()
-    ptr = 0
-    while True:
-        t = t.strip()
-        if t.endswith('64') and t[:-2].rstrip().endswith('*'):
-            t = t[:-2]
-        elif t.endswith('*'):
-            t = t[:-1]
-            ptr += 1
-        else:
-            break
-    base = by_name.get(t.strip())
-    if base is None:
-        return None
-    dt = base
-    for _ in range(ptr):
-        dt = dtm.getPointer(dt, 8)
-    return dt
-
-
-def _struct_metrics(s):
-    """(length, protected_bytes): bytes carrying RE we must not lose (non-unk*/pad*
-    name AND non-undefined type). Improve-or-nop invariant: length unchanged AND
-    protected_bytes not decreased after an apply."""
-    pb = 0
-    for i in range(s.getNumComponents()):
-        c = s.getComponent(i)
-        fn = c.getFieldName() or ''
-        tn = c.getDataType().getName()
-        if not fn.startswith(('unk', 'pad')) and 'undefined' not in tn:
-            pb += c.getLength()
-    return s.getLength(), pb
+_gspec = _ilu.spec_from_file_location('clvr_ghidra_util', os.path.join(SCRIPT_DIR, 'clvr_ghidra_util.py'))
+gu = _ilu.module_from_spec(_gspec)
+_gspec.loader.exec_module(gu)
 
 
 def run():
@@ -89,11 +53,7 @@ def run():
 
     # name -> DataType, /types.h preferred (so a reviewer's `Actor` resolves to our
     # struct, not a same-named library type).
-    by_name = {}
-    for dt in dtm.getAllDataTypes():
-        nm = dt.getName()
-        if nm not in by_name or 'types.h' in str(dt.getCategoryPath()):
-            by_name[nm] = dt
+    by_name = gu.build_by_name(dtm)
 
     decisions = []
     with open(REVIEW_CSV, newline='') as fh:
@@ -112,7 +72,7 @@ def run():
     tx = cp.startTransaction('apply review decisions') if APPLY else None
     try:
         for cls, off, dec in decisions:
-            dt = _resolve_type(dtm, by_name, dec)
+            dt = gu.resolve_type(dtm, by_name, dec)
             if dt is None:
                 unresolved += 1
                 if len(samples) < 25:
@@ -144,11 +104,11 @@ def run():
             if APPLY:
                 # PROVABLE improve-or-nop: validate on a detached copy first; only
                 # touch the live struct if length is unchanged and no RE is lost.
-                base = _struct_metrics(struct)
+                base = gu.struct_metrics(struct)
                 try:
                     test = struct.copy(dtm)
                     test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
-                    tm = _struct_metrics(test)
+                    tm = gu.struct_metrics(test)
                 except Exception as e:
                     skipped += 1
                     if len(samples) < 25:

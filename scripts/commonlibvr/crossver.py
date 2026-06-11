@@ -41,53 +41,16 @@ _cspec.loader.exec_module(cv)
 _pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
 pl = _ilu.module_from_spec(_pspec)
 _pspec.loader.exec_module(pl)
-
-
-def _types_structs(dtm):
-    for dt in dtm.getAllDataTypes():
-        if dt.getClass().getSimpleName() == 'StructureDB' and 'types.h' in str(dt.getCategoryPath()):
-            yield dt
-
-
-def _struct_metrics(s):
-    pb = 0
-    for i in range(s.getNumComponents()):
-        c = s.getComponent(i)
-        fn = c.getFieldName() or ''
-        tn = c.getDataType().getName()
-        if not fn.startswith(('unk', 'pad')) and 'undefined' not in tn:
-            pb += c.getLength()
-    return s.getLength(), pb
-
-
-def _resolve_type(dtm, by_name, name):
-    """Resolve a typename string to a live DataType in THIS program (pointer/`*64`
-    decoration handled, /types.h preferred). None if the base name is absent here."""
-    t = name.strip()
-    ptr = 0
-    while True:
-        t = t.strip()
-        if t.endswith('64') and t[:-2].rstrip().endswith('*'):
-            t = t[:-2]
-        elif t.endswith('*'):
-            t = t[:-1]
-            ptr += 1
-        else:
-            break
-    base = by_name.get(t.strip())
-    if base is None:
-        return None
-    dt = base
-    for _ in range(ptr):
-        dt = dtm.getPointer(dt, 8)
-    return dt
+_gspec = _ilu.spec_from_file_location('clvr_ghidra_util', os.path.join(SCRIPT_DIR, 'clvr_ghidra_util.py'))
+gu = _ilu.module_from_spec(_gspec)
+_gspec.loader.exec_module(gu)
 
 
 def export():
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
     rows = []
-    for st in _types_structs(dtm):
+    for st in gu.types_structs(dtm):
         for i in range(st.getNumComponents()):
             c = st.getComponent(i)
             fn = c.getFieldName() or ''
@@ -118,14 +81,10 @@ def apply():
     print('xver apply (%s): %d sibling export(s), %d (class,offset) keys'
           % (cp.getName(), len(files), len(merged)))
 
-    by_name = {}
-    for dt in dtm.getAllDataTypes():
-        nm = dt.getName()
-        if nm not in by_name or 'types.h' in str(dt.getCategoryPath()):
-            by_name[nm] = dt
+    by_name = gu.build_by_name(dtm)
 
     # index this program's /types.h structs and their receivable / already-known slots
-    struct_by_class = {st.getName(): st for st in _types_structs(dtm)}
+    struct_by_class = {st.getName(): st for st in gu.types_structs(dtm)}
 
     applied = skipped = conflicts = 0
     samples = []
@@ -155,7 +114,7 @@ def apply():
             best, conflict = cv.pick_best_type(typenames)
             if conflict:
                 conflicts += 1
-            dt = _resolve_type(dtm, by_name, best) if best else None
+            dt = gu.resolve_type(dtm, by_name, best) if best else None
             if dt is None or dt.getLength() != target.getLength():
                 skipped += 1
                 continue
@@ -168,7 +127,7 @@ def apply():
                     break
             new_name = 'fld%s' % (digits or ('%X' % off))
             # improve-or-nop: validate on a detached copy first
-            base = _struct_metrics(struct)
+            base = gu.struct_metrics(struct)
             try:
                 tcopy = struct.copy(dtm)
                 tc = tcopy.getComponentAt(toff)
@@ -176,7 +135,7 @@ def apply():
                     skipped += 1
                     continue
                 tcopy.replaceAtOffset(toff, dt, dt.getLength(), new_name, '')
-                tm = _struct_metrics(tcopy)
+                tm = gu.struct_metrics(tcopy)
             except Exception:
                 skipped += 1
                 continue
