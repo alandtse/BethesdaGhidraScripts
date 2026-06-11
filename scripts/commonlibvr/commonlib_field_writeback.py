@@ -42,6 +42,30 @@ _spec.loader.exec_module(wp)
 
 _RT = {'SE': 'se', 'AE': 'ae', 'VR': 'vr'}
 
+# a member type CommonLib uses as a not-yet-resolved placeholder -> safe to retype.
+# A concrete class/template type means CommonLib already RE'd it -> leave it alone.
+_PLACEHOLDER = re.compile(
+    r'^(std::(u?int(8|16|32|64)_t|u?intptr_t|byte)|void\*?|std::byte)$')
+
+_SZ = {'std::uint8_t': 1, 'std::int8_t': 1, 'std::byte': 1, 'byte': 1, 'char': 1,
+       'bool': 1, 'std::uint16_t': 2, 'std::int16_t': 2, 'std::uint32_t': 4,
+       'std::int32_t': 4, 'float': 4, 'std::uint64_t': 8, 'std::int64_t': 8,
+       'double': 8, 'std::uintptr_t': 8, 'std::intptr_t': 8}
+
+
+def _sizeof(t):
+    """Byte size of a primitive/pointer type, or None if unknown."""
+    if t.endswith('*'):
+        return 8
+    return _SZ.get(t)
+
+
+def _new_size(newtype, suffix):
+    if suffix:                                        # '[N]' array
+        base = _sizeof(newtype)
+        return base * int(suffix[1:-1]) if base else None
+    return _sizeof(newtype)
+
 
 def _load_resolved():
     rows = {}
@@ -128,30 +152,50 @@ def run():
             report.append((cls, off, rec['ghidra'], str(rec['cpp']), 'skip:class-not-found'))
             continue
         # member declaration line within the class body, named exactly unk<OFF>
-        pat = re.compile(r'(^[ \t]*)([A-Za-z_][\w:<>,\* \t]*?)\b(%s)\b([ \t]*;)' % member, re.M)
+        # indent | current type (no internal space) | ws gap | member | tail(;)
+        pat = re.compile(r'(^[ \t]*)([\w:<>\*]+)([ \t]+)(%s)\b([ \t]*;)' % member, re.M)
         located = None
         for path, bs, be in regions:
             text = file_text.get(path) or open(path, encoding='utf-8', errors='replace').read()
             file_text[path] = text
-            body = text[bs:be]
-            mm = pat.search(body)
-            if mm and _is_member_name(member, mm):
+            mm = pat.search(text[bs:be])
+            if mm:
                 located = (path, bs, mm)
                 break
         if located is None:
             report.append((cls, off, rec['ghidra'], str(rec['cpp']), 'skip:member-not-found'))
             continue
         path, bs, mm = located
-        cppdecl = wp.cpp_member(rec['cpp'], rec['kind'], member)
+        cur_type = mm.group(2)
+        # ONLY rewrite a placeholder member -- never clobber a type CommonLib already
+        # resolved (a `unkNN`-named member can already carry a concrete type).
+        if not _PLACEHOLDER.match(cur_type):
+            report.append((cls, off, rec['ghidra'], str(rec['cpp']), 'skip:already-typed'))
+            continue
         text = file_text[path]
-        if rec['kind'] != 'array' and not _type_known(text, rec['cpp']):
-            report.append((cls, off, rec['ghidra'], rec['cpp'], 'skip:type-not-in-header'))
+        if rec['kind'] == 'array':
+            newtype, suffix = rec['cpp'][0], '[%s]' % rec['cpp'][2]
+        else:
+            newtype, suffix = rec['cpp'], ''
+        if newtype == cur_type and not suffix:        # no-op
+            report.append((cls, off, rec['ghidra'], str(rec['cpp']), 'skip:same-type'))
+            continue
+        # SIZE guard: the resolved type must be the SAME width as the placeholder slot.
+        # A mismatch means Ghidra and CommonLib disagree on the layout here (Ghidra
+        # merged what CommonLib splits, or vice versa) -- retyping would overlap the
+        # neighbouring members and break STATIC_ASSERT_SIZE. Flag, never write.
+        cur_sz, new_sz = _sizeof(cur_type), _new_size(newtype, suffix)
+        if cur_sz is not None and new_sz is not None and cur_sz != new_sz:
+            report.append((cls, off, rec['ghidra'], newtype + suffix, 'skip:size-mismatch'))
+            continue
+        if rec['kind'] != 'array' and not _type_known(text, newtype):
+            report.append((cls, off, rec['ghidra'], newtype, 'skip:type-not-in-header'))
             continue
         old_line = mm.group(0)
-        indent = mm.group(1)
-        new_line = '%s%s;' % (indent, cppdecl)        # keep member name; retype only
+        # keep indent + the EXACT ws gap (preserve column alignment); retype only
+        new_line = '%s%s%s%s%s%s' % (mm.group(1), newtype, mm.group(3), member, suffix, mm.group(5))
         edits.append((path, off, bs, mm.start(), mm.end(), old_line, new_line, cls))
-        report.append((cls, off, rec['ghidra'], rec['cpp'], 'rewrite' if APPLY else 'would-rewrite'))
+        report.append((cls, off, rec['ghidra'], newtype + suffix, 'rewrite' if APPLY else 'would-rewrite'))
 
     # apply edits per file (offsets shift -> apply back-to-front within each file)
     applied = 0
@@ -193,9 +237,6 @@ def run():
         print('  set CLVR_FWB=go to apply (run on a CommonLibVR branch; review the diff).')
 
 
-def _is_member_name(member, mm):
-    """The matched `unkNN` is the declared member, not part of a longer identifier."""
-    return mm.group(3) == member
 
 
 run()
