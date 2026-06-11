@@ -54,9 +54,6 @@ import importlib.util as _ilu  # noqa: E402
 _spec = _ilu.spec_from_file_location('clvr_discover_plan', os.path.join(SCRIPT_DIR, 'discover_plan.py'))
 dp = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(dp)
-_pspec = _ilu.spec_from_file_location('clvr_populate_plan', os.path.join(SCRIPT_DIR, 'populate_plan.py'))
-pl = _ilu.module_from_spec(_pspec)
-_pspec.loader.exec_module(pl)
 _rspec = _ilu.spec_from_file_location('clvr_review_plan', os.path.join(SCRIPT_DIR, 'review_plan.py'))
 rp = _ilu.module_from_spec(_rspec)
 _rspec.loader.exec_module(rp)
@@ -67,6 +64,9 @@ _ispec.loader.exec_module(ip)
 _gspec = _ilu.spec_from_file_location('clvr_ghidra_util', os.path.join(SCRIPT_DIR, 'clvr_ghidra_util.py'))
 gu = _ilu.module_from_spec(_gspec)
 _gspec.loader.exec_module(gu)
+_faspec = _ilu.spec_from_file_location('clvr_field_apply', os.path.join(SCRIPT_DIR, 'field_apply.py'))
+fa = _ilu.module_from_spec(_faspec)
+_faspec.loader.exec_module(fa)
 
 # INCREMENTAL discovery (skip re-mining classes whose dependency closure was untouched
 # since last pass -- see discover_incremental_plan). DIRTY: a file of class names (one
@@ -104,16 +104,10 @@ def _useful(tn):
     return tn not in ('char', 'byte', 'bool', 'void')
 
 
-def run():
-    from ghidra.app.decompiler import DecompInterface
-    from ghidra.app.decompiler.util import FillOutStructureHelper
-    cp = currentProgram  # noqa: F821
-    dtm = cp.getDataTypeManager()
-    fm = cp.getFunctionManager()
-
-    # harvest surface: live /types.h structs with unknown pointer-sized fields
-    unk_by_class = {}
-    struct_by_class = {}                 # name -> live StructureDB (for apply)
+def _harvest_surface(dtm):
+    """Live /types.h structs that still have unknown pointer-sized fields, with their
+    unknown-offset maps. Returns (unk_by_class, struct_by_class)."""
+    unk_by_class, struct_by_class = {}, {}
     for dt in dtm.getAllDataTypes():
         if dt.getClass().getSimpleName() != 'StructureDB':
             continue
@@ -123,22 +117,20 @@ def run():
         if offs:
             unk_by_class[dt.getName()] = offs
             struct_by_class[dt.getName()] = dt
+    return unk_by_class, struct_by_class
 
-    # Function pool: functions whose param-0 (`this`) is a pointer to a class-with-
-    # unknowns -- the class's own methods and vfuncs, where it reveals its field
-    # layout. Mining a NON-this param (a function that merely takes the class as an
-    # argument) was tried and REVERTED: it let FillOutStructureHelper infer offsets
-    # past the struct's true end, and the apply grew the struct (MapMenu 0x30560 ->
-    # 0x60880, ~197k undefined bytes). `this`-only is the validated, safe surface.
-    by_class = {}                            # cls -> [(function, 0), ...]
+
+def _function_pool(fm, unk_by_class):
+    """Functions whose param-0 (`this`) is a class-with-unknowns -> the class's own
+    methods, where it reveals its layout. Mining a NON-this param was tried and REVERTED
+    (it inferred past the struct end and grew it ~2x); `this`-only is the safe surface."""
+    by_class = {}
     for f in fm.getFunctions(True):
         base_t = gu.param0_class_name(f)
         if base_t and base_t in unk_by_class:
             by_class.setdefault(base_t, []).append((f, 0))
-
-    # Incremental scope: if the orchestrator handed us a dirty-class list, mine only
-    # those (intersected with classes that actually still have unknowns + methods).
-    # Cycle 1 / standalone runs leave it empty -> full cold pass.
+    # Incremental scope: an orchestrator-supplied dirty list restricts the pool; an
+    # empty/absent list is a full cold pass.
     if DIRTY_FILE and os.path.exists(DIRTY_FILE):
         try:
             with open(DIRTY_FILE) as fh:
@@ -150,18 +142,16 @@ def run():
             by_class = {c: v for c, v in by_class.items() if c in want}
             print('Incremental discovery: mining %d/%d dirty classes (from %s).'
                   % (len(by_class), full, DIRTY_FILE))
+    return by_class
 
-    # GLOBAL-EDGE refs (capstone): a class that references a typed global `g_T : T *`
-    # dereferences T through it (`g_T->field`), a dependency the `this`-field refs can't
-    # see -- it is why singleton keystones (TES via gTES, ProcessLists, ...) showed 0
-    # dependents in the unlock triage. Precompute once: map each function that
-    # references a typed-/types.h-pointer global to that global's class, so the mining
-    # loop can add it to the referencing class's refs (making the global's class a
-    # dependency the triage scores and the dirty-tracking invalidates on).
+
+def _global_edge_map(fm, listing, rm):
+    """function entry offset -> set of classes it reaches through a typed global. A class
+    doing `g_T->field` dereferences T, a dependency the `this`-field refs miss; this is
+    the edge that makes singleton keystones rank in the unlock triage and invalidate in
+    the dirty-tracking. Precomputed once over typed /types.h-pointer globals."""
     from ghidra.program.model.data import Pointer, Structure
-    listing = cp.getListing()
-    rm = cp.getReferenceManager()
-    func_globals = {}                        # function entry offset -> set(class name)
+    func_globals = {}
     gcount = 0
     di = listing.getDefinedData(True)
     while di.hasNext():
@@ -180,6 +170,19 @@ def run():
                 func_globals.setdefault(fn.getEntryPoint().getOffset(), set()).add(gcls)
     print('Global-edge refs: %d typed globals -> %d functions carry a global dependency.'
           % (gcount, len(func_globals)))
+    return func_globals
+
+
+def run():
+    from ghidra.app.decompiler import DecompInterface
+    from ghidra.app.decompiler.util import FillOutStructureHelper
+    cp = currentProgram  # noqa: F821
+    dtm = cp.getDataTypeManager()
+    fm = cp.getFunctionManager()
+
+    unk_by_class, struct_by_class = _harvest_surface(dtm)
+    by_class = _function_pool(fm, unk_by_class)
+    func_globals = _global_edge_map(fm, cp.getListing(), cp.getReferenceManager())
 
     dt_before = dtm.getDataTypeCount(True)
     decomp = DecompInterface()
@@ -301,82 +304,10 @@ def run():
     except Exception as e:
         print('  (review queue write failed: %s)' % e)
 
-    # APPLY: write high-confidence named fields into the /types.h structs so the
-    # next cycle propagates from them. Only fills an unknown slot with a concrete
-    # same-size type (should_apply_field); never creates a type (so the data-type
-    # count is still invariant) and never clobbers existing RE.
-    applied = 0
-    apply_samples = []
-    apply_skips = collections.Counter()
-    changed_classes = set()              # structs this pass modified -> next dirty seed
-    if APPLY:
-        tx = cp.startTransaction('discover-apply fields')
-        try:
-            for (cls, off), info in aggregated.items():
-                struct = struct_by_class.get(cls)
-                dt = dt_by_typename.get(info['type'])
-                if struct is None or dt is None:
-                    apply_skips['unresolved'] += 1
-                    continue
-                comp = struct.getComponentAt(off)
-                if comp is None or comp.getOffset() != off:
-                    apply_skips['no-slot'] += 1
-                    continue
-                cur_name = comp.getFieldName() or ''
-                ok, why = pl.should_apply_field(
-                    cur_name, comp.getDataType().getName(), info['type'],
-                    dt.getLength(), comp.getLength(), info['confidence'])
-                if not ok:
-                    apply_skips[why] += 1
-                    continue
-                # Rename off the unk*/pad* prefix so the field LEAVES the discovery
-                # surface (won't be re-mined, and the coverage metric counts it as
-                # resolved). Keep the offset digits for write-back traceability:
-                # 'unk58' -> 'fld58'.
-                digits = ''.join(ch for ch in cur_name if ch.isalnum())
-                for pre in ('unk', 'pad', 'off_'):
-                    if digits.lower().startswith(pre):
-                        digits = digits[len(pre):]
-                        break
-                new_name = 'fld%s' % (digits or ('%X' % off))
-                # PROVABLE improve-or-nop: never mutate the live struct on faith.
-                # First apply this one field to a DETACHED COPY of the current struct
-                # and require the invariant (length unchanged, protected bytes not
-                # decreased). Only if the sandbox proves it safe do we apply to the
-                # live struct. This catches struct-growth/clobber regardless of cause
-                # (it is how MapMenu's 0x30560->0x60880 doubling would have been
-                # rejected). A failure leaves the live struct untouched (nop).
-                base = gu.struct_metrics(struct)
-                try:
-                    test = struct.copy(dtm)
-                    tc = test.getComponentAt(off)
-                    if tc is None or tc.getOffset() != off:
-                        apply_skips['no-slot'] += 1
-                        continue
-                    test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
-                    tm = gu.struct_metrics(test)
-                except Exception:
-                    apply_skips['copy-error'] += 1
-                    continue
-                if not pl.is_struct_change_safe(base, tm):
-                    apply_skips['unsafe(would-degrade)'] += 1
-                    continue
-                try:
-                    struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
-                                           'clvr-discovered ' + info['type'])
-                    # paranoia: live result must match the proven-safe sandbox
-                    if gu.struct_metrics(struct) != tm:
-                        apply_skips['live-mismatch(bug)'] += 1
-                        continue
-                    applied += 1
-                    changed_classes.add(cls)
-                    if len(apply_samples) < 15:
-                        apply_samples.append('%s +0x%X %s -> %s %s'
-                                             % (cls, off, cur_name, new_name, info['type']))
-                except Exception:
-                    apply_skips['replace-error'] += 1
-        finally:
-            cp.endTransaction(tx, True)   # always commit; never poison the group
+    # APPLY: write high-confidence named fields into the /types.h structs so the next
+    # cycle propagates from them (shared improve-or-nop apply; never grows or clobbers).
+    applied, apply_skips, changed_classes, apply_samples = fa.apply_fields(
+        cp, dtm, struct_by_class, dt_by_typename, aggregated, 'clvr-discovered', APPLY)
 
     high = sum(1 for r in rows if r[4] == 'high')
     named = sum(1 for r in rows if r[3] not in dp.GENERIC_TYPES)

@@ -20,7 +20,6 @@ Dry-run by default; CLVR_ANCHOR_APPLY=go. Knobs: CLVR_ANCHOR_SAMPLES (referrers
 decompiled per global, default 16), CLVR_ANCHOR_MAX_GLOBALS (0 = all). Run programs
 SEQUENTIALLY (shared os.environ).
 """
-import collections
 import csv
 import os
 
@@ -48,6 +47,7 @@ def _load(mod, fn):
 
 
 dp = _load('clvr_discover_plan', 'discover_plan.py')
+fa = _load('clvr_field_apply', 'field_apply.py')
 pl = _load('clvr_populate_plan', 'populate_plan.py')
 rp = _load('clvr_review_plan', 'review_plan.py')
 gu = _load('clvr_ghidra_util', 'clvr_ghidra_util.py')
@@ -126,7 +126,6 @@ def run():
     observations = []
     dt_by_typename = {}
     evidence = {}
-    changed_classes = set()
     mined_globals = funcs = 0
     for gaddr, cls in anchors:
         offs = unk_by_class[cls]
@@ -188,66 +187,9 @@ def run():
     except Exception as e:
         print('  (review queue write failed: %s)' % e)
 
-    # apply high-confidence named fields (improve-or-nop, mirrors commonlib_discover)
-    applied = 0
-    samples = []
-    skips = collections.Counter()
-    if APPLY:
-        tx = cp.startTransaction('anchor-apply fields')
-        try:
-            for (cls, off), info in aggregated.items():
-                struct = struct_by_class.get(cls)
-                dt = dt_by_typename.get(info['type'])
-                if struct is None or dt is None:
-                    skips['unresolved'] += 1
-                    continue
-                comp = struct.getComponentAt(off)
-                if comp is None or comp.getOffset() != off:
-                    skips['no-slot'] += 1
-                    continue
-                cur_name = comp.getFieldName() or ''
-                ok, why = pl.should_apply_field(cur_name, comp.getDataType().getName(),
-                                                info['type'], dt.getLength(),
-                                                comp.getLength(), info['confidence'])
-                if not ok:
-                    skips[why] += 1
-                    continue
-                digits = ''.join(ch for ch in cur_name if ch.isalnum())
-                for pre in ('unk', 'pad', 'off_'):
-                    if digits.lower().startswith(pre):
-                        digits = digits[len(pre):]
-                        break
-                new_name = 'fld%s' % (digits or ('%X' % off))
-                base = gu.struct_metrics(struct)
-                try:
-                    test = struct.copy(dtm)
-                    tc = test.getComponentAt(off)
-                    if tc is None or tc.getOffset() != off:
-                        skips['no-slot'] += 1
-                        continue
-                    test.replaceAtOffset(off, dt, dt.getLength(), new_name, '')
-                    tm = gu.struct_metrics(test)
-                except Exception:
-                    skips['copy-error'] += 1
-                    continue
-                if not pl.is_struct_change_safe(base, tm):
-                    skips['unsafe(would-degrade)'] += 1
-                    continue
-                try:
-                    struct.replaceAtOffset(off, dt, dt.getLength(), new_name,
-                                           'clvr-anchor ' + info['type'])
-                    if gu.struct_metrics(struct) != tm:
-                        skips['live-mismatch(bug)'] += 1
-                        continue
-                    applied += 1
-                    changed_classes.add(cls)
-                    if len(samples) < 15:
-                        samples.append('%s +0x%X %s -> %s %s'
-                                       % (cls, off, cur_name, new_name, info['type']))
-                except Exception:
-                    skips['replace-error'] += 1
-        finally:
-            cp.endTransaction(tx, True)
+    # apply high-confidence named fields (shared improve-or-nop apply)
+    applied, skips, changed_classes, samples = fa.apply_fields(
+        cp, dtm, struct_by_class, dt_by_typename, aggregated, 'clvr-anchor', APPLY)
 
     named = sum(1 for r in rows if r[3] not in dp.GENERIC_TYPES)
     print('\n=== Anchor mining summary (%s) ===' % cp.getName())
