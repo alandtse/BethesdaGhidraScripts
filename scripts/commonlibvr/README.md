@@ -205,6 +205,10 @@ offsets CommonLib still marks `unkNN`:
   consensus across functions raises confidence).
 - **NON-DESTRUCTIVE**: `processStructure` returns an in-memory `Structure`; nothing is applied to the
   program (asserted: data-type count unchanged). It only writes `<import>.discovered_fields.csv`.
+  That CSV's `observed_in` column carries the use-site provenance — the functions whose dataflow
+  revealed each field — for EVERY field (not just the review queue). `crossver.py export` joins it
+  into `<import>.resolved_fields.csv` (its own `observed_in` column), so a later semantic-naming pass
+  jumps straight to a witness function instead of re-hunting construction sites.
 
 This closes the loop and **compounds**: feed the discovered fields back to CommonLib, re-import, and
 the now-typed field lets the decompiler propagate one level deeper next pass. Validated on SE: 60

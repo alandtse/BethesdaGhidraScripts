@@ -46,9 +46,30 @@ gu = _ilu.module_from_spec(_gspec)
 _gspec.loader.exec_module(gu)
 
 
+def _provenance_map():
+    """(class, raw_offset) -> witness functions, from the sibling discovered_fields.csv
+    (its `observed_in` column). Lets the resolved export carry use-site provenance so a
+    later semantic-naming pass has a function to read, not just a type. Best-effort: an
+    older discovered_fields.csv without the column, or no file, just yields blanks."""
+    prov = {}
+    disc = IMPORT_PATH + '.discovered_fields.csv'
+    if not os.path.exists(disc):
+        return prov
+    try:
+        with open(disc, newline='') as fh:
+            for row in csv.DictReader(fh):
+                obs = (row.get('observed_in') or '').strip()
+                if obs:
+                    prov[(row['class'], int(row['offset'], 16))] = obs
+    except Exception:
+        pass
+    return prov
+
+
 def export():
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
+    prov = _provenance_map()
     rows = []
     for st in gu.types_structs(dtm):
         for i in range(st.getNumComponents()):
@@ -56,10 +77,11 @@ def export():
             fn = c.getFieldName() or ''
             tn = c.getDataType().getName()
             if cv.is_resolved(fn, tn):
-                rows.append((st.getName(), '0x%X' % cv.field_key(fn), tn))
+                rows.append((st.getName(), '0x%X' % cv.field_key(fn), tn,
+                             prov.get((st.getName(), c.getOffset()), '')))
     with open(RESOLVED_CSV, 'w', newline='') as fh:
         w = csv.writer(fh)
-        w.writerow(['class', 'cl_offset', 'typename'])
+        w.writerow(['class', 'cl_offset', 'typename', 'observed_in'])
         for r in rows:
             w.writerow(r)
     print('xver export (%s): %d resolved /types.h fields -> %s'

@@ -273,9 +273,14 @@ def run():
     with open(OUT_CSV, 'w', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(['class', 'offset', 'current_name', 'inferred_type',
-                    'confidence', 'votes', 'total_observations'])
+                    'confidence', 'votes', 'total_observations', 'observed_in'])
         for cls, off, cur, typ, conf, votes, total in rows:
-            w.writerow([cls, '0x%X' % off, cur, typ, conf, votes, total])
+            # observed_in: the functions whose dataflow revealed this field -- the
+            # use-site provenance. Kept for EVERY field (not just the review queue), so
+            # a later semantic-naming pass can jump straight to a witness function
+            # instead of re-hunting construction sites.
+            w.writerow([cls, '0x%X' % off, cur, typ, conf, votes, total,
+                        ' '.join(evidence.get((cls, off), [])[:6])])
 
     # Optional LLM-review queue: fields the decompiler is sure EXIST (consensus
     # across functions) but could only size, not name. These are exactly the
