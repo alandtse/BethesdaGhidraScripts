@@ -79,6 +79,28 @@ def _resolve(dtm, by_name, cpp):
     return base
 
 
+def _span_undefined(st, off, size):
+    """Every Ghidra component in [off, off+size) is an undefined/placeholder slot (and
+    the span fits the struct) -- so a larger CommonLib type can safely REPLACE the run
+    (the flattened embedded struct/array the import split into undefined slots)."""
+    if off + size > st.getLength():
+        return False
+    a = off
+    while a < off + size:
+        c = st.getComponentAt(a)
+        if c is None:
+            return False
+        fn = c.getFieldName() or ''
+        tn = c.getDataType().getName()
+        if not (fn.startswith(('unk', 'pad')) or 'undefined' in tn):
+            return False
+        nxt = c.getOffset() + c.getLength()
+        if nxt <= a:
+            return False
+        a = nxt
+    return True
+
+
 def run():
     from ghidra.program.model.data import CategoryPath, Structure
     cp = currentProgram  # noqa: F821
@@ -88,6 +110,7 @@ def run():
 
     rows = list(csv.DictReader(open(MEMBERS_CSV)))
     applied = 0
+    merges = 0
     changed = set()
     skips = collections.Counter()
     samples = []
@@ -113,15 +136,29 @@ def run():
             if dt is None:
                 skips['type-unresolved'] += 1
                 continue
-            if dt.getLength() != comp.getLength():
-                skips['size-mismatch'] += 1            # larger CommonLib type: report
+            if comp.getDataType().getName() == dt.getName():
+                skips['same-type'] += 1                # already this type (no oscillation)
                 continue
+            is_merge = False
+            if dt.getLength() != comp.getLength():
+                # MERGE: a larger CommonLib type spanning a run of UNDEFINED Ghidra slots
+                # is the flattened embedded struct/array -- CommonLib is the authority and
+                # the slots carry no Ghidra RE, so replace the whole run. A SMALLER (more
+                # granular) CommonLib type is left for review.
+                if dt.getLength() > comp.getLength() and _span_undefined(st, off, dt.getLength()):
+                    is_merge = True
+                else:
+                    skips['size-mismatch'] += 1
+                    continue
             digits = ''.join(ch for ch in fn if ch.isalnum())
             for pre in ('unk', 'pad', 'off_'):
                 if digits.lower().startswith(pre):
                     digits = digits[len(pre):]
                     break
-            new_name = r['name'] or ('fld%s' % digits)
+            # use CommonLib's name when it is SEMANTIC; if CommonLib also left it unkNN,
+            # rename to fldNN so the slot leaves the placeholder surface (no re-detection).
+            cn = (r['name'] or '').strip()
+            new_name = cn if cn and not cn.lower().startswith(('unk', 'pad')) else ('fld%s' % digits)
             base = gu.struct_metrics(st)
             try:
                 test = st.copy(dtm)
@@ -140,9 +177,13 @@ def run():
                     skips['replace-error'] += 1
                     continue
             applied += 1
+            if is_merge:
+                merges += 1
             changed.add(cls)
             if len(samples) < 20:
-                samples.append('%s +0x%X %s -> %s %s' % (cls, off, tn, new_name, dt.getName()))
+                samples.append('%s +0x%X %s -> %s %s%s'
+                               % (cls, off, tn, new_name, dt.getName(),
+                                  ' [MERGE]' if is_merge else ''))
     finally:
         if tx is not None:
             cp.endTransaction(tx, True)
@@ -155,7 +196,8 @@ def run():
             print('  (dirty-file write failed: %s)' % e)
 
     print('commonlib->ghidra member import (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN'))
-    print('  %s=%d into undefined slots   skips=%s' % ('applied' if APPLY else 'would-apply', applied, dict(skips)))
+    print('  %s=%d into undefined slots (%d via merge of split slots)   skips=%s'
+          % ('applied' if APPLY else 'would-apply', applied, merges, dict(skips)))
     for s in samples:
         print('   ' + s)
     print('  %d classes changed -> %s (re-mine next discovery to propagate)'
