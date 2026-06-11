@@ -110,6 +110,15 @@ def run():
             if base is None:
                 skips['unresolved-type'] = skips.get('unresolved-type', 0) + 1
                 continue
+            # Auto-accept guard: a singleton global names a CLASS. Only type it when the
+            # inferred base resolves to a real struct/class -- never a primitive like
+            # `char`/`double`/`void` (those come from weak vote consensus and are noise).
+            # An explicit reviewer decision bypasses this (their authority).
+            if not is_explicit:
+                from ghidra.program.model.data import Structure
+                if not isinstance(base, Structure):
+                    skips['non-class-type'] = skips.get('non-class-type', 0) + 1
+                    continue
             # Choose pointer-slot (T *) vs inline (T). An explicit reviewer decision is
             # honored verbatim (resolve_type already applied any `*` they wrote). For an
             # AUTO-ACCEPTED type we default to a pointer SLOT: engine singleton globals
