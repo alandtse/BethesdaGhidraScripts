@@ -34,7 +34,8 @@ APPLY = os.environ.get('CLVR_ANCHOR_APPLY', 'dry').lower() == 'go'
 SAMPLES = int(os.environ.get('CLVR_ANCHOR_SAMPLES', '16') or 16)
 MAX_GLOBALS = int(os.environ.get('CLVR_ANCHOR_MAX_GLOBALS', '0') or 0)
 OUT_CSV = os.environ.get('CLVR_ANCHOR_CSV', IMPORT_PATH + '.anchor_fields.csv')
-REVIEW_CSV = os.environ.get('CLVR_DISCOVER_REVIEW_CSV', IMPORT_PATH + '.review_queue.csv')
+# own review queue -- must NOT clobber commonlib_discover's <import>.review_queue.csv
+REVIEW_CSV = os.environ.get('CLVR_ANCHOR_REVIEW_CSV', IMPORT_PATH + '.anchor_review_queue.csv')
 
 import importlib.util as _ilu  # noqa: E402
 
