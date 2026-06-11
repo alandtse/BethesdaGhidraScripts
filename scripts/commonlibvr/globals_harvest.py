@@ -18,8 +18,10 @@ Why it matters beyond naming: a typed global is (a) a new discovery anchor -- it
 referencing functions become mineable -- and (b) a dependency edge the incremental
 cycle currently can't see (a class can depend on another's layout THROUGH a global).
 
-Read-only always. Knobs: CLVR_GLOBALS_CSV (output), CLVR_GLOBALS_MAX_FUNCS (cap
-functions decompiled, 0 = all). Run programs SEQUENTIALLY (shared os.environ).
+Read-only always. Knobs: CLVR_GLOBALS_SCOPE (data|class|all, default data -- decompile
+only functions that reference an untyped data global, found via one cheap reference
+pass), CLVR_GLOBALS_CSV (output), CLVR_GLOBALS_MAX_FUNCS (cap functions decompiled,
+0 = all). Run programs SEQUENTIALLY (shared os.environ).
 """
 import csv
 import os
@@ -32,10 +34,24 @@ SCRIPT_DIR = os.environ.get(
     r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
 OUT_CSV = os.environ.get('CLVR_GLOBALS_CSV', IMPORT_PATH + '.globals_queue.csv')
 MAX_FUNCS = int(os.environ.get('CLVR_GLOBALS_MAX_FUNCS', '0') or 0)
-# Scan scope: default to class-method functions (parent namespace is a CLASS) -- where
-# singleton usage concentrates and ~half the decompile cost. CLVR_GLOBALS_ALL=1 scans
-# every function (catches singletons used only in free/global functions).
-SCAN_ALL = os.environ.get('CLVR_GLOBALS_ALL', '0') == '1'
+# Scan scope (CLVR_GLOBALS_SCOPE):
+#   data  (default) -- GLOBALS-FIRST sampling. Singletons are untyped data globals with
+#                      a HIGH in-degree (referenced by many functions: PlayerCharacter
+#                      ~1246, TESDataHandler ~389), while one-off data globals are
+#                      referenced once or twice. A cheap reference pass ranks untyped
+#                      globals by in-degree, keeps those >= MIN_INDEG (a few hundred),
+#                      and decompiles only a SAMPLE of each one's referrers -- enough
+#                      for type consensus. This bounds work by (candidate globals x
+#                      sample cap), NOT the caller set (singletons are referenced by
+#                      tens of thousands of functions, so a function-scoped filter never
+#                      shrinks).
+#   class           -- all class-method functions (parent namespace is a CLASS).
+#   all             -- every function.
+SCOPE = os.environ.get('CLVR_GLOBALS_SCOPE', 'data').lower()
+# data-scope tuning: min in-degree for an untyped global to be a singleton candidate,
+# and how many of its referrers to sample for consensus.
+MIN_INDEG = int(os.environ.get('CLVR_GLOBALS_MIN_INDEG', '15') or 15)
+SAMPLES = int(os.environ.get('CLVR_GLOBALS_SAMPLES', '6') or 6)
 
 import importlib.util as _ilu  # noqa: E402
 _gpspec = _ilu.spec_from_file_location('clvr_globals_plan', os.path.join(SCRIPT_DIR, 'globals_plan.py'))
@@ -89,15 +105,21 @@ def run():
     mem = cp.getMemory()
     addr_space = cp.getAddressFactory().getDefaultAddressSpace()
 
+    listing = cp.getListing()
+
     # only globals in non-executable (data) memory are singleton candidates
     def _in_data(addr):
         blk = mem.getBlock(addr)
         return blk is not None and not blk.isExecute()
 
-    decomp = DecompInterface()
-    decomp.openProgram(cp)
+    def _is_untyped_data(addr):
+        # a fillable global: raw-undefined (no data item) or an undefined* placeholder,
+        # in data memory. A concrete-typed datum (string, typed pointer) is not a target.
+        if not _in_data(addr):
+            return False
+        d = listing.getDefinedDataAt(addr)
+        return d is None or d.getDataType().getName().startswith('undefined')
 
-    # scope the scan (class-method functions by default -- singleton usage lives there)
     from ghidra.program.model.symbol import SymbolType
     gns = cp.getGlobalNamespace()
 
@@ -106,12 +128,51 @@ def run():
         return (p is not gns and p.getSymbol() is not None
                 and p.getSymbol().getSymbolType() == SymbolType.CLASS)
 
-    funcs = [f for f in fm.getFunctions(True) if SCAN_ALL or _is_class_method(f)]
+    def _data_scoped_funcs():
+        # globals-first: rank untyped globals by in-degree (distinct referrers), keep
+        # the high-in-degree singleton candidates, and sample a few referrers of each
+        # to decompile. Returns (functions_to_decompile, candidate_global_offsets).
+        rm = cp.getReferenceManager()
+        refs_by_g = {}                       # gaddr offset -> set(function)
+        scanned = 0
+        it = rm.getReferenceIterator(mem.getMinAddress())
+        while it.hasNext():
+            ref = it.next()
+            scanned += 1
+            rt = ref.getReferenceType()
+            if not rt.isData() or ref.isStackReference() or ref.isRegisterReference():
+                continue
+            to = ref.getToAddress()
+            if not _is_untyped_data(to):
+                continue
+            f = fm.getFunctionContaining(ref.getFromAddress())
+            if f is not None:
+                refs_by_g.setdefault(to.getOffset(), set()).add(f)
+        cand_globals = set(g for g, s in refs_by_g.items() if len(s) >= MIN_INDEG)
+        sampled = set()
+        for g in cand_globals:
+            for f in list(refs_by_g[g])[:SAMPLES]:
+                sampled.add(f)
+        print('  data-scope: %d refs scanned, %d untyped globals, %d with in-degree>=%d, '
+              'sampling<=%d referrers -> %d funcs to decompile'
+              % (scanned, len(refs_by_g), len(cand_globals), MIN_INDEG, SAMPLES, len(sampled)))
+        return list(sampled), cand_globals
+
+    cand_globals = None                      # data-scope filters observations to these
+    if SCOPE == 'all':
+        funcs = list(fm.getFunctions(True))
+    elif SCOPE == 'class':
+        funcs = [f for f in fm.getFunctions(True) if _is_class_method(f)]
+    else:                                    # 'data' (default)
+        funcs, cand_globals = _data_scoped_funcs()
+
+    decomp = DecompInterface()
+    decomp.openProgram(cp)
     observations = []
     ptr_votes = {}                       # addr -> [is_ptr bools]; majority -> CSV column
     n = done = 0
-    print('Globals harvest (%s): scanning %d %s functions for global-as-this ...'
-          % (cp.getName(), len(funcs), 'all' if SCAN_ALL else 'class-method'))
+    print('Globals harvest (%s): scope=%s, scanning %d functions for global-as-this ...'
+          % (cp.getName(), SCOPE, len(funcs)))
     for f in funcs:
         if MAX_FUNCS and done >= MAX_FUNCS:
             break
@@ -138,6 +199,9 @@ def run():
                     continue
                 gaddr, is_ptr = _ram_addr(op.getInput(1), mem, addr_space)
                 if gaddr is None or not _in_data(gaddr):
+                    continue
+                # in data-scope, only the high-in-degree singleton candidates count
+                if cand_globals is not None and gaddr.getOffset() not in cand_globals:
                     continue
                 observations.append((gaddr.getOffset(), cls, f.getName()))
                 ptr_votes.setdefault(gaddr.getOffset(), []).append(is_ptr)
