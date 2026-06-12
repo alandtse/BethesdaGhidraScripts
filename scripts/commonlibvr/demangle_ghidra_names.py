@@ -1,8 +1,11 @@
-"""Restore proper C++ names for Ghidra's `_`-mangled template types.
+"""Restore proper C++ names for Ghidra's `_`-mangled types (templates AND nested types).
 
-The import names template instantiations with the IDA-style mangling `<>,:* &` -> `_`
-(`NiPointer_NiAVObject_`, `BSTArray_BGSPerk__`). We shouldn't carry that -- our type
-names should read like the CommonLib C++ they came from.
+The import names types with the IDA-style mangling `<>,:* &` -> `_` and `::` -> `__`
+(`NiPointer_NiAVObject_`, `BSTArray_BGSPerk__`, `TESObjectWEAP__Data`). We shouldn't
+carry that -- our type names should read like the CommonLib C++ they came from
+(`NiPointer<NiAVObject>`, `TESObjectWEAP::Data`). Covers both template instantiations
+(header scan) and nested class/enum types (`Parent::Nested`, from the generated import's
+qualified `struct:`/`enum:` references).
 
 De-mangling a name in isolation is lossy (a trailing `_` is `>` or `*>`), so instead we
 go the RELIABLE direction: take CommonLib's PROPER spellings (the `<>`-form types in
@@ -24,6 +27,12 @@ import re
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\commonlib_typed_members.csv')
+# Generated CommonLib import (parse_commonlib_types output): its type references carry the
+# proper qualified names (struct:RE::A::B, enum:RE::A::B) for NESTED class/enum types --
+# the names template-only harvesting misses. Used to converge `Parent__Nested` -> `Parent::Nested`.
+IMPORT_PY = os.environ.get(
+    'CLVR_IMPORT_PY',
+    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
 RE_DIR = os.environ.get('CLVR_RE_DIR', r'E:\Documents\source\repos\CommonLibVR\include\RE')
 APPLY = os.environ.get('CLVR_DEMANGLE', 'dry').lower() == 'go'
 BATCH = int(os.environ.get('CLVR_DEMANGLE_BATCH', '40') or 40)
@@ -76,10 +85,27 @@ def _scan_headers(re_dir):
     return propers
 
 
+def _scan_import_qualified(import_py):
+    """Proper qualified names of NESTED class/enum types (`Parent::Nested`,
+    `A::B::C`) harvested from the generated import's type references
+    (`struct:RE::...`, `enum:RE::...`). Templates are covered separately; this adds the
+    plain `::`-nested types so `TESObjectWEAP__Data` -> `TESObjectWEAP::Data` converges."""
+    propers = set()
+    if not os.path.exists(import_py):
+        return propers
+    try:
+        text = open(import_py, encoding='utf-8', errors='replace').read()
+    except Exception:
+        return propers
+    for q in re.findall(r'(?:struct|enum):RE::([A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)', text):
+        propers.add(q)
+    return propers
+
+
 def _proper_names():
-    """CommonLib's proper template spellings -- from member types AND a full header scan
-    (params/returns/nested), so the de-mangle covers every mangled type, not just
-    members."""
+    """CommonLib's proper spellings -- template instantiations (member types + header
+    scan) AND nested class/enum types (from the generated import), so the de-mangle
+    covers every mangled type, not just templates."""
     propers = set()
     if os.path.exists(MEMBERS_CSV):
         for r in csv.DictReader(open(MEMBERS_CSV)):
@@ -89,6 +115,7 @@ def _proper_names():
             if '<' in t:
                 propers.add(t.replace('RE::', ''))
     propers |= _scan_headers(RE_DIR)
+    propers |= _scan_import_qualified(IMPORT_PY)
     return propers
 
 
