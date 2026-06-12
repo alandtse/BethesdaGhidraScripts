@@ -381,6 +381,46 @@ instead of guessing. Validated on SE: of 6208 unk-bearing classes only 24 have a
 `Crime +0x18 -> TESBoundObject* object`, added `+0x20 count` / `+0x40 owner:TESForm*` /
 `CombatBehaviorIdle +0x4 interval` (net-new), and proposed nothing for `0x58` (correctly).
 
+### 15. String-anchored naming — functions, settings, and the broader pattern (`string_anchored_rename.py`)
+The binary names a lot of itself in plain text; these are the cheapest, highest-signal anchors and need
+no call-graph crawl. `string_anchored_rename.py` matches three self-naming string patterns and renames
+`FUN_/sub_/thunk_` to the real `Namespace::method`:
+- **timer zones** -- a `HK_TIMER_BEGIN` profiler label stored into the monitor-stream TLS buffer at
+  function entry (`TthkbWorld::step`, `LtBSOffsetAnimationGenerator::generate` -- Havok AND Bethesda's
+  hkbGenerator subclasses). The `Lt`/`Tt` is the macro marker; the rest is the function's own name.
+- **self-naming messages** -- an assert/log that leads with the qualified name
+  (`"BGSSaveLoadManager::CopySaveGamesFromHost failed to..."`).
+- **telemetry SDKs** -- a bare qualified name an SDK logs per call (`bnet`, allowlisted via TELEMETRY_NS).
+Match is by STRING, so it propagates across SE/AE/VR with no address mapping; conflict-aware (single
+consistent name + uniqueness). Dry-run default, `CLVR_RENAME=go`.
+
+Two table-shaped variable patterns extend the same idea (no script here yet -- one-off passes / external
+tools): **GameSettings / INI settings** are found by the `Setting` object layout (4-byte value, 4 null,
+name-ptr) and Hungarian prefix names the global AND its type (`f`->float, `b`->bool, ...) -- see
+`ghidraTools/FindBethesdaVariablesScript`; **console commands** by the `SCRIPT_FUNCTION[]` table
+(name@0x00, help@0x18, handler@0x30). Lesson: discovery field TYPES are NOT authoritative (it conflated
+`Crime::unk58`), so anchor names in the binary -- ctor for layout, dtor for smart-ptr type, the embedded
+string for intent.
+
+### 16. RTTI vtable recovery + the VTABLE naming convergence (`ghidraTools/RecoverRttiVtablesScript`)
+MSVC RTTI is compiler-emitted ground truth -- richer than an incomplete PDB. The recovery (a *working*
+x64 replacement for Ghidra's legacy `FixUpRttiAnalysisScript`, whose 64-bit RVA path was never finished)
+finds Complete Object Locators by their self-reference, resolves the type descriptor as
+`imageBase + (int32)rva` directly, maps each to its vtable (`vtable-8` holds the COL), and names it from
+Ghidra's MS demangler. On SkyrimVR it surfaced ~130 VR-exclusive classes the SE-based PDB never had
+(`BSVRInterface`, `BSOpenVRControllerDevice`, `BSTrackedControllerDevice`, VR shaders).
+
+**Naming convergence.** CommonLib's `Offsets_VTABLE.h` declares `VTABLE_*` as C++ `constexpr`
+identifiers, so they MUST be mangled there (`<>,:* &`->`_`, `::`->`__`). Ghidra has no such rule -- so the
+canonical convention is **readable in Ghidra** (`VTABLE_ConcreteFormFactory<AlchemyItem,46>`,
+`VTABLE_NiTMap<char_const*,Setting*>`, `::`/`<>`/`*` intact) with the mangle **confined to the CommonLib
+import/export boundary**. The import currently emits a half-mangled form (templates `_`, namespaces
+`::`) and the vtable-walk lookup uses the proper `<>` form, so template lookups miss -- run
+`RecoverRttiVtablesScript` post-import as the canonical normalizer: RTTI is ground truth, so it renames
+any existing `VTABLE_*` (incl. a half-mangled import) to the authoritative readable name, indexing
+multiple-inheritance subobjects by COL offset. Export back to `Offsets_VTABLE.h` re-mangles readable ->
+`_`/`__` (deterministic in that direction).
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)
