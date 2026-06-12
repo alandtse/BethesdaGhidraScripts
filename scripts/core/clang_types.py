@@ -242,6 +242,18 @@ _VEC_ATTR_RE = re.compile(
     r'__attribute__\s*\(\s*\(\s*__vector_size__\s*\(\s*'
     r'(\d+)\s*\*\s*sizeof\s*\(\s*([^)]+?)\s*\)\s*\)\s*\)\s*\)\s*'
 )
+# REX::EnumSet<Enum, Storage> / stl::enumeration<Enum, Storage>. Storage is always a
+# primitive (no <> or ,), so group(1) greedily takes the enum (last top-level comma) and
+# group(2) the storage scalar. Leading RE::/REX::/stl:: qualifiers are optional.
+_ENUMSET_RE = re.compile(
+    r'^(?:RE::|REX::|stl::)*(?:EnumSet|enumeration)\s*<\s*(.+),\s*([\w:][\w: ]*?)\s*>$'
+)
+# Fallback storage widths for the stdint aliases, in case the layout dump ever emits the
+# source form (`std::uint8_t`) rather than the canonical `unsigned char`.
+_STDINT_BYTE_SIZE = {
+    'uint8_t': 1, 'int8_t': 1, 'uint16_t': 2, 'int16_t': 2,
+    'uint32_t': 4, 'int32_t': 4, 'uint64_t': 8, 'int64_t': 8,
+}
 _PRIM_BYTE_SIZE = {
     'char': 1, 'signed char': 1, 'unsigned char': 1, 'bool': 1, '_Bool': 1, 'byte': 1,
     'char8_t': 1, 'std::byte': 1,
@@ -301,6 +313,18 @@ def _record_type_to_pipeline(raw, root_ns='RE'):
         return 'ptr'
     if raw in _CLANG_TYPE_MAP:
         return _CLANG_TYPE_MAP[raw]
+    # REX::EnumSet<E, Storage> / stl::enumeration<E, Storage>: a strongly-typed enum
+    # held in `Storage` bytes (often NARROWER than E's natural 4-byte size, e.g.
+    # EnumSet<FormType, std::uint8_t> is 1 byte). Type the field as enum E sized to the
+    # storage width — not the wrapper struct — so the named enum reaches the field and
+    # fits its slot. Emits ``enum:<E>:<width>`` (width omitted if storage unknown).
+    m_es = _ENUMSET_RE.match(raw)
+    if m_es:
+        enum_arg = m_es.group(1).strip()
+        storage = m_es.group(2).strip().replace('std::', '')
+        width = _PRIM_BYTE_SIZE.get(storage) or _STDINT_BYTE_SIZE.get(storage)
+        qual = _qualify_type(enum_arg, root_ns)
+        return 'enum:{}:{}'.format(qual, width) if width else 'enum:' + qual
     m_arr = re.match(r'^(.+)\[(\d+)\]$', raw)
     if m_arr:
         elem_type = _record_type_to_pipeline(m_arr.group(1).strip(), root_ns)

@@ -611,6 +611,34 @@ def _resolve_struct_name(name):
         return created.get(name)
     return created.get(name) or created.get(name.split('::')[-1])
 
+_SIZED_ENUM_CACHE = {}
+
+
+def _sized_enum(base, width):
+    """Return `base` enum at `width` bytes. An `EnumSet<E, Storage>` field stores E in
+    `Storage` bytes, often narrower than E's natural size — and a Ghidra enum can't be
+    placed in a slot of a different width. If base already matches, return it; else build
+    (and cache) a same-named clone of base's values at the requested width under
+    /_sized_enums/<width> so the decompiler still shows the enum name."""
+    if base is None or base.getLength() == width:
+        return base
+    key = (base.getName(), width)
+    if key in _SIZED_ENUM_CACHE:
+        return _SIZED_ENUM_CACHE[key]
+    cat = CategoryPath('/_sized_enums/%d' % width)
+    existing = dtm.getDataType(cat, base.getName())
+    if existing is None:
+        e = EnumDataType(cat, base.getName(), width)
+        for vn in base.getNames():
+            try:
+                e.add(vn, base.getValue(vn))
+            except Exception:
+                pass
+        existing = dtm.addDataType(e, CONFLICT)
+    _SIZED_ENUM_CACHE[key] = existing
+    return existing
+
+
 def resolve_type(type_str):
     b = get_builtin(type_str)
     if b: return b
@@ -644,7 +672,12 @@ def resolve_type(type_str):
         return None
     if type_str.startswith('enum:'):
         name = type_str[5:]
-        return created.get(name) or created.get(name.split('::')[-1])
+        width = None
+        m = re.match(r'^(.*):(\d+)$', name)   # enum:<E>:<storage-width> from EnumSet<E,Storage>
+        if m:
+            name, width = m.group(1), int(m.group(2))
+        base = created.get(name) or created.get(name.split('::')[-1])
+        return _sized_enum(base, width) if width else base
     if type_str.startswith('struct:'):
         name = type_str[7:]
         return _resolve_struct_name(name)
