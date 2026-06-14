@@ -622,6 +622,11 @@ def _sized_enum(base, width):
     /_sized_enums/<width> so the decompiler still shows the enum name."""
     if base is None or base.getLength() == width:
         return base
+    if not hasattr(base, 'getNames'):
+        # The EnumSet element name resolved to a non-enum (e.g. a struct sharing the
+        # leaf name). An EnumSet<NonEnum, Storage> still occupies `width` bytes, so fall
+        # back to a width-sized integer instead of crashing on the enum-only getNames().
+        return {1: _BYTE, 2: _I16, 4: _I32, 8: _I64}.get(width, _BYTE)
     key = (base.getName(), width)
     if key in _SIZED_ENUM_CACHE:
         return _SIZED_ENUM_CACHE[key]
