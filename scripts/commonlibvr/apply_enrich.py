@@ -50,6 +50,14 @@ _ap_spec.loader.exec_module(apply_plan)
 ACTION = apply_plan.ACTION
 select_fill_targets = apply_plan.select_fill_targets
 
+# dedup.purge_conflicts is reused at the end of an apply so a run never leaves
+# .conflict copies behind (one canonical type always). AUTORUN=False keeps importing
+# it from triggering dedup's own full run.
+_dd_spec = _ilu.spec_from_file_location('clvr_dedup', os.path.join(SCRIPT_DIR, 'dedup.py'))
+clvr_dedup = _ilu.module_from_spec(_dd_spec)
+clvr_dedup.AUTORUN = False
+_dd_spec.loader.exec_module(clvr_dedup)
+
 
 def _load_generated_ns():
     """exec the generated import file WITHOUT its trailing run() so we get its
@@ -264,6 +272,16 @@ def run():
     finally:
         dtm.endTransaction(tx, True)
     print('Type enrich-apply complete. (symbols/vtable-names are a separate pass)')
+
+    # Always collapse any .conflict copies this (or a prior) run produced onto their
+    # canonical twin -- the apply must never leave a duplicated conflict state behind.
+    if not DRY_RUN:
+        try:
+            cp = gns.get('currentProgram') or _ghidra_globals().get('currentProgram')
+            mon = _ghidra_globals().get('monitor')
+            clvr_dedup.purge_conflicts(cp, dtm, True, mon)
+        except Exception as e:
+            print('purge_conflicts failed:', e)
     return counts
 
 

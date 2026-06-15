@@ -40,10 +40,120 @@ dp = _ilu.module_from_spec(_dspec)
 _dspec.loader.exec_module(dp)
 
 
+def _canon_of(dtm, dt, depth=0):
+    """Resolve the canonical (non-.conflict) twin of any datatype kind, rebuilding
+    pointer / array wrappers around the canonical element. Returns None if no twin."""
+    import ghidra.program.model.data as D
+    if dt is None or depth > 12:
+        return None
+    if isinstance(dt, D.Pointer):
+        b = _canon_of(dtm, dt.getDataType(), depth + 1)
+        return dtm.getPointer(b) if b is not None else None
+    if isinstance(dt, D.Array):
+        b = _canon_of(dtm, dt.getDataType(), depth + 1)
+        return D.ArrayDataType(b, dt.getNumElements(), b.getLength()) if b is not None else None
+    p = dt.getPathName()
+    i = p.find('.conflict')
+    if i < 0:
+        return dt
+    return dtm.getDataType(p[:i] + p[i + len('.conflict'):].lstrip('0123456789'))
+
+
+def _all_conflicts(dtm):
+    out = []
+    it = dtm.getAllDataTypes()
+    while it.hasNext():
+        d = it.next()
+        if '.conflict' in d.getName():
+            out.append(d)
+    return out
+
+
+def purge_conflicts(cp, dtm, apply, mon):
+    """Collapse every ``X.conflict`` onto its canonical twin ``X`` so exactly one
+    canonical type survives.
+
+    Ghidra's default conflict handler mints ``X.conflict`` copies whenever a type /
+    vtable struct / function-definition is re-added with a differing definition (PDB
+    import, repeated signature application, re-runs of the importer). These form a
+    self-contained, often cyclic cluster (class struct -> __vftable.conflict * ->
+    *_VFTable.conflict -> _func_*.conflict) that the struct-only Pass A never fully
+    clears. Strategy: rewire any .conflict referenced by a REAL (non-.conflict) type
+    or a function signature onto its canonical via replaceDataType; then delete the
+    rest (the cluster has no external references, so cycles don't matter and the
+    cheap remove() -- no function rescan -- suffices). A .conflict that still has a
+    non-.conflict referrer after the rewire pass (rewire failed) is never deleted."""
+    import ghidra.program.model.data as D
+    confs = _all_conflicts(dtm)
+    if not confs:
+        print('purge_conflicts (%s): no .conflict types' % cp.getName())
+        return (0, 0, 0)
+
+    # function signatures reference datatypes outside the datatype-parent graph, so
+    # collect the .conflict types used by any function prototype up front.
+    sig_refs = set()
+    fi = cp.getFunctionManager().getFunctions(True)
+    while fi.hasNext():
+        f = fi.next()
+        try:
+            used = [f.getReturnType()] + [p.getDataType() for p in f.getParameters()]
+        except Exception:
+            continue
+        for t in used:
+            bt = t
+            while isinstance(bt, (D.Pointer, D.Array)):
+                bt = bt.getDataType()
+            if bt is not None and '.conflict' in bt.getName():
+                sig_refs.add(t.getPathName())
+
+    def _ext(d):
+        return any('.conflict' not in p.getName() for p in d.getParents()) or \
+            d.getPathName() in sig_refs
+
+    print('purge_conflicts (%s): %d .conflict types (%d externally / signature referenced)'
+          % (cp.getName(), len(confs), sum(1 for d in confs if _ext(d))))
+    if not apply:
+        print('  DRY-RUN: set CLVR_DEDUP=go to apply.')
+        return (len(confs), 0, 0)
+
+    rewired = removed = skipped = 0
+    tx = cp.startTransaction('dedup: purge .conflict')
+    try:
+        for d in _all_conflicts(dtm):
+            if not _ext(d):
+                continue
+            c = _canon_of(dtm, d)
+            if c is not None and c is not d:
+                try:
+                    dtm.replaceDataType(d, c, True)
+                    rewired += 1
+                except Exception:
+                    skipped += 1
+        for d in _all_conflicts(dtm):
+            # never delete one that still has a real referrer (its rewire failed)
+            if any('.conflict' not in p.getName() for p in d.getParents()):
+                skipped += 1
+                continue
+            try:
+                dtm.remove(d, mon)
+                removed += 1
+            except Exception:
+                skipped += 1
+    finally:
+        cp.endTransaction(tx, True)
+    print('purge_conflicts APPLIED (%s): rewired=%d removed=%d skipped=%d remaining=%d'
+          % (cp.getName(), rewired, removed, skipped, len(_all_conflicts(dtm))))
+    return (rewired, removed, skipped)
+
+
 def run():
     from ghidra.program.model.data import Structure
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
+
+    # Pass 0: collapse every .conflict copy onto its canonical twin (all datatype
+    # kinds, incl. the cyclic vtable/funcdef plumbing the struct passes miss).
+    purge_conflicts(cp, dtm, APPLY, monitor)  # noqa: F821
 
     structs = [d for d in dtm.getAllDataTypes() if isinstance(d, Structure)]
 
@@ -133,4 +243,7 @@ def run():
     print('dedup APPLIED: %d merged, %d errors. size-conflicts -> %s' % (done, err, CONFLICT_CSV))
 
 
-run()
+# Auto-run when exec'd directly in Ghidra. Importers (e.g. apply_enrich) pre-seed
+# AUTORUN=False to reuse purge_conflicts() without running the full dedup.
+if globals().get('AUTORUN', True):
+    run()
