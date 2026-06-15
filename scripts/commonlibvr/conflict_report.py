@@ -211,6 +211,15 @@ def _is_stub(dt, members):
     return dt.getLength() <= 1 or len(members) == 0
 
 
+def _has_dup_fieldnames(members):
+    """A struct with the SAME field name at more than one component is corrupt --
+    an auto-extraction artifact that stacked repeated copies of a member (e.g.
+    /auto_structs LODMode = index, singleLevel, singleLevel, index, index,
+    singleLevel). A clean struct never repeats a field name."""
+    names = [fn for (_o, _l, _t, fn) in members if fn]
+    return len(names) != len(set(names))
+
+
 _PLACEHOLDER_TYPES = frozenset((
     'undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
     'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t',
@@ -322,6 +331,13 @@ def classify(st, live):
     suspicious = (esize > 0 and gsize > 0 and
                   float(max(esize, gsize)) / min(esize, gsize) >= 4.0)
 
+    # A low-trust auto-extracted struct with duplicate field names is corrupt; the
+    # protect heuristics (suspicious / handcurated) must not shield it from the
+    # authoritative generated layout. (Clean low-trust collisions -- a real type
+    # sharing a leaf name -- have unique field names and stay protected.)
+    corrupt_lowtrust = _trust(best.getCategoryPath().getPath()) <= 1 and \
+        _has_dup_fieldnames(emembers)
+
     if gsize == 0:
         status = 'GEN_EMPTY'
     elif _is_stub(best, emembers) and esize == gsize:
@@ -356,6 +372,9 @@ def classify(st, live):
         # clang size is correct; replace even over HANDCURATED/PDB/EMBED guards.
         # (Ordered after VFTABLE_LOSS so a vtable is never dropped.)
         status = 'DOUBLED'
+    elif corrupt_lowtrust:
+        # corrupt auto-extracted existing -> default to the generated layout.
+        status = 'DIVERGENT'
     elif suspicious:
         status = 'SUSPICIOUS'
     elif _embeds_base(best):
