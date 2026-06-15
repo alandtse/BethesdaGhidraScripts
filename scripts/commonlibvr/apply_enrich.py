@@ -233,10 +233,22 @@ def run():
 
         # Phase 2: fill fields for the shells WE created/staged (tracked explicitly
         # in fill_list, so an enum sharing a struct's name can't redirect us).
+        # A generated struct whose leaf name is taken by an existing ENUM in the
+        # target category classifies NEW (build_live indexes only structs), but the
+        # KEEP-handler addDataType then returns that enum instead of a new struct.
+        # Skip those -- the name is owned by a non-struct, so there is nothing to fill.
+        import ghidra.program.model.data as _Dfill
+        _skipped_nonstruct = 0
         for s, st in fill_list:
+            if not isinstance(s, _Dfill.Structure):
+                _skipped_nonstruct += 1
+                continue
             _gsize, _gfields = st[1], st[3]
             _fill_struct(s, _gsize, _gfields, resolve_type, make_padding,
                          _U16, _U32, _U64, _U8)
+        if _skipped_nonstruct:
+            print('Skipped {} fill targets owned by a non-struct '
+                  '(enum/typedef leaf-name collision)'.format(_skipped_nonstruct))
 
         # Phase 3: swap each staged replacement in for the existing type (rewires
         # all refs; function signatures preserved). updateCategoryPath=True moves
