@@ -532,6 +532,55 @@ def embed_structs(structs: dict) -> None:
         top = sorted(_reasons.items(), key=lambda kv: -kv[1])
         print('  fallback reasons: ' + ', '.join('{}={}'.format(k, v) for k, v in top[:12]))
 
+    retype_bstarray_data_pointers(structs)
+
+
+# Standard BSTArray<T> embeds RE::BSTArrayHeapAllocator (a type-erased ``void* _data``)
+# + RE::BSTArrayBase. Small-array (BSTSmallArrayHeapAllocator<N>) and scrap variants
+# have a different allocator base and an inline buffer / union, so they are excluded.
+_BSTARRAY_HEAP_BASES = ['RE::BSTArrayHeapAllocator', 'RE::BSTArrayBase']
+
+
+def retype_bstarray_data_pointers(structs: dict, root_ns: str = 'RE') -> int:
+    """RE-navigability override: give each standard ``BSTArray<T>`` a typed
+    ``T* _data`` instead of the type-erased ``void*`` it inherits from the shared
+    ``BSTArrayHeapAllocator``.
+
+    CommonLib's allocator is genuinely ``void*`` (type erased), so the element type
+    cannot be recovered by typing the shared base. Instead we flatten the standard
+    24-byte heap form into explicit fields and point ``_data`` at the element type
+    parsed from the template name. NiT* arrays already carry a typed ``_data`` (their
+    pointer is a real ``T*``/``T**`` in CommonLib) and are left untouched; only the
+    plain heap form (bases == BSTArrayHeapAllocator + BSTArrayBase, size 24) is
+    rewritten, so inline small-array / union variants are never corrupted.
+    """
+    from clang_types import _record_type_to_pipeline, _tmpl_args_of  # noqa: E402
+
+    n = 0
+    for st in structs.values():
+        if not st.get('name', '').startswith('BSTArray<'):
+            continue
+        if st.get('size') != 24 or st.get('bases') != _BSTARRAY_HEAP_BASES:
+            continue
+        args = _tmpl_args_of(st['full_name'])
+        if not args:
+            continue
+        elem_desc = _record_type_to_pipeline(args[0].strip(), root_ns)
+        data_desc = 'ptr:' + elem_desc if elem_desc and elem_desc != 'ptr' else 'ptr'
+        st['fields'] = [
+            {'name': '_data',     'type': data_desc, 'offset': 0,  'size': 8},
+            {'name': '_capacity', 'type': 'u32',     'offset': 8,  'size': 4},
+            {'name': 'pad0C',     'type': 'u32',     'offset': 12, 'size': 4},
+            {'name': '_size',     'type': 'u32',     'offset': 16, 'size': 4},
+            {'name': 'pad14',     'type': 'u32',     'offset': 20, 'size': 4},
+        ]
+        st['bases'] = []
+        st['pdb_bases'] = []
+        n += 1
+    if n:
+        print('Retyped _data on {} BSTArray<T> instantiations (typed element pointer)'.format(n))
+    return n
+
 
 # ---------------------------------------------------------------------------
 # Ghidra script template (embedded Jython)
