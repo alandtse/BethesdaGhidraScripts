@@ -255,6 +255,18 @@ def run():
     return counts
 
 
+def _is_placeholder_dt(dt):
+    """A field type that carries no real RE -- undefined bytes or a bare integer/char
+    filler. Improve-only fills replace ONLY these; a concrete existing type is never
+    downgraded to a generated stub."""
+    if dt is None:
+        return True
+    n = dt.getName()
+    return (n in ('undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
+                  'ulong', 'long', 'ulonglong', 'longlong')
+            or n.startswith('undefined') or n.startswith('char['))
+
+
 def _fill_struct(s, size, gfields, resolve_type, make_padding, _U16, _U32, _U64, _U8):
     for field in gfields:
         fname, ftype_str, foffset, fsize = field
@@ -276,13 +288,26 @@ def _fill_struct(s, size, gfields, resolve_type, make_padding, _U16, _U32, _U64,
             continue
         if fsize <= 0 or foffset + fsize > size:
             continue
+        comp = s.getComponentContaining(foffset)
+        cur = comp.getDataType() if comp else None
+        at_start = comp is not None and comp.getOffset() == foffset
+        # Improve-only: never clobber a concrete existing field. (On an empty stub every
+        # slot is undefined, so this still fills the whole struct; on a same-size-but-stale
+        # struct it touches only the placeholder slots and keeps real fields + comments.)
+        if at_start and cur is not None and not _is_placeholder_dt(cur):
+            continue
         dtf = resolve_type(ftype_str)
         if dtf and dtf.getLength() == fsize:
             use_dt, use_name = dtf, fname
         else:
+            # generated type didn't resolve to a concrete same-size type -> a stub; don't
+            # write padding over a real field (only fill genuinely-empty slots).
+            if at_start and cur is not None and not _is_placeholder_dt(cur):
+                continue
             use_dt, use_name = make_padding(fsize), fname + '_raw'
+        cmt = comp.getComment() if at_start else None      # preserve any hand comment
         try:
-            s.replaceAtOffset(foffset, use_dt, fsize, use_name, '')
+            s.replaceAtOffset(foffset, use_dt, fsize, use_name, cmt or '')
         except Exception:
             pass
 

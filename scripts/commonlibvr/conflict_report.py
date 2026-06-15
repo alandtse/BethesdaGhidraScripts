@@ -211,6 +211,47 @@ def _is_stub(dt, members):
     return dt.getLength() <= 1 or len(members) == 0
 
 
+_PLACEHOLDER_TYPES = frozenset((
+    'undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
+    'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t',
+    'undefined1', 'undefined2', 'undefined4', 'undefined8'))
+
+
+def _placeholder_typename(tn):
+    t = (tn or '').lower()
+    return t in _PLACEHOLDER_TYPES or t.startswith('undefined') or t.startswith('char[')
+
+
+def _gen_field_concrete(ftype_str):
+    """A generated field whose type is a real composite (struct / enum / vtable-ptr, or
+    an array of a non-primitive) -- worth placing over a placeholder. Plain primitives and
+    u8/byte-array stubs are NOT (placing them is a no-op or a downgrade)."""
+    ts = str(ftype_str)
+    if ts.startswith('struct:') or ts.startswith('enum:') or ts.startswith('vtblptr:'):
+        return True
+    if ts.startswith('arr:'):
+        elem = ts[4:].rsplit(':', 1)[0]
+        return elem not in ('u8', 'u16', 'u32', 'u64', 's8', 's16', 's32', 's64', 'bool')
+    return False
+
+
+def _has_fillable_fields(emembers, gen_members):
+    """True if a generated field has a concrete type at an offset where the existing
+    struct only carries a placeholder (undefined / primitive / *_raw). This is the
+    same-size-but-stale case that plain MATCH->REUSE silently leaves unimproved -- e.g. a
+    BSTArray<T> stubbed as uint+padding by an import generated before that template
+    instantiation existed. Improve-only: never flags a field where the existing type is
+    already concrete (so a real layout is never downgraded to a generated stub)."""
+    by_off = {o: (ln, tn, fn) for (o, ln, tn, fn) in emembers}
+    for (fname, ftype, foff, fsize) in gen_members:
+        if not _gen_field_concrete(ftype):
+            continue
+        e = by_off.get(foff)
+        if e is None or _placeholder_typename(e[1]) or (e[2] or '').endswith('_raw'):
+            return True
+    return False
+
+
 def _extends(existing_members, gen_members, gen_size):
     """True if every existing defined member sits at a matching (offset,length)
     slot inside the generated layout, and gen is at least as large."""
@@ -290,6 +331,14 @@ def classify(st, live):
         # (~16.9k structs left as undefined, e.g. Crime), so the CommonLib layout was
         # never applied. Same-size stub detection must precede MATCH (fill in place,
         # no resize -> the fast FILL action).
+        status = 'STUB_FILL'
+    elif esize == gsize and _has_fillable_fields(emembers, gen_members):
+        # Same total size, but a populated existing struct still has placeholder fields
+        # (undefined / primitive) where the generated layout has a concrete type -- e.g. a
+        # BSTArray<T> stubbed as uint+padding by an import predating that template. Plain
+        # MATCH->REUSE keeps the stale stubs forever (the BSShadowLight blind spot), so
+        # route to the in-place FILL action. The fill is improve-only + comment-preserving,
+        # so real existing fields and hand comments are never lost.
         status = 'STUB_FILL'
     elif esize == gsize:
         status = 'MATCH'
