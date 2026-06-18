@@ -1,0 +1,8 @@
+global_addr,current_symbol,inferred_type,is_pointer,confidence,votes,total,distinct_classes,class_votes,callers,decision_type
+0x11DA634,sRSMCustom,BSStopTrackingDebugPage,0,medium,3,4,2,BSStopTrackingDebugPage:3 LockFreeMapIterator:1,FUN_007b51f0,
+0x11DA2C8,LoveTesterAnimations,ExtraCombatStyle,0,medium,1,1,1,ExtraCombatStyle:1,FUN_00795c60,
+0x11C3F2C,g_dataHandler_global_data,FindTriangleForLocationWaterFilter,0,medium,1,1,1,FindTriangleForLocationWaterFilter:1,g_removeFromAllFormMapsAddr,
+0x11DEA10,uGridsToLoad,_Ref_count_obj<struct_Concurrency::details::_ExceptionHolder>,0,medium,1,1,1,_Ref_count_obj<struct_Concurrency::details::_ExceptionHolder>:1,FUN_00529c90,
+0x11DEA3C,g_thePlayer_global_data,BSSimpleList<BGSMenuIcon_*>,0,medium,1,1,1,BSSimpleList<BGSMenuIcon_*>:1,DetectionTaskData_vf006,
+0x11DAAC0,g_startMenu_credits_to_lStewieAl,TESCaravanCard,0,medium,1,1,1,TESCaravanCard:1,FUN_007d3620,
+0x126FAC4,DAT_0126fac4,ListBox<StartMenu::Option_*>,0,low,1,2,2,ListBox<StartMenu::Option_*>:1 pDNameNode:1,FUN_00872570,

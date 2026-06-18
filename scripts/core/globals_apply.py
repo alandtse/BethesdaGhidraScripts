@@ -77,21 +77,43 @@ def run():
             if struct is None:
                 missing += 1
                 continue
-            is_ptr = r.get('is_pointer', '0').strip() == '1'
-            dt = PointerDataType(struct) if is_ptr else struct
+            # ALWAYS type as a pointer (Class*) -- a fixed 8 bytes.  Typing
+            # the slot as the full inline struct is unreliable: large
+            # structs fail to create (clear rejected) or truncate to a few
+            # bytes, and a wrong inline/pointer guess would over-clear
+            # adjacent globals.  Class* is 8 bytes (no over-clear, no
+            # truncation), correct for the common pointer-slot singleton,
+            # and still lets the decompiler propagate one deref deeper.
+            dt = PointerDataType(struct)
+
+            # Decide whether to (re)type this slot:
+            #  - undefined / no data        -> type as Class*
+            #  - already a pointer (Class*) -> done, skip
+            #  - a BARE struct of the same  -> residue of an earlier
+            #    full-struct apply (may be truncated); clear + re-type Class*
+            #  - any other concrete type    -> leave alone
+            existing = listing.getDefinedDataAt(addr)
+            if existing is not None:
+                en = existing.getDataType().getName()
+                if not en.startswith('undefined') and en != cls:
+                    # already a pointer (``Class *`` != ``Class``) or some
+                    # other concrete type -> leave alone.  Only a BARE
+                    # struct exactly == cls (earlier full-struct residue,
+                    # possibly truncated) falls through to re-type as Class*.
+                    skipped += 1
+                    continue
 
             if not APPLY:
                 typed += 1
                 renamed += 1
                 continue
             try:
-                listing.clearCodeUnits(addr, addr.add(dt.getLength() - 1), False)
+                listing.clearCodeUnits(addr, addr.add(7), False)
                 listing.createData(addr, dt)
                 typed += 1
             except Exception:
-                pass
-            # Name the slot: g_<Class> (singleton convention).  Skip if a
-            # non-default symbol is already present (don't clobber).
+                continue
+            # Name the slot g_<Class> when it's a DAT_/g_ placeholder.
             try:
                 sym = st.getPrimarySymbol(addr)
                 if sym is None or sym.getName().startswith(('DAT_', 'g_')):

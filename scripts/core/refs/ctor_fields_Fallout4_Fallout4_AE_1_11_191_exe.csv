@@ -1,0 +1,116 @@
+class,offset,type,name,slot_state
+ActiveEffect,0x48,undefined8,3,known
+ActiveEffect,0x50,EffectItem *,4,known
+ActorValueInfo,0x1A8,int,2,known
+ActorValueInfo,0x1B0,int,4,known
+AlarmPackage,0xC8,void *,2,known
+BGSBaseAlias,0x10,undefined8,2,known
+BGSBaseAlias,0x18,undefined4,3,known
+BGSDecalNode,0x170,byte,3,known
+BGSRelationship,0x20,undefined8,2,known
+BGSSoundCategorySnapshot,0x50,byte,2,known
+BSFile,0x10,ulonglong,4,known
+BSFile,0x48,int,3,known
+BSGeometry,0x148,undefined8,2,known
+BSGeometry,0x150,undefined8,3,known
+BSMultiBoundAABB,0x48,undefined4,5,known
+BSMultiBoundAABB,0x4C,int,6,known
+BSMultiBoundAABB,0x50,undefined1,4,known
+BSPortalSharedNode,0x158,NiTimeController *,2,known
+BSSceneGraph,0x140,longlong *,4,known
+BSSceneGraph,0x158,undefined1,3,known
+BSTempEffect,0x10,undefined4,3,known
+BSTempEffect,0x18,undefined8,2,known
+BSTempEffectDebris,0x38,char *,4,known
+BSTempEffectDebris,0x40,undefined1,12,known
+BSTempEffectDebris,0x42,undefined1,13,known
+BSTempEffectGeometryDecal,0x48,longlong,4,known
+BSTempEffectParticle,0x8C,float,6,known
+BSTempEffectParticle,0x90,uint,7,known
+BSTempEffectParticle,0x98,NiAVObject *,5,known
+BSTempEffectWeaponBlood,0x30,NiAVObject *,3,known
+BSTriShape,0x160,uint,3,known
+DialoguePackage,0xD9,undefined1,4,known
+ExtraCharge,0x18,undefined4,2,known
+ExtraHealth,0x18,undefined4,2,known
+ExtraTextDisplayData,0x20,undefined8,2,known
+ExtraTextDisplayData,0x28,undefined8,3,known
+ExtraTextDisplayData,0x30,undefined4,4,known
+HUDCompassMarkerBase,0x108,undefined4,3,known
+Hazard,0x130,TESBoundObject *,2,known
+ImageSpaceModifierInstance,0x10,undefined4,2,known
+ImageSpaceModifierInstance,0x18,longlong,8,known
+ImageSpaceModifierInstance,0x28,undefined4,9,known
+ImageSpaceModifierInstance,0x64,undefined4,2,known
+ImageSpaceModifierInstance,0x68,undefined4,4,known
+ImageSpaceModifierInstance,0x6C,undefined4,5,known
+ImageSpaceModifierInstance,0x70,undefined4,6,known
+ImageSpaceModifierInstance,0x74,undefined4,7,known
+Main,0x30,undefined8,2,known
+Main,0x38,undefined8,3,known
+MessageBoxData,0x50,undefined4,6,known
+MessageBoxData,0x60,undefined4,7,known
+MessageBoxData,0x64,undefined1,8,known
+MessageBoxData,0x65,undefined1,9,known
+MessageBoxData,0x68,int,10,known
+NiCollisionObject,0x10,longlong,2,known
+NiControllerManager,0xA8,undefined1,3,known
+NiControllerSequence,0x18,undefined4,3,known
+NiControllerSequence,0x1C,undefined4,4,known
+NiCullingProcess,0x8,undefined1,3,known
+NiCullingProcess,0x10,undefined8,2,known
+NiFile,0x10,ulonglong,4,known
+NiFile,0x48,int,3,known
+NiMemStream,0x10,undefined8,2,known
+NiMemStream,0x20,undefined8,3,known
+NiMemStream,0x28,undefined8,3,known
+NiRefObject,0x60,longlong,10,known
+NiRefObject,0xB0,undefined4,4,known
+NiRefObject,0xB4,undefined4,5,known
+NiRefObject,0xB8,undefined4,6,known
+NiRefObject,0xBC,undefined4,11,known
+NiRefObject,0xC4,short,9,known
+NiRefObject,0xC6,undefined1,8,known
+NiRefObject,0xC7,undefined1,13,known
+NiRefObject,0xCC,undefined1,12,known
+PipboyCommand,0x8,undefined4,2,known
+PipboyCommandResult,0x8,undefined4,2,known
+PipboyCommandResult,0xC,undefined1,3,known
+PipboyCommandResult,0xD,undefined1,4,known
+PipboyDataGroup,0x88,undefined8,2,known
+PipboyDataGroup,0x90,undefined8,3,known
+PipboyInventoryData,0xE8,undefined8,3,known
+PipboyLogData,0xA0,undefined8,3,known
+PipboyMapData,0xE8,undefined8,3,known
+PipboyPerksData,0xA0,undefined8,3,known
+PipboyPlayerInfoData,0x100,PipboyObject *,3,known
+PipboyQuestData,0xB0,undefined8,3,known
+PipboyRadioData,0xA8,PipboyArray *,3,known
+PipboySpecialData,0xA0,PipboyArray *,3,known
+PipboyStatsData,0xC8,undefined8,3,known
+PipboyStatusData,0xD0,PipboyObject *,3,known
+PipboyValue,0x10,PipboyValue *,p0,known
+PipboyWorkshopData,0xA8,undefined8,3,known
+ReferenceEffect,0x30,longlong *,2,known
+TES,0x20,NiNode *,3,known
+TES,0x28,NiNode *,4,known
+TES,0x30,NiNode *,6,known
+TES,0x98,Sky *,5,known
+TESRegionList,0x18,char,2,known
+TESTopic,0x31,undefined1,2,known
+ThirdPersonState,0x18,undefined8,2,known
+ThirdPersonState,0x20,undefined4,3,known
+TrespassPackage,0xD0,undefined8,3,known
+TrespassPackage,0xDC,undefined4,4,known
+WorkbenchMenuBase,0x330,undefined4,2,known
+bhkNPCollisionObjectBase,0x20,longlong,3,known
+bhkNPCollisionObjectBase,0x28,undefined4,2,known
+bhkPhysicsSystem,0x10,longlong,2,known
+hknpCharacterContext,0x18,longlong,2,known
+hknpCharacterContext,0x20,undefined4,3,known
+hknpCharacterContext,0x24,undefined4,3,known
+hknpCollisionQueryCollector,0x90,undefined8,2,known
+hknpCollisionQueryCollector,0x98,undefined8,4,known
+hknpCollisionQueryCollector,0xAC,undefined1,3,known
+hknpCollisionQueryCollector,0xAD,undefined1,5,known
+hknpCollisionQueryCollector,0xAE,undefined1,6,known
