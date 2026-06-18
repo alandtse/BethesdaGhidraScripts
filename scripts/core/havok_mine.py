@@ -1,47 +1,57 @@
-"""Ghidra driver: mine havok hkClass reflection descriptors (READ-ONLY).
-EXPERIMENTAL / INCOMPLETE -- see the LAYOUT NOTE below.
+"""Ghidra driver / verifier: scan for Havok hkClass reflection descriptors
+with per-member byte offsets.  READ-ONLY.
 
-Havok ships POD reflection descriptors (hkClass / hkClassMember) that
-survive in retail Skyrim/F4 x64 builds.  Each hkClass names a havok
-class and lists its members with exact name + type + byte offset --
-authoritative field layout for the entire havok subsystem (hkp*/hkb*/
-hknp*/hka*/bhk*), far beyond what CommonLib defines.
+CONCLUSION (proven 2026-06 on Fallout4.exe 1.10.163 and SkyrimSE.exe
+1.5.97): retail Bethesda builds do NOT ship the offset-bearing Havok
+reflection.  What survives is the class/member NAME pool plus
+``const char*[]`` name-pointer tables (and hkVariant attribute records);
+the ``hkClass`` / ``hkClassMember`` objects that carry ``m_objectSize``
+and per-member ``m_offset`` are stripped (Havok only links full
+reflection metadata in toolchain/exporter builds, not shipping games).
+So there is no in-binary source for authoritative havok field offsets.
 
-LAYOUT NOTE (why this finds 0 today): the reflection data IS present
-(F4: 1053 hk-class-name strings, 777 data slots pointing at them), but
-the structure is a multi-type GRAPH, not a flat hkClass[] array.  A
-data-scan for slots pointing at a class-name string lands mostly on
-hkClassEnum.name and a hkTypeInfo-style registry (hkBase/hkInt32/...),
-NOT hkClass.name -- so the simple hkClass{name@0,objSize@0x10,
-members@0x28,num@0x30} model below validates nothing.  To finish this:
-decompile the F4 1.11.221 PDB-named accessors hkClass::getDeclaredMembers
-/ getNumDeclaredMembers / hkClassMember::getOffset (addresses pinned in
-scripts/commonlibf4/refs/bytesig_ported_ae.csv) to read the EXACT field
-offsets, then walk only true hkClass instances (reachable from the
-<Type>::staticClass accessors / hkVtableClassRegistry).  Left here as a
-scaffold + the validated discovery (string set + data-slot scan) for a
-future dedicated pass.
+EVIDENCE (reproducible with this scanner):
+  * Structural scan below finds 0 hkClass-with-members in either binary
+    despite 17k-27k name-pointing data slots.  The SDK-confirmed layout
+    is correct (see below) -- the records simply are not present.
+  * Decisive referrer test: a member-name string such as
+    "enforcedDuration" has exactly two referrers, both inside 8-byte
+    name-pointer tables; an hkClassMember record (0x28 stride) would add
+    a third.  It does not exist.  Class-name strings (e.g. "hkpRigidBody")
+    likewise have a single referrer -- the name table -- where a real
+    static hkClass object would add its m_name referrer.
 
-x64 layout (Havok 2014.x ABI, corroborated by named accessors in
-scripts/commonlibf4/refs/bytesig_ported_ae.csv):
-  hkClass        name@0x00  objectSize@0x10  declaredMembers@0x28  numMembers@0x30
-  hkClassMember  name@0x00  type@0x18(u8)    offset@0x1E(u16)      sizeof 0x28
+The only remaining route to havok field TYPES is the Havok 2014 SDK
+headers (C:/Development/higgs-master/Havok 2014 SDK), parsed into Ghidra
+structs.  That is a separate, partial-coverage effort: the SDK ships
+Physics2012 + Common but not the hkb*/hknp* gameplay headers, and offset
+computation requires compiling the (template/SIMD/alignment-macro heavy)
+tree -- out of scope for binary-derived enrichment.
 
-Discovery: havok class-name strings start with a known prefix (hk/bhk).
-Follow each string's data xref back to the hkClass.name field, validate
-the surrounding layout (sane objectSize, members ptr -> array whose
-entries have ASCII names), then walk the member array.
+This file is kept as a VERIFIER: if a future build (or a debug/editor
+binary) is suspected to ship reflection, run it -- a nonzero
+"hkClass (>=1 members)" count means the metadata is present and the
+emitted CSV gives authoritative field offsets for the whole havok
+subsystem.  It is deliberately NOT in the default enrichment sweep.
 
-READ-ONLY: writes a proposals CSV (class, member_offset, member_type,
-member_name, object_size); never modifies the program.  Apply is a
-separate reviewed step (typing havok structs touches the whole DTM).
-Knob: BGS_HAVOK_CSV (output path).
+Layout (Havok 2014.x x64 ABI, from the SDK headers
+Source/Common/Base/Reflection/{hkClass,hkClassMember}.h -- CONFIRMED):
+  hkClass        sizeof 0x50: name@0x00 objectSize@0x10(i32)
+                 declaredMembers@0x28(ptr) numDeclaredMembers@0x30(i32)
+  hkClassMember  sizeof 0x28: name@0x00 type@0x18(u8) offset@0x1E(u16)
+
+Knob: BGS_HAVOK_CSV (output path for the member CSV, written only if any
+class-with-members is found).
 """
 import csv
 import os
+import struct
 
-# hkClassMember::Type enum -> a readable type token (subset; the rest
-# keep their THKMEMBER name).  Applied downstream, not here.
+TYPE_MAX = 36          # hkClassMember::TYPE_MAX (2014.x)
+HKMEMBER_SIZE = 0x28
+HKCLASS_OBJSIZE, HKCLASS_MEMBERS, HKCLASS_NUMMEMBERS = 0x10, 0x28, 0x30
+HKMEMBER_NAME, HKMEMBER_TYPE, HKMEMBER_OFFSET = 0x00, 0x18, 0x1E
+
 _HK_TYPE = {
     0: 'void', 1: 'bool', 2: 'char', 3: 'i8', 4: 'u8', 5: 'i16', 6: 'u16',
     7: 'i32', 8: 'u32', 9: 'i64', 10: 'u64', 11: 'float', 12: 'hkVector4',
@@ -52,111 +62,31 @@ _HK_TYPE = {
     31: 'flags', 32: 'half', 33: 'hkStringPtr', 34: 'hkRelArray',
 }
 
-_NAME_PREFIXES = ('hk', 'bhk')
-HKCLASS_NAME, HKCLASS_OBJSIZE = 0x00, 0x10
-HKCLASS_MEMBERS, HKCLASS_NUMMEMBERS = 0x28, 0x30
-HKMEMBER_NAME, HKMEMBER_TYPE, HKMEMBER_OFFSET = 0x00, 0x18, 0x1E
-HKMEMBER_SIZE = 0x28
-
 
 def run():
-    import re
+    import jpype
     cp = currentProgram  # noqa: F821
     if cp.getDefaultPointerSize() != 8:
         print('havok-mine (%s): x86 -- skipped (havok ABI here is x64)'
               % cp.getName())
         return
     mem = cp.getMemory()
-    listing = cp.getListing()
-    rm = cp.getReferenceManager()
-    af = cp.getAddressFactory().getDefaultAddressSpace()
+    ByteArray = jpype.JArray(jpype.JByte)
     out_csv = os.environ.get('BGS_HAVOK_CSV') or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), 'refs',
         'havok_members_%s.csv' % cp.getName().replace('.', '_'))
 
-    _ident = re.compile(r'^[A-Za-z_]\w*$')
-
-    def _ptr(va):
-        try:
-            return mem.getLong(af.getAddress(va)) & 0xFFFFFFFFFFFFFFFF
-        except Exception:
-            return None
-
-    def _cstr(va, maxlen=96):
-        if va is None:
-            return None
-        a = af.getAddress(va)
-        blk = mem.getBlock(a)
-        if blk is None or not blk.isInitialized():
-            return None
-        try:
-            bs = bytearray(maxlen)
-            n = mem.getBytes(a, bs)
-            s = ''
-            for i in range(n):
-                ch = bs[i] & 0xFF
-                if ch == 0:
-                    break
-                if ch < 0x20 or ch > 0x7E:
-                    return None
-                s += chr(ch)
-            return s
-        except Exception:
-            return None
-
-    def _u(va, width):
-        try:
-            a = af.getAddress(va)
-            if width == 2:
-                return mem.getShort(a) & 0xFFFF
-            if width == 4:
-                return mem.getInt(a) & 0xFFFFFFFF
-            return mem.getByte(a) & 0xFF
-        except Exception:
-            return None
-
-    def _in_data(va):
-        blk = mem.getBlock(af.getAddress(va)) if va else None
-        return blk is not None and blk.isInitialized() and not blk.isExecute()
-
-    # Collect havok class-name string ADDRESSES (hk*/bhk* identifiers).
-    hkstr = {}                          # string-addr -> name
-    di = listing.getDefinedData(True)
-    while di.hasNext():
-        d = di.next()
-        tn = d.getDataType().getName().lower()
-        if 'char' not in tn and 'string' not in tn:
-            continue
-        v = d.getValue()
-        if v is None:
-            continue
-        nm = str(v).strip()
-        if nm.startswith(_NAME_PREFIXES) and _ident.match(nm):
-            hkstr[d.getAddress().getOffset()] = nm
-    n_hkstr = len(hkstr)
-
-    # Find hkClass bases by SCANNING initialized data for an 8-byte slot
-    # that points at one of those strings -- that slot is hkClass.name@0.
-    # (Ghidra often doesn't create a data->string reference for a raw
-    # undefined8 pointer slot, so a reference-based lookup misses them.)
-    # Bulk-read each block and scan in Python (per-slot mem reads are far
-    # too slow over tens of MB of data).
-    import jpype
-    import struct as _struct
-    ByteArray = jpype.JArray(jpype.JByte)
-    seen = set()
-    classes = []                        # (base, name, objsize, members_ptr, nmem)
-    n_nameslot = 0
+    # Cache initialized blocks' raw bytes for fast random cross-block reads.
+    blocks = []
     for blk in mem.getBlocks():
-        if not blk.isInitialized() or blk.isExecute():
+        if not blk.isInitialized():
             continue
         size = blk.getSize()
         start = blk.getStart().getOffset()
         raw = bytearray(size)
-        CHUNK = 1 << 20
         ok = True
-        for c in range(0, size, CHUNK):
-            n = min(CHUNK, size - c)
+        for c in range(0, size, 1 << 20):
+            n = min(1 << 20, size - c)
             buf = ByteArray(n)
             try:
                 blk.getBytes(blk.getStart().add(c), buf, 0, n)
@@ -164,52 +94,106 @@ def run():
                 ok = False
                 break
             raw[c:c + n] = bytes(buf)
-        if not ok:
+        if ok:
+            blocks.append((start, start + size, raw, blk.isExecute()))
+    blocks.sort()
+
+    def fb(va):
+        for s, e, raw, ex in blocks:
+            if s <= va < e:
+                return s, e, raw, ex
+        return None
+
+    def u(va, w):
+        b = fb(va)
+        if b is None or va + w > b[1]:
+            return None
+        o = va - b[0]
+        if w == 8:
+            return struct.unpack_from('<Q', b[2], o)[0]
+        if w == 4:
+            return struct.unpack_from('<I', b[2], o)[0]
+        if w == 2:
+            return struct.unpack_from('<H', b[2], o)[0]
+        return b[2][o]
+
+    def ident(va, maxlen=128):
+        b = fb(va)
+        if b is None or b[3]:
+            return None
+        s, e, raw, _ = b
+        i = va - s
+        out = []
+        while i < len(raw) and raw[i] != 0 and len(out) < maxlen:
+            ch = raw[i]
+            if ch < 0x20 or ch > 0x7E:
+                return None
+            out.append(chr(ch))
+            i += 1
+        if not out:
+            return None
+        nm = ''.join(out)
+        return nm if (nm[0].isalpha() or nm[0] == '_') else None
+
+    def valid_members(mp, nmem, objsize):
+        b = fb(mp)
+        if b is None or b[3]:
+            return False
+        for i in (0, nmem - 1, nmem // 2):
+            ma = mp + i * HKMEMBER_SIZE
+            if ident(u(ma + HKMEMBER_NAME, 8) or 0) is None:
+                return False
+            t = u(ma + HKMEMBER_TYPE, 1)
+            o = u(ma + HKMEMBER_OFFSET, 2)
+            if t is None or t >= TYPE_MAX or o is None or o > objsize:
+                return False
+        return True
+
+    n_scanned = 0
+    full = []                           # (base, name, objsize, members, nmem)
+    for s, e, raw, ex in blocks:
+        if ex:
             continue
-        # scan 8-byte-aligned slots for pointers into the hk-string set
-        for i in range(0, size - 8, 8):
-            p = _struct.unpack_from('<Q', raw, i)[0]
-            if p not in hkstr:
+        for off in range(0, len(raw) - 0x50, 8):
+            name_ptr = struct.unpack_from('<Q', raw, off)[0]
+            if name_ptr == 0:
                 continue
-            n_nameslot += 1
-            base = start + i             # name slot == hkClass base (name@0)
-            if base in seen:
+            nm = ident(name_ptr)
+            if nm is None:
                 continue
-            if os.environ.get('BGS_HAVOK_DEBUG') and n_nameslot <= 8:
-                dump = []
-                for o in (0x8, 0x10, 0x14, 0x18, 0x20, 0x24, 0x28, 0x30, 0x38, 0x40):
-                    dump.append('+%02X=%X' % (o, (_ptr(base + o) or 0) & 0xFFFFFFFFFFFF))
-                print('  DBG %s @%X: %s' % (hkstr[p], base, ' '.join(dump)))
-            objsize = _u(base + HKCLASS_OBJSIZE, 4)
-            members = _ptr(base + HKCLASS_MEMBERS)
-            nmem = _u(base + HKCLASS_NUMMEMBERS, 4)
-            if (objsize is None or not (0 < objsize <= 0x20000)
-                    or nmem is None or not (0 < nmem <= 512)
-                    or members is None or not _in_data(members)):
+            n_scanned += 1
+            base = s + off
+            objsize = u(base + HKCLASS_OBJSIZE, 4)
+            nmem = u(base + HKCLASS_NUMMEMBERS, 4)
+            if objsize is None or not (0 < objsize <= 0x40000):
                 continue
-            m0name = _cstr(_ptr(members + HKMEMBER_NAME))
-            m0off = _u(members + HKMEMBER_OFFSET, 2)
-            if (m0name is None or not _ident.match(m0name)
-                    or m0off is None or m0off >= objsize):
+            if nmem is None or not (0 < nmem <= 2048):
                 continue
-            seen.add(base)
-            classes.append((base, hkstr[p], objsize, members, nmem))
-    n_hkref = n_nameslot
+            members = u(base + HKCLASS_MEMBERS, 8)
+            if members and valid_members(members, nmem, objsize):
+                full.append((base, nm, objsize, members, nmem))
 
     rows = []
-    for base, cname, objsize, members, nmem in classes:
+    for base, cname, objsize, members, nmem in full:
         for i in range(nmem):
             ma = members + i * HKMEMBER_SIZE
-            mn = _cstr(_ptr(ma + HKMEMBER_NAME))
-            if mn is None or not _ident.match(mn):
+            mn = ident(u(ma + HKMEMBER_NAME, 8) or 0)
+            if mn is None:
                 continue
-            mtype = _u(ma + HKMEMBER_TYPE, 1)
-            moff = _u(ma + HKMEMBER_OFFSET, 2)
-            if moff is None or moff >= objsize:
+            mt = u(ma + HKMEMBER_TYPE, 1)
+            mo = u(ma + HKMEMBER_OFFSET, 2)
+            if mo is None or mo > objsize:
                 continue
-            rows.append((cname, '0x%X' % moff,
-                         _HK_TYPE.get(mtype, 'hkType%d' % (mtype or 0)),
-                         mn, str(objsize)))
+            rows.append((cname, '0x%X' % mo,
+                         _HK_TYPE.get(mt, 'hkType%d' % (mt or 0)), mn,
+                         str(objsize)))
+
+    print('havok-mine (%s): %d name slots, %d hkClass-with-members, %d fields'
+          % (cp.getName(), n_scanned, len(full), len(rows)))
+    if not full:
+        print('  -> reflection member-offset metadata NOT present in this '
+              'build (expected for retail -- see module docstring).')
+        return
 
     rows.sort(key=lambda r: (r[0], int(r[1], 16)))
     if not os.path.isdir(os.path.dirname(out_csv)):
@@ -219,12 +203,7 @@ def run():
         w.writerow(['hkclass', 'offset', 'type', 'member', 'object_size'])
         for r in rows:
             w.writerow(r)
-    print('havok-mine (%s): %d hk-strings, %d hk-string-refs, %d hkClass '
-          'descriptors, %d member fields'
-          % (cp.getName(), n_hkstr, n_hkref, len(classes), len(rows)))
-    for r in rows[:20]:
-        print('   %s +%s %s %s' % (r[0], r[1], r[2], r[3]))
-    print('  -> ' + out_csv)
+    print('  -> reflection PRESENT; wrote %s' % out_csv)
 
 
 run()

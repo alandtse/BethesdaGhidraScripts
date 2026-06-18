@@ -42,7 +42,9 @@ DRIVER_PATHS = {
     'globals_apply':          CORE_DIR / 'globals_apply.py',
     'settings_harvest':       CORE_DIR / 'settings_harvest.py',
     'console_harvest':        CORE_DIR / 'console_harvest.py',
-    'havok_mine':             CORE_DIR / 'havok_mine.py',
+    # havok_mine is a verifier, not an enrichment step -- retail builds ship
+    # no offset-bearing havok reflection (proven; see havok_mine docstring).
+    # Run it explicitly only to test a suspected debug/editor binary.
 }
 # Drivers that mutate the program (require a save).  The *_harvest/apply
 # drivers only mutate when BGS_ENRICH_APPLY=go; saving an unchanged

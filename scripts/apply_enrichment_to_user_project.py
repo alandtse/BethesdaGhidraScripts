@@ -35,7 +35,7 @@ DRIVERS = {
     'globals_apply':          CORE_DIR / 'globals_apply.py',
     'settings_harvest':       CORE_DIR / 'settings_harvest.py',
     'console_harvest':        CORE_DIR / 'console_harvest.py',
-    'havok_mine':             CORE_DIR / 'havok_mine.py',
+    'havok_mine':             CORE_DIR / 'havok_mine.py',   # verifier only
 }
 
 
