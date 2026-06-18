@@ -65,7 +65,7 @@ VERSION_CATALOG = [
     ("f4221", "f4",        "Fallout 4 1.11.221",   "f4/221",       "CommonLibImport_F4_221.py","fork"),
     ("f4vr",  "f4",        "Fallout 4 VR 1.2.72",  "f4/vr",        "CommonLibImport_F4_VR.py", "fork"),
     ("fnv",   "fnv",       "Fallout NV 1.4.0.525", "fnv/og",       "CommonLibImport_FNV.py",   "fork"),
-    ("sf",    "starfield", "Starfield 1.16.236 / 1.16.242", "starfield/sf", "CommonLibImport_SF.py",    "fork"),
+    ("sf",    "starfield", "Starfield 1.16.236 / 1.16.242 / 1.16.244", "starfield/sf", "CommonLibImport_SF.py",    "fork"),
 ]
 
 API_HEADERS = {
