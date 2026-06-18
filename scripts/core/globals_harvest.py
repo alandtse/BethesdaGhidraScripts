@@ -36,19 +36,26 @@ SAMPLES = int(os.environ.get('BGS_GLOBALS_SAMPLES', '4') or 4)
 
 
 def _param0_class_name(callee):
-    """Class name of the callee's param-0 (the ``this`` type), stripped of
-    pointer/array suffix, only if param-0 is a class type.  Else None."""
+    """Class name of the callee's param-0 (the ``this`` type), but ONLY when
+    param-0 is a pointer to an actual Structure (class).
+
+    A name-string reject list is not enough: every Ghidra builtin
+    (``longlong``, ``float``, ``bool``, ``uint64_t``, ``code *`` ...) would
+    otherwise pass as a "class", giving an untyped global a bogus vote that
+    inflates the competing-class count and demotes a genuinely consistent
+    singleton to low confidence.  So we unwrap pointer levels and require
+    the base to be a Structure.
+    """
+    from ghidra.program.model.data import Pointer, Structure
     ps = callee.getParameters()
     if not ps:
         return None
     dt = ps[0].getDataType()
-    nm = dt.getName()
-    # strip a trailing ' *' / '*' pointer marker
-    if nm.endswith('*'):
-        nm = nm[:-1].strip()
-    if not nm or nm.startswith('undefined') or nm in ('void', 'char', 'int'):
+    while isinstance(dt, Pointer):
+        dt = dt.getDataType()
+    if not isinstance(dt, Structure):
         return None
-    return nm
+    return dt.getName()
 
 
 def _ram_addr(vn, mem, addr_space, depth=0):

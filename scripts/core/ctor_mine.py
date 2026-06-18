@@ -140,7 +140,15 @@ def run():
         ps = f.getParameters()
         if not ps:
             continue
-        cls = ps[0].getDataType().getName().rstrip('64').rstrip(' *')
+        # param-0 of a method is the ``this`` pointer: ``TESObjectREFR *``.
+        # Strip the single trailing pointer marker to get the bare class.
+        # (NOT rstrip('*') / rstrip('64') -- rstrip removes a CHARACTER
+        # SET, so it would corrupt names ending in those chars, e.g.
+        # ``BSTArray64`` -> ``BSTArray``, ``hkVector4`` -> ``hkVector``.)
+        nm = ps[0].getDataType().getName()
+        if nm.endswith('*'):
+            nm = nm[:-1].rstrip()
+        cls = nm
         if cls in unk_by_class and cp_plan.is_ctor(f.getName(), cls):
             ctors_by_class.setdefault(cls, []).append(f)
 
