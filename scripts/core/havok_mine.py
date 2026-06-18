@@ -1,14 +1,21 @@
 """Ghidra driver / verifier: scan for Havok hkClass reflection descriptors
 with per-member byte offsets.  READ-ONLY.
 
-CONCLUSION (proven 2026-06 on Fallout4.exe 1.10.163 and SkyrimSE.exe
-1.5.97): retail Bethesda builds do NOT ship the offset-bearing Havok
-reflection.  What survives is the class/member NAME pool plus
-``const char*[]`` name-pointer tables (and hkVariant attribute records);
-the ``hkClass`` / ``hkClassMember`` objects that carry ``m_objectSize``
-and per-member ``m_offset`` are stripped (Havok only links full
-reflection metadata in toolchain/exporter builds, not shipping games).
-So there is no in-binary source for authoritative havok field offsets.
+CONCLUSION (proven 2026-06 across 3 architectures AND a debug build):
+Bethesda builds do NOT contain the offset-bearing Havok reflection --
+  Fallout4.exe 1.10.163 (x64 retail) ...... 0 hkClass-with-members
+  SkyrimSE.exe 1.5.97   (x64 retail) ...... 0
+  FalloutNV.exe         (x86 retail) ...... 0
+  Fallout_Debug.exe     (PPC BE DEBUG) .... 0   <- rules out release-strip
+The debug build (which keeps symbols) having 0 too proves this is a
+BUILD-CONFIG choice (Havok compiled with reflection/serialization
+metadata disabled), not a release-time strip.  What survives in every
+build is the class/member NAME pool plus ``const char*[]`` name-pointer
+tables (and hkVariant attribute records); the ``hkClass`` /
+``hkClassMember`` objects carrying ``m_objectSize`` and per-member
+``m_offset`` are never present.  There is no in-binary source for
+authoritative havok field offsets in any Bethesda title.
+(Cross-arch verifier: scripts/core/havok_probe.py.)
 
 EVIDENCE (reproducible with this scanner):
   * Structural scan below finds 0 hkClass-with-members in either binary
