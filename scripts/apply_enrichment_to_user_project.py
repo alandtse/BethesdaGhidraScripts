@@ -36,6 +36,7 @@ DRIVERS = {
     'settings_harvest':       CORE_DIR / 'settings_harvest.py',
     'console_harvest':        CORE_DIR / 'console_harvest.py',
     'console_harvest_sf':     CORE_DIR / 'console_harvest_sf.py',
+    'ctor_apply':             CORE_DIR / 'ctor_apply.py',
     'havok_mine':             CORE_DIR / 'havok_mine.py',   # verifier only
 }
 
