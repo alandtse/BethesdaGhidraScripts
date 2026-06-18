@@ -114,6 +114,35 @@ def _ctor_assignments(hf, this_name):
     return out
 
 
+def _embedded_objects(hf, this_name, vtmap, fm, callee_class):
+    """{offset: class_name} for ``CALL ctor_of_T(this+off, ...)`` -- the
+    object at ``this+off`` is constructed by T's constructor, so field@off
+    has type T.  This is the SF-appropriate signal: constructors there
+    initialise members by calling sub-constructors rather than assigning
+    typed parameters (which CommonLib hasn't typed yet).  off==0 is the
+    base-class subobject (inheritance); off!=0 is an embedded member."""
+    from ghidra.program.model.pcode import PcodeOp
+    out = {}
+    it = hf.getPcodeOps()
+    while it.hasNext():
+        op = it.next()
+        if op.getOpcode() != PcodeOp.CALL:
+            continue
+        ins = op.getInputs()
+        if len(ins) < 2 or not ins[0].isAddress():
+            continue
+        off = _addr_off(ins[1], this_name, PcodeOp)   # arg0 (RCX) == this+off?
+        if off is None or off in out:
+            continue
+        cf = fm.getFunctionAt(ins[0].getAddress())
+        if cf is None:
+            continue
+        cc = callee_class(cf)
+        if cc is not None:
+            out[off] = cc
+    return out
+
+
 def _unk_offsets(dt):
     offs = set()
     for i in range(dt.getNumComponents()):
@@ -223,9 +252,32 @@ def run():
 
     decomp = DecompInterface()
     decomp.openProgram(prog)
+    # second decompiler for callee-class resolution -- calling decompile on
+    # the main interface again would invalidate the in-flight HighFunction.
+    decomp2 = DecompInterface()
+    decomp2.openProgram(prog)
+    ctor_class_memo = {}                     # callee entry -> class or None
+
+    def callee_class(fn):
+        ea = fn.getEntryPoint().getOffset()
+        if ea in ctor_class_memo:
+            return ctor_class_memo[ea]
+        ctor_class_memo[ea] = None
+        try:
+            r2 = decomp2.decompileFunction(fn, TIMEOUT, monitor)  # noqa: F821
+            if r2 and r2.decompileCompleted():
+                hf2 = r2.getHighFunction()
+                lsm2 = hf2.getLocalSymbolMap()
+                if lsm2.getNumParams() >= 1:
+                    ctor_class_memo[ea] = _constructed_class(
+                        hf2, lsm2.getParamSymbol(0).getName(), vtmap)
+        except Exception:
+            pass
+        return ctor_class_memo[ea]
+
     rows = []
-    named = typed_unk = 0
-    best_by_class = {}                      # cls -> (n_assign, assignments)
+    named = typed_unk = n_embed = 0
+    best_by_class = {}                      # cls -> (score, assignments, embedded)
     print('ctor-mine: %d unk-bearing structs, %d unk-class vtables, '
           '%d functions reference a target vtable'
           % (len(unk_by_class), len(target_vt), len(cand_list)))
@@ -243,16 +295,19 @@ def run():
             if cls is None or cls not in unk_by_class:
                 continue
             asg = _ctor_assignments(hf, this_name)
-            if not asg:                     # destructors write vtables too but
-                continue                    # carry no field=param writes -> skip
+            emb = _embedded_objects(hf, this_name, vtmap, fm, callee_class)
+            if not asg and not emb:         # destructors / no usable info
+                continue
+            score = len(asg) + len(emb)
             prev = best_by_class.get(cls)
-            if prev is None or len(asg) > prev[0]:
-                best_by_class[cls] = (len(asg), asg)
+            if prev is None or score > prev[0]:
+                best_by_class[cls] = (score, asg, emb)
         except Exception:
             continue
     decomp.dispose()
+    decomp2.dispose()
 
-    for cls, (_n, asg) in best_by_class.items():
+    for cls, (_n, asg, emb) in best_by_class.items():
         unk = unk_by_class.get(cls, set())
         for off, (tn, pname) in sorted(asg.items()):
             label = cp_plan.field_label(pname) or ''
@@ -261,6 +316,16 @@ def run():
                          'unknown' if is_unk else 'known'))
             if label:
                 named += 1
+            if is_unk:
+                typed_unk += 1
+        for off, ecls in sorted(emb.items()):
+            if off in asg:                  # param-assignment already covers it
+                continue
+            is_unk = off in unk
+            kind = 'base' if off == 0 else 'embedded'
+            rows.append((cls, '0x%X' % off, ecls, kind,
+                         'unknown' if is_unk else 'known'))
+            n_embed += 1
             if is_unk:
                 typed_unk += 1
     classes_done = len(best_by_class)
@@ -274,8 +339,8 @@ def run():
         for r in rows:
             w.writerow(r)
     print('ctor-mine (%s): %d classes mined, %d field proposals '
-          '(%d name a field, %d fill an unknown slot)'
-          % (prog.getName(), classes_done, len(rows), named, typed_unk))
+          '(%d name a field, %d embedded-object types, %d fill an unknown slot)'
+          % (prog.getName(), classes_done, len(rows), named, n_embed, typed_unk))
     for r in rows[:20]:
         print('   %s +%s %s %s [%s]' % r)
     print('  -> ' + out_csv)
