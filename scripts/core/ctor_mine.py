@@ -52,7 +52,16 @@ def _addr_off(vn, this_name, pc, depth=0):
     oc, ins = d.getOpcode(), d.getInputs()
     if oc in (pc.COPY, pc.CAST, pc.INDIRECT) and ins:
         return _addr_off(ins[0], this_name, pc, depth + 1)
-    if oc in (pc.INT_ADD, pc.PTRSUB, pc.PTRADD) and len(ins) >= 2 and ins[1].isConstant():
+    # PTRADD is pointer arithmetic base + index*elem_size: the BYTE offset is
+    # ins[1] (index) * ins[2] (element size), NOT the raw index.  Using the
+    # raw index yields offset/8 for 8-byte pointer fields (a pointer field
+    # reported at +0x9 instead of +0x48).
+    if oc == pc.PTRADD and len(ins) >= 3 and ins[1].isConstant() and ins[2].isConstant():
+        s = _addr_off(ins[0], this_name, pc, depth + 1)
+        if s is not None:
+            return s + int(ins[1].getOffset()) * int(ins[2].getOffset())
+    # PTRSUB / INT_ADD carry the byte offset directly in ins[1].
+    if oc in (pc.INT_ADD, pc.PTRSUB) and len(ins) >= 2 and ins[1].isConstant():
         s = _addr_off(ins[0], this_name, pc, depth + 1)
         if s is not None:
             return s + int(ins[1].getOffset())
