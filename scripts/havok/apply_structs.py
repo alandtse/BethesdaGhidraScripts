@@ -89,11 +89,15 @@ def run(program, records, dry_run, monitor):
         finally:
             program.endTransaction(tx, True)
 
+    PTR = program.getDefaultPointerSize()      # 8 (x64) or 4 (x86/FNV)
+
     def field_type_and_size(ftype):
         bn = base_name(ftype)
         if ftype.rstrip().endswith('*'):
             tgt = structs.get(bn)
-            return (PointerDataType(tgt) if tgt else PointerDataType()), 8
+            return (PointerDataType(tgt) if tgt else PointerDataType()), PTR
+        if bn in ('hkUlong', 'hkLong', 'hk_size_t'):   # pointer-sized
+            return gh_scalar[PTR], PTR
         if ftype in SCALAR:
             sz = SCALAR[ftype]
             return named.get(ftype, gh_scalar[sz]), sz
@@ -207,9 +211,8 @@ def main():
         consumer = java.lang.Object()
         program = match[0].getDomainObject(consumer, not args.dry_run, False, monitor)
         try:
-            if program.getDefaultPointerSize() != 8:
-                print("x86 program -- havok SDK layout is x64; skipping")
-                return
+            ps = program.getDefaultPointerSize()
+            print("program pointer size: %d-bit (layout must match)" % (ps * 8))
             run(program, records, args.dry_run, monitor)
         finally:
             program.release(consumer)

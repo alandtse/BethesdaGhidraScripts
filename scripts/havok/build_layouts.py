@@ -39,26 +39,21 @@ CLCL = r"C:/Program Files/LLVM/bin/clang-cl.exe"
 SDK = Path(r"C:/Development/higgs-master/Havok 2014 SDK/Source")
 BUILD = REPO / "build" / "havok"
 
-# Module umbrellas to include (pull in most class definitions).  Order
-# matters only for readability; the compiler resolves includes.
-UMBRELLAS = [
-    "Common/Base/hkBase.h",
-    "Common/SceneData/Scene/hkxScene.h",
-    "Physics2012/Dynamics/hkpDynamics.h",
-    "Physics2012/Collide/hkpCollide.h",
-    "Physics2012/Utilities/hkpUtilities.h",
-    "Physics2012/Vehicle/hkpVehicle.h",
-    "Animation/Animation/hkaAnimation.h",
-    "Animation/Ragdoll/hkaRagdoll.h",
+# Module umbrellas, by BASENAME (resolved via header_index, so the same
+# list works whether physics lives under Physics2012/ (2014) or Physics/
+# (6.6)).  Order doesn't matter; the compiler resolves includes.
+UMBRELLA_NAMES = [
+    "hkBase", "hkxScene", "hkpDynamics", "hkpCollide", "hkpUtilities",
+    "hkpVehicle", "hkaAnimation", "hkaRagdoll", "hkpConstraint",
 ]
-# Registration lists to enumerate class names from (glob under SDK).
-CLASSLIST_GLOBS = [
-    "Common/Serialize/Classlist/*Classes.h",
-    "Physics2012/*/Classes/*Classes.h",
-    "Physics/*/Classes/*Classes.h",
-    "Animation/*/Classes/*Classes.h",
-]
-CLASS_RE = re.compile(r'HK_(?:ABSTRACT_)?CLASS\s*\(\s*[^,]*,\s*([A-Za-z_]\w*)\s*\)')
+# Registration-list filename pattern; enumerate class names from any
+# *Classes.h sitting in a Classes/ or Classlist/ directory.
+ARCH = 'x64'
+# Matches both the 2014 two-arg form HK_CLASS(EXPORT, Name) and the 6.6
+# one-arg forms HK_CLASS(Name) / HK_ABSTRACT_CLASS(Name) / HK_STRUCT(Name).
+CLASS_RE = re.compile(
+    r'HK_(?:ABSTRACT_CLASS|CLASS|STRUCT)\s*\(\s*(?:[^,()]*,\s*)?'
+    r'([A-Za-z_]\w*)\s*\)')
 # anchored: capture only the offending name (not a "did you mean 'Y'" suffix)
 PRUNE_RES = [
     re.compile(r"incomplete type '([A-Za-z_]\w*)'"),
@@ -81,20 +76,23 @@ def header_index():
 
 def enumerate_classes():
     names = set()
-    for g in CLASSLIST_GLOBS:
-        for f in SDK.glob(g):
-            txt = f.read_text(errors='replace')
-            for m in CLASS_RE.finditer(txt):
-                names.add(m.group(1))
+    for f in SDK.rglob("*Classes.h"):
+        parts = {p.lower() for p in f.parts}
+        if 'classes' not in parts and 'classlist' not in parts:
+            continue
+        txt = f.read_text(errors='replace')
+        for m in CLASS_RE.finditer(txt):
+            names.add(m.group(1))
     return sorted(names)
 
 
 def write_tu(path, classes, bad_includes):
     idx = header_index()
     incs = []
-    for u in UMBRELLAS:
-        if (SDK / u).is_file():
-            incs.append(u.replace('\\', '/'))
+    for u in UMBRELLA_NAMES:
+        h = idx.get(u)
+        if h is not None:
+            incs.append(h.relative_to(SDK).as_posix())
     # add each class's own <Class>.h header (maximizes definitions available)
     for c in classes:
         h = idx.get(c)
@@ -117,6 +115,8 @@ def write_tu(path, classes, bad_includes):
 def compile_tu(path, dump=False):
     args = [CLCL, "/std:c++14", "-fsyntax-only", "-W0",
             "-I", str(SDK), "-DHK_COMPILER_HAS_INTRINSICS_IA32", str(path)]
+    if ARCH == 'x86':
+        args.insert(1, "-m32")
     if dump:
         args[2:2] = ["-Xclang", "-fdump-record-layouts"]
     p = subprocess.run(args, capture_output=True, text=True)
@@ -124,9 +124,17 @@ def compile_tu(path, dump=False):
 
 
 def main():
+    global SDK, ARCH
     ap = argparse.ArgumentParser()
     ap.add_argument('--max-iters', type=int, default=40)
+    ap.add_argument('--sdk', default=str(SDK),
+                    help="Havok SDK Source root (default: 2014 SDK)")
+    ap.add_argument('--arch', choices=['x64', 'x86'], default='x64')
+    ap.add_argument('--out', default='havok_layouts.json',
+                    help="output JSON filename under scripts/havok/refs/")
     args = ap.parse_args()
+    SDK = Path(args.sdk)
+    ARCH = args.arch
     BUILD.mkdir(parents=True, exist_ok=True)
 
     classes = list(enumerate_classes())
@@ -204,9 +212,10 @@ def main():
     import json
     refs = Path(__file__).resolve().parent / "refs"
     refs.mkdir(exist_ok=True)
-    outjson = refs / "havok_layouts.json"
+    outjson = refs / args.out
     json.dump(recs, open(outjson, 'w'), indent=1)
-    (refs / "dropped_classes.txt").write_text('\n'.join(sorted(dropped)))
+    (refs / (args.out.replace('.json', '') + "_dropped.txt")).write_text(
+        '\n'.join(sorted(dropped)))
     print("parsed %d hk* records -> %s" % (len(recs), outjson))
     withf = sum(1 for v in recs.values() if v['fields'])
     print("  %d have >=1 field; %d are polymorphic" %

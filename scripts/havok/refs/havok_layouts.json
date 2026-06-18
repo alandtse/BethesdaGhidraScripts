@@ -13766,6 +13766,1745 @@
    }
   ]
  },
+ "hkAabb16": {
+  "size": 16,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint16[3]",
+    "name": "m_min"
+   },
+   {
+    "offset": 6,
+    "type": "hkUint16",
+    "name": "m_key"
+   },
+   {
+    "offset": 8,
+    "type": "hkUint16[3]",
+    "name": "m_max"
+   },
+   {
+    "offset": 14,
+    "type": "hkUint16",
+    "name": "m_key1"
+   }
+  ]
+ },
+ "hkFlags<enum hkClass::FlagValues, unsigned int>": {
+  "size": 4,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned int",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkClass": {
+  "size": 80,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const char *",
+    "name": "m_name"
+   },
+   {
+    "offset": 8,
+    "type": "const hkClass *",
+    "name": "m_parent"
+   },
+   {
+    "offset": 16,
+    "type": "int",
+    "name": "m_objectSize"
+   },
+   {
+    "offset": 20,
+    "type": "int",
+    "name": "m_numImplementedInterfaces"
+   },
+   {
+    "offset": 24,
+    "type": "const class hkClassEnum *",
+    "name": "m_declaredEnums"
+   },
+   {
+    "offset": 32,
+    "type": "int",
+    "name": "m_numDeclaredEnums"
+   },
+   {
+    "offset": 40,
+    "type": "const class hkClassMember *",
+    "name": "m_declaredMembers"
+   },
+   {
+    "offset": 48,
+    "type": "int",
+    "name": "m_numDeclaredMembers"
+   },
+   {
+    "offset": 56,
+    "type": "const void *",
+    "name": "m_defaults"
+   },
+   {
+    "offset": 64,
+    "type": "const hkCustomAttributes *",
+    "name": "m_attributes"
+   },
+   {
+    "offset": 72,
+    "type": "class hkFlags<enum hkClass::FlagValues, unsigned int>",
+    "name": "m_flags"
+   },
+   {
+    "offset": 76,
+    "type": "int",
+    "name": "m_describedVersion"
+   }
+  ]
+ },
+ "hkCustomAttributes": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const struct Attribute *",
+    "name": "m_attributes"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_numAttributes"
+   }
+  ]
+ },
+ "hkCustomAttributes::Attribute": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const char *",
+    "name": "m_name"
+   },
+   {
+    "offset": 8,
+    "type": "struct hkVariant",
+    "name": "m_value"
+   }
+  ]
+ },
+ "hkFloat16Transform": {
+  "size": 24,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkFloat16[12]",
+    "name": "m_elements"
+   }
+  ]
+ },
+ "hkFourTransposedPointsf": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkVector4f[3]",
+    "name": "m_vertices"
+   }
+  ]
+ },
+ "hkGeometry::Triangle": {
+  "size": 16,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "int",
+    "name": "m_a"
+   },
+   {
+    "offset": 4,
+    "type": "int",
+    "name": "m_b"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_c"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_material"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkGeometry::Triangle>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkGeometry::Triangle *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkGeometry::Triangle>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkGeometry::Triangle *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkGeometry": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkVector4f>",
+    "name": "m_vertices"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<struct hkGeometry::Triangle>",
+    "name": "m_triangles"
+   }
+  ]
+ },
+ "hkEnum<enum hkMeshSection::PrimitiveType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkMeshSection::MeshSectionIndexType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkMeshSection": {
+  "size": 64,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkMeshSection::PrimitiveType, unsigned char>",
+    "name": "m_primitiveType"
+   },
+   {
+    "offset": 4,
+    "type": "int",
+    "name": "m_numPrimitives"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_numIndices"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_vertexStartIndex"
+   },
+   {
+    "offset": 16,
+    "type": "int",
+    "name": "m_transformIndex"
+   },
+   {
+    "offset": 20,
+    "type": "class hkEnum<enum hkMeshSection::MeshSectionIndexType, unsigned char>",
+    "name": "m_indexType"
+   },
+   {
+    "offset": 24,
+    "type": "const void *",
+    "name": "m_indices"
+   },
+   {
+    "offset": 32,
+    "type": "hkMeshVertexBuffer *",
+    "name": "m_vertexBuffer"
+   },
+   {
+    "offset": 40,
+    "type": "hkMeshMaterial *",
+    "name": "m_material"
+   },
+   {
+    "offset": 48,
+    "type": "const hkMeshBoneIndexMapping *",
+    "name": "m_boneMatrixMap"
+   },
+   {
+    "offset": 56,
+    "type": "int",
+    "name": "m_sectionIndex"
+   }
+  ]
+ },
+ "hkMeshSectionCinfo": {
+  "size": 64,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkMeshVertexBuffer *",
+    "name": "m_vertexBuffer"
+   },
+   {
+    "offset": 8,
+    "type": "hkMeshMaterial *",
+    "name": "m_material"
+   },
+   {
+    "offset": 16,
+    "type": "struct hkMeshBoneIndexMapping",
+    "name": "m_boneMatrixMap"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkMeshSection::PrimitiveType, unsigned char>",
+    "name": "m_primitiveType"
+   },
+   {
+    "offset": 36,
+    "type": "int",
+    "name": "m_numPrimitives"
+   },
+   {
+    "offset": 40,
+    "type": "class hkEnum<enum hkMeshSection::MeshSectionIndexType, unsigned char>",
+    "name": "m_indexType"
+   },
+   {
+    "offset": 48,
+    "type": "const void *",
+    "name": "m_indices"
+   },
+   {
+    "offset": 56,
+    "type": "int",
+    "name": "m_vertexStartIndex"
+   },
+   {
+    "offset": 60,
+    "type": "int",
+    "name": "m_transformIndex"
+   }
+  ]
+ },
+ "hkEnum<enum hkVertexFormat::ComponentType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkVertexFormat::ComponentUsage, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkFlags<enum hkVertexFormat::HintFlags, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkVertexFormat::Element": {
+  "size": 8,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkVertexFormat::ComponentType, unsigned char>",
+    "name": "m_dataType"
+   },
+   {
+    "offset": 1,
+    "type": "hkUint8",
+    "name": "m_numValues"
+   },
+   {
+    "offset": 2,
+    "type": "class hkEnum<enum hkVertexFormat::ComponentUsage, unsigned char>",
+    "name": "m_usage"
+   },
+   {
+    "offset": 3,
+    "type": "hkUint8",
+    "name": "m_subUsage"
+   },
+   {
+    "offset": 4,
+    "type": "class hkFlags<enum hkVertexFormat::HintFlags, unsigned char>",
+    "name": "m_flags"
+   },
+   {
+    "offset": 5,
+    "type": "hkUint8[3]",
+    "name": "m_pad"
+   }
+  ]
+ },
+ "hkVertexFormat": {
+  "size": 260,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct Element[32]",
+    "name": "m_elements"
+   },
+   {
+    "offset": 256,
+    "type": "int",
+    "name": "m_numElements"
+   }
+  ]
+ },
+ "hkMeshVertexBuffer::LockedVertices::Buffer": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "m_start"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_stride"
+   },
+   {
+    "offset": 12,
+    "type": "struct hkVertexFormat::Element",
+    "name": "m_element"
+   }
+  ]
+ },
+ "hkMeshVertexBuffer::LockedVertices": {
+  "size": 784,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct Buffer[32]",
+    "name": "m_buffers"
+   },
+   {
+    "offset": 768,
+    "type": "int",
+    "name": "m_numBuffers"
+   },
+   {
+    "offset": 772,
+    "type": "int",
+    "name": "m_numVertices"
+   },
+   {
+    "offset": 776,
+    "type": "class hkBool",
+    "name": "m_isInterleaved"
+   }
+  ]
+ },
+ "hkRefPtr<const class hkMeshShape>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const class hkMeshShape *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkArrayBase<class hkMeshVertexBuffer *>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMeshVertexBuffer **",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkRefPtr<class hkIndexedTransformSet>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkIndexedTransformSet *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkIndexedTransformSet": {
+  "size": 104,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkMatrix4f>",
+    "name": "m_matrices"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<class hkMatrix4f>",
+    "name": "m_inverseMatrices"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<short>",
+    "name": "m_matricesOrder"
+   },
+   {
+    "offset": 64,
+    "type": "class hkArray<class hkStringPtr>",
+    "name": "m_matricesNames"
+   },
+   {
+    "offset": 80,
+    "type": "class hkArray<struct hkMeshBoneIndexMapping>",
+    "name": "m_indexMappings"
+   },
+   {
+    "offset": 96,
+    "type": "class hkBool",
+    "name": "m_allMatricesAreAffine"
+   }
+  ]
+ },
+ "hkEnum<enum hkImage::DataType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkImage::UsageType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkImage::ChannelInfo": {
+  "size": 12,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint32",
+    "name": "m_offset"
+   },
+   {
+    "offset": 4,
+    "type": "hkUint32",
+    "name": "m_pitch"
+   },
+   {
+    "offset": 8,
+    "type": "hkUint16",
+    "name": "m_elementStride"
+   },
+   {
+    "offset": 10,
+    "type": "class hkEnum<enum hkImage::DataType, unsigned char>",
+    "name": "m_dataType"
+   },
+   {
+    "offset": 11,
+    "type": "class hkEnum<enum hkImage::UsageType, unsigned char>",
+    "name": "m_usage"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkImage::ChannelInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkImage::ChannelInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkImage::ChannelInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkImage::ChannelInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkImage::Descriptor": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint32",
+    "name": "m_imageWidth"
+   },
+   {
+    "offset": 4,
+    "type": "hkUint32",
+    "name": "m_imageHeight"
+   },
+   {
+    "offset": 8,
+    "type": "class hkArray<struct hkImage::ChannelInfo>",
+    "name": "m_channelInfos"
+   }
+  ]
+ },
+ "hkImage": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkMeshTexture::RawBufferDescriptor": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkInt64",
+    "name": "m_offset"
+   },
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_stride"
+   },
+   {
+    "offset": 12,
+    "type": "hkUint32",
+    "name": "m_numElements"
+   }
+  ]
+ },
+ "hkRefPtr<class hkMeshVertexBuffer>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMeshVertexBuffer *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkRefPtr<class hkMeshMaterial>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMeshMaterial *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkMemoryMeshShape::Section": {
+  "size": 56,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMeshVertexBuffer>",
+    "name": "m_vertexBuffer"
+   },
+   {
+    "offset": 8,
+    "type": "class hkRefPtr<class hkMeshMaterial>",
+    "name": "m_material"
+   },
+   {
+    "offset": 16,
+    "type": "struct hkMeshBoneIndexMapping",
+    "name": "m_boneMatrixMap"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkMeshSection::PrimitiveType, unsigned char>",
+    "name": "m_primitiveType"
+   },
+   {
+    "offset": 36,
+    "type": "int",
+    "name": "m_numPrimitives"
+   },
+   {
+    "offset": 40,
+    "type": "class hkEnum<enum hkMeshSection::MeshSectionIndexType, unsigned char>",
+    "name": "m_indexType"
+   },
+   {
+    "offset": 44,
+    "type": "int",
+    "name": "m_vertexStartIndex"
+   },
+   {
+    "offset": 48,
+    "type": "int",
+    "name": "m_transformIndex"
+   },
+   {
+    "offset": 52,
+    "type": "int",
+    "name": "m_indexBufferOffset"
+   }
+  ]
+ },
+ "hkMeshVertexBuffer": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkMeshMaterial": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkMeshTexture": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkEnum<enum hkMeshTexture::Format, signed char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "signed char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkMeshTexture::FilterMode, signed char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "signed char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkMeshTexture::TextureUsageType, signed char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "signed char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkMultipleVertexBuffer::VertexBufferInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::VertexBufferInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMultipleVertexBuffer::VertexBufferInfo": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMeshVertexBuffer>",
+    "name": "m_vertexBuffer"
+   },
+   {
+    "offset": 8,
+    "type": "struct hkMeshVertexBuffer::LockedVertices *",
+    "name": "m_lockedVertices"
+   },
+   {
+    "offset": 16,
+    "type": "class hkBool",
+    "name": "m_isLocked"
+   }
+  ]
+ },
+ "hkMultipleVertexBuffer::ElementInfo": {
+  "size": 2,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint8",
+    "name": "m_vertexBufferIndex"
+   },
+   {
+    "offset": 1,
+    "type": "hkUint8",
+    "name": "m_elementIndex"
+   }
+  ]
+ },
+ "hkPackfileHeader": {
+  "size": 64,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkInt32[2]",
+    "name": "m_magic"
+   },
+   {
+    "offset": 8,
+    "type": "hkInt32",
+    "name": "m_userTag"
+   },
+   {
+    "offset": 12,
+    "type": "hkInt32",
+    "name": "m_fileVersion"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint8[4]",
+    "name": "m_layoutRules"
+   },
+   {
+    "offset": 20,
+    "type": "hkInt32",
+    "name": "m_numSections"
+   },
+   {
+    "offset": 24,
+    "type": "hkInt32",
+    "name": "m_contentsSectionIndex"
+   },
+   {
+    "offset": 28,
+    "type": "hkInt32",
+    "name": "m_contentsSectionOffset"
+   },
+   {
+    "offset": 32,
+    "type": "hkInt32",
+    "name": "m_contentsClassNameSectionIndex"
+   },
+   {
+    "offset": 36,
+    "type": "hkInt32",
+    "name": "m_contentsClassNameSectionOffset"
+   },
+   {
+    "offset": 40,
+    "type": "char[16]",
+    "name": "m_contentsVersion"
+   },
+   {
+    "offset": 56,
+    "type": "hkInt32",
+    "name": "m_flags"
+   },
+   {
+    "offset": 60,
+    "type": "hkUint16",
+    "name": "m_maxpredicate"
+   },
+   {
+    "offset": 62,
+    "type": "hkUint16",
+    "name": "m_predicateArraySizePlusPadding"
+   }
+  ]
+ },
+ "hkSingleton<class hkBuiltinTypeRegistry> (empty)": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": []
+ },
+ "hkBuiltinTypeRegistry": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkResource::Export": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const char *",
+    "name": "name"
+   },
+   {
+    "offset": 8,
+    "type": "void *",
+    "name": "data"
+   }
+  ]
+ },
+ "hkResource::Import": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const char *",
+    "name": "name"
+   },
+   {
+    "offset": 8,
+    "type": "void **",
+    "name": "location"
+   }
+  ]
+ },
+ "hkPackfileSectionHeader": {
+  "size": 64,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "char[19]",
+    "name": "m_sectionTag"
+   },
+   {
+    "offset": 19,
+    "type": "char",
+    "name": "m_nullByte"
+   },
+   {
+    "offset": 20,
+    "type": "hkInt32",
+    "name": "m_absoluteDataStart"
+   },
+   {
+    "offset": 24,
+    "type": "hkInt32",
+    "name": "m_localFixupsOffset"
+   },
+   {
+    "offset": 28,
+    "type": "hkInt32",
+    "name": "m_globalFixupsOffset"
+   },
+   {
+    "offset": 32,
+    "type": "hkInt32",
+    "name": "m_virtualFixupsOffset"
+   },
+   {
+    "offset": 36,
+    "type": "hkInt32",
+    "name": "m_exportsOffset"
+   },
+   {
+    "offset": 40,
+    "type": "hkInt32",
+    "name": "m_importsOffset"
+   },
+   {
+    "offset": 44,
+    "type": "hkInt32",
+    "name": "m_endOffset"
+   },
+   {
+    "offset": 48,
+    "type": "hkInt32[4]",
+    "name": "m_pad"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkRefCountedProperties::Entry>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkRefCountedProperties::Entry *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkRefCountedProperties::Entry>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkRefCountedProperties::Entry *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkRefCountedProperties": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkArray<struct hkRefCountedProperties::Entry>",
+    "name": "m_entries"
+   }
+  ]
+ },
+ "hkRefCountedProperties::Entry": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkReferencedObject>",
+    "name": "m_object"
+   },
+   {
+    "offset": 8,
+    "type": "PropertyKey",
+    "name": "m_key"
+   },
+   {
+    "offset": 10,
+    "type": "hkUint16",
+    "name": "m_flags"
+   }
+  ]
+ },
+ "hkClassMemberAccessor::Vector4": {
+  "size": 16,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkReal[4]",
+    "name": "r"
+   }
+  ]
+ },
+ "hkClassMemberAccessor": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "m_address"
+   },
+   {
+    "offset": 8,
+    "type": "const hkClassMember *",
+    "name": "m_member"
+   }
+  ]
+ },
+ "hkClassMemberAccessor::SimpleArray": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "size"
+   }
+  ]
+ },
+ "hkClassMemberAccessor::HomogeneousArray": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkClass *",
+    "name": "klass"
+   },
+   {
+    "offset": 8,
+    "type": "void *",
+    "name": "data"
+   },
+   {
+    "offset": 16,
+    "type": "int",
+    "name": "size"
+   }
+  ]
+ },
+ "hkClassMemberAccessor::Matrix3": {
+  "size": 48,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "Vector4[3]",
+    "name": "v"
+   }
+  ]
+ },
+ "hkClassMemberAccessor::Transform": {
+  "size": 64,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "Vector4[3]",
+    "name": "r"
+   },
+   {
+    "offset": 48,
+    "type": "struct hkClassMemberAccessor::Vector4",
+    "name": "t"
+   }
+  ]
+ },
+ "hkClassAccessor": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkVariant",
+    "name": "m_variant"
+   }
+  ]
+ },
+ "hkResourceHandle::Link": {
+  "size": 32,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const char *",
+    "name": "m_memberName"
+   },
+   {
+    "offset": 8,
+    "type": "const char *",
+    "name": "m_externalId"
+   },
+   {
+    "offset": 16,
+    "type": "class hkClassMemberAccessor",
+    "name": "m_memberAccessor"
+   }
+  ]
+ },
+ "hkResourceBase": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkResourceMap": {
+  "size": 8,
+  "align": 8,
+  "vtable": true,
+  "fields": []
+ },
+ "hkMemoryResourceHandle::ExternalLink": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkStringPtr",
+    "name": "m_memberName"
+   },
+   {
+    "offset": 8,
+    "type": "class hkStringPtr",
+    "name": "m_externalId"
+   }
+  ]
+ },
+ "hkArrayBase<class hkRefPtr<class hkMemoryResourceHandle> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMemoryResourceHandle> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkStringMapOperations (empty)": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": []
+ },
+ "hkCachedHashMap<struct hkStringMapOperations, struct hkContainerHeapAllocator>": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "Elem *",
+    "name": "m_elem"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_numElems"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_hashMod"
+   }
+  ]
+ },
+ "hkStringMap<class hkResourceHandle *>": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkCachedHashMap<struct hkStringMapOperations, struct hkContainerHeapAllocator>",
+    "name": "m_map"
+   }
+  ]
+ },
+ "hkContainerResourceMap": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "class hkStringMap<class hkResourceHandle *>",
+    "name": "m_resources"
+   }
+  ]
+ },
+ "hkArrayBase<class hkRootLevelContainer::NamedVariant>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRootLevelContainer::NamedVariant *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<class hkRootLevelContainer::NamedVariant>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRootLevelContainer::NamedVariant *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkRootLevelContainer": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkArray<class hkRootLevelContainer::NamedVariant>",
+    "name": "m_namedVariants"
+   }
+  ]
+ },
+ "hkRootLevelContainer::NamedVariant": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 8,
+    "type": "class hkStringPtr",
+    "name": "m_className"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefVariant",
+    "name": "m_variant"
+   }
+  ]
+ },
+ "hkRefPtr<class hkMeshShape>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMeshShape *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkSkinnedMeshShape::BoneSet": {
+  "size": 4,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint16",
+    "name": "m_boneBufferOffset"
+   },
+   {
+    "offset": 2,
+    "type": "hkUint16",
+    "name": "m_numBones"
+   }
+  ]
+ },
+ "hkHandle<unsigned short, 65535, struct hkSkinnedMeshShape::BoneSetIdDiscriminant>": {
+  "size": 2,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned short",
+    "name": "m_value"
+   }
+  ]
+ },
+ "hkSkinnedMeshShape::BoneSection": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMeshShape>",
+    "name": "m_meshBuffer"
+   },
+   {
+    "offset": 8,
+    "type": "struct hkHandle<unsigned short, 65535, struct hkSkinnedMeshShape::BoneSetIdDiscriminant>",
+    "name": "m_startBoneSetId"
+   },
+   {
+    "offset": 10,
+    "type": "hkInt16",
+    "name": "m_numBoneSets"
+   }
+  ]
+ },
+ "hkSkinnedMeshShape::Part": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "int",
+    "name": "m_startVertex"
+   },
+   {
+    "offset": 4,
+    "type": "int",
+    "name": "m_numVertices"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_startIndex"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_numIndices"
+   },
+   {
+    "offset": 16,
+    "type": "struct hkHandle<unsigned short, 65535, struct hkSkinnedMeshShape::BoneSetIdDiscriminant>",
+    "name": "m_boneSetId"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_meshSectionIndex"
+   },
+   {
+    "offset": 32,
+    "type": "class hkVector4f",
+    "name": "m_boundingSphere"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkSkinnedMeshShape::BoneSection>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::BoneSection *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMeshShape": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkRefPtr<class hkSkinnedMeshShape>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkSkinnedMeshShape *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkSkinnedMeshShape": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkUuid": {
+  "size": 16,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint32[4]",
+    "name": "m_data"
+   }
+  ]
+ },
  "hkaBone": {
   "size": 16,
   "align": 8,
@@ -14426,6 +16165,172 @@
     "offset": 12,
     "type": "int",
     "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtility (empty)": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": []
+ },
+ "hkaKeyFrameHierarchyUtility::ControlData": {
+  "size": 48,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkReal",
+    "name": "m_hierarchyGain"
+   },
+   {
+    "offset": 4,
+    "type": "hkReal",
+    "name": "m_velocityDamping"
+   },
+   {
+    "offset": 8,
+    "type": "hkReal",
+    "name": "m_accelerationGain"
+   },
+   {
+    "offset": 12,
+    "type": "hkReal",
+    "name": "m_velocityGain"
+   },
+   {
+    "offset": 16,
+    "type": "hkReal",
+    "name": "m_positionGain"
+   },
+   {
+    "offset": 20,
+    "type": "hkReal",
+    "name": "m_positionMaxLinearVelocity"
+   },
+   {
+    "offset": 24,
+    "type": "hkReal",
+    "name": "m_positionMaxAngularVelocity"
+   },
+   {
+    "offset": 28,
+    "type": "hkReal",
+    "name": "m_snapGain"
+   },
+   {
+    "offset": 32,
+    "type": "hkReal",
+    "name": "m_snapMaxLinearVelocity"
+   },
+   {
+    "offset": 36,
+    "type": "hkReal",
+    "name": "m_snapMaxAngularVelocity"
+   },
+   {
+    "offset": 40,
+    "type": "hkReal",
+    "name": "m_snapMaxLinearDistance"
+   },
+   {
+    "offset": 44,
+    "type": "hkReal",
+    "name": "m_snapMaxAngularDistance"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtility::WorkElem": {
+  "size": 64,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkVector4f",
+    "name": "m_prevPosition"
+   },
+   {
+    "offset": 16,
+    "type": "class hkQuaternionf",
+    "name": "m_prevRotation"
+   },
+   {
+    "offset": 32,
+    "type": "class hkVector4f",
+    "name": "m_prevLinearVelocity"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_prevAngularVelocity"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtility::KeyFrameData": {
+  "size": 64,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkQsTransformf",
+    "name": "m_worldFromRoot"
+   },
+   {
+    "offset": 48,
+    "type": "const hkQsTransform *",
+    "name": "m_desiredPoseLocalSpace"
+   },
+   {
+    "offset": 56,
+    "type": "struct WorkElem *",
+    "name": "m_internalReferencePose"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtility::BodyData": {
+  "size": 40,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "int",
+    "name": "m_numRigidBodies"
+   },
+   {
+    "offset": 8,
+    "type": "hkpRigidBody *const *",
+    "name": "m_rigidBodies"
+   },
+   {
+    "offset": 16,
+    "type": "const hkInt16 *",
+    "name": "m_parentIndices"
+   },
+   {
+    "offset": 24,
+    "type": "int *",
+    "name": "m_controlDataIndices"
+   },
+   {
+    "offset": 32,
+    "type": "const hkReal *",
+    "name": "m_boneWeights"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtility::Output": {
+  "size": 4,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkReal",
+    "name": "m_stressSquared"
    }
   ]
  },
@@ -15571,6 +17476,36 @@
    }
   ]
  },
+ "hkcdAabbTreeQueries (empty)": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": []
+ },
+ "hkcdAabbTreeQueries::RaycastCollector": {
+  "size": 8,
+  "align": 8,
+  "vtable": true,
+  "fields": []
+ },
+ "hkcdAabbTreeQueries::AabbCollector": {
+  "size": 8,
+  "align": 8,
+  "vtable": true,
+  "fields": []
+ },
+ "hkcdAabbTreeQueries::ClosestPointCollector": {
+  "size": 8,
+  "align": 8,
+  "vtable": true,
+  "fields": []
+ },
+ "hkcdAabbTreeQueries::AllPairsCollector": {
+  "size": 8,
+  "align": 8,
+  "vtable": true,
+  "fields": []
+ },
  "hkpPhantom": {
   "size": 232,
   "align": 8,
@@ -16628,84 +18563,6 @@
     "offset": 112,
     "type": "class hkVector4f",
     "name": "m_extraScale"
-   }
-  ]
- },
- "hkArrayBase<struct hkRefCountedProperties::Entry>": {
-  "size": 16,
-  "align": 8,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "struct hkRefCountedProperties::Entry *",
-    "name": "m_data"
-   },
-   {
-    "offset": 8,
-    "type": "int",
-    "name": "m_size"
-   },
-   {
-    "offset": 12,
-    "type": "int",
-    "name": "m_capacityAndFlags"
-   }
-  ]
- },
- "hkArray<struct hkRefCountedProperties::Entry>": {
-  "size": 16,
-  "align": 8,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "struct hkRefCountedProperties::Entry *",
-    "name": "m_data"
-   },
-   {
-    "offset": 8,
-    "type": "int",
-    "name": "m_size"
-   },
-   {
-    "offset": 12,
-    "type": "int",
-    "name": "m_capacityAndFlags"
-   }
-  ]
- },
- "hkRefCountedProperties": {
-  "size": 16,
-  "align": 8,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkArray<struct hkRefCountedProperties::Entry>",
-    "name": "m_entries"
-   }
-  ]
- },
- "hkRefCountedProperties::Entry": {
-  "size": 16,
-  "align": 8,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkRefPtr<class hkReferencedObject>",
-    "name": "m_object"
-   },
-   {
-    "offset": 8,
-    "type": "PropertyKey",
-    "name": "m_key"
-   },
-   {
-    "offset": 10,
-    "type": "hkUint16",
-    "name": "m_flags"
    }
   ]
  },
@@ -19923,18 +21780,6 @@
    }
   ]
  },
- "hkFourTransposedPointsf": {
-  "size": 48,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "hkVector4f[3]",
-    "name": "m_vertices"
-   }
-  ]
- },
  "hkFourTransposedPointsd": {
   "size": 96,
   "align": 32,
@@ -21020,6 +22865,265 @@
    }
   ]
  },
+ "hkpModifierConstraintAtom": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   }
+  ]
+ },
+ "hkpMassChangerModifierConstraintAtom": {
+  "size": 80,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_factorA"
+   },
+   {
+    "offset": 64,
+    "type": "class hkVector4f",
+    "name": "m_factorB"
+   }
+  ]
+ },
+ "hkpCenterOfMassChangerModifierConstraintAtom": {
+  "size": 80,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_displacementA"
+   },
+   {
+    "offset": 64,
+    "type": "class hkVector4f",
+    "name": "m_displacementB"
+   }
+  ]
+ },
+ "hkpSoftContactModifierConstraintAtom": {
+  "size": 64,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   },
+   {
+    "offset": 48,
+    "type": "hkReal",
+    "name": "m_tau"
+   },
+   {
+    "offset": 52,
+    "type": "hkReal",
+    "name": "m_maxAcceleration"
+   }
+  ]
+ },
+ "hkpViscousSurfaceModifierConstraintAtom": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   }
+  ]
+ },
+ "hkpMovingSurfaceModifierConstraintAtom": {
+  "size": 64,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_velocity"
+   }
+  ]
+ },
+ "hkpIgnoreModifierConstraintAtom": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
+    "name": "m_type"
+   },
+   {
+    "offset": 16,
+    "type": "hkUint16",
+    "name": "m_modifierAtomSize"
+   },
+   {
+    "offset": 18,
+    "type": "hkUint16",
+    "name": "m_childSize"
+   },
+   {
+    "offset": 24,
+    "type": "hkpConstraintAtom *",
+    "name": "m_child"
+   },
+   {
+    "offset": 32,
+    "type": "hkUint32[2]",
+    "name": "m_pad"
+   }
+  ]
+ },
  "hkArrayBase<void (*)(class hkpMouseSpringAction *, const class hkStepInfo &, const class hkVector4f &)>": {
   "size": 16,
   "align": 8,
@@ -21455,265 +23559,6 @@
     "offset": 0,
     "type": "class hkInplaceArray<unsigned char, 8>",
     "name": "m_values"
-   }
-  ]
- },
- "hkpModifierConstraintAtom": {
-  "size": 48,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   }
-  ]
- },
- "hkpMassChangerModifierConstraintAtom": {
-  "size": 80,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   },
-   {
-    "offset": 48,
-    "type": "class hkVector4f",
-    "name": "m_factorA"
-   },
-   {
-    "offset": 64,
-    "type": "class hkVector4f",
-    "name": "m_factorB"
-   }
-  ]
- },
- "hkpCenterOfMassChangerModifierConstraintAtom": {
-  "size": 80,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   },
-   {
-    "offset": 48,
-    "type": "class hkVector4f",
-    "name": "m_displacementA"
-   },
-   {
-    "offset": 64,
-    "type": "class hkVector4f",
-    "name": "m_displacementB"
-   }
-  ]
- },
- "hkpSoftContactModifierConstraintAtom": {
-  "size": 64,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   },
-   {
-    "offset": 48,
-    "type": "hkReal",
-    "name": "m_tau"
-   },
-   {
-    "offset": 52,
-    "type": "hkReal",
-    "name": "m_maxAcceleration"
-   }
-  ]
- },
- "hkpViscousSurfaceModifierConstraintAtom": {
-  "size": 48,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   }
-  ]
- },
- "hkpMovingSurfaceModifierConstraintAtom": {
-  "size": 64,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
-   },
-   {
-    "offset": 48,
-    "type": "class hkVector4f",
-    "name": "m_velocity"
-   }
-  ]
- },
- "hkpIgnoreModifierConstraintAtom": {
-  "size": 48,
-  "align": 16,
-  "vtable": false,
-  "fields": [
-   {
-    "offset": 0,
-    "type": "class hkEnum<enum hkpConstraintAtom::AtomType, unsigned short>",
-    "name": "m_type"
-   },
-   {
-    "offset": 16,
-    "type": "hkUint16",
-    "name": "m_modifierAtomSize"
-   },
-   {
-    "offset": 18,
-    "type": "hkUint16",
-    "name": "m_childSize"
-   },
-   {
-    "offset": 24,
-    "type": "hkpConstraintAtom *",
-    "name": "m_child"
-   },
-   {
-    "offset": 32,
-    "type": "hkUint32[2]",
-    "name": "m_pad"
    }
   ]
  },
@@ -26948,6 +28793,1169 @@
    }
   ]
  },
+ "hkxBlob": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_data"
+   }
+  ]
+ },
+ "hkxEnvironment::Variable": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 8,
+    "type": "class hkStringPtr",
+    "name": "m_value"
+   }
+  ]
+ },
+ "hkEnum<enum hkxMaterialEffect::EffectType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkxMaterialShader::ShaderType, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkEnum<enum hkxVertexFloatDataChannel::VertexFloatDimensions, unsigned char>": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "unsigned char",
+    "name": "m_storage"
+   }
+  ]
+ },
+ "hkAabbHalf": {
+  "size": 16,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "hkUint16[8]",
+    "name": "m_data"
+   }
+  ]
+ },
+ "hkAlignSceneToNodeOptions": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkBool",
+    "name": "m_invert"
+   },
+   {
+    "offset": 17,
+    "type": "class hkBool",
+    "name": "m_transformPositionX"
+   },
+   {
+    "offset": 18,
+    "type": "class hkBool",
+    "name": "m_transformPositionY"
+   },
+   {
+    "offset": 19,
+    "type": "class hkBool",
+    "name": "m_transformPositionZ"
+   },
+   {
+    "offset": 20,
+    "type": "class hkBool",
+    "name": "m_transformRotation"
+   },
+   {
+    "offset": 21,
+    "type": "class hkBool",
+    "name": "m_transformScale"
+   },
+   {
+    "offset": 22,
+    "type": "class hkBool",
+    "name": "m_transformSkew"
+   },
+   {
+    "offset": 24,
+    "type": "hkInt32",
+    "name": "m_keyframe"
+   },
+   {
+    "offset": 32,
+    "type": "class hkStringPtr",
+    "name": "m_nodeName"
+   }
+  ]
+ },
+ "hkColor (empty)": {
+  "size": 1,
+  "align": 1,
+  "vtable": false,
+  "fields": []
+ },
+ "hkLocalFrameGroup": {
+  "size": 24,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkMeshBody": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkArray<class hkMeshVertexBuffer *>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMeshVertexBuffer **",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMemoryMeshBody": {
+  "size": 128,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkMatrix4f",
+    "name": "m_transform"
+   },
+   {
+    "offset": 80,
+    "type": "class hkRefPtr<class hkIndexedTransformSet>",
+    "name": "m_transformSet"
+   },
+   {
+    "offset": 88,
+    "type": "class hkRefPtr<const class hkMeshShape>",
+    "name": "m_shape"
+   },
+   {
+    "offset": 96,
+    "type": "class hkArray<class hkMeshVertexBuffer *>",
+    "name": "m_vertexBuffers"
+   },
+   {
+    "offset": 112,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkArrayBase<class hkRefPtr<class hkMeshTexture> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMeshTexture> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<class hkRefPtr<class hkMeshTexture> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMeshTexture> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMemoryMeshMaterial": {
+  "size": 128,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_materialName"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<class hkRefPtr<class hkMeshTexture> >",
+    "name": "m_textures"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_diffuseColor"
+   },
+   {
+    "offset": 64,
+    "type": "class hkVector4f",
+    "name": "m_ambientColor"
+   },
+   {
+    "offset": 80,
+    "type": "class hkVector4f",
+    "name": "m_specularColor"
+   },
+   {
+    "offset": 96,
+    "type": "class hkVector4f",
+    "name": "m_emissiveColor"
+   },
+   {
+    "offset": 112,
+    "type": "hkUlong",
+    "name": "m_userData"
+   },
+   {
+    "offset": 120,
+    "type": "hkReal",
+    "name": "m_tesselationFactor"
+   },
+   {
+    "offset": 124,
+    "type": "hkReal",
+    "name": "m_displacementAmount"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkMemoryMeshShape::Section>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMemoryMeshShape::Section *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkMemoryMeshShape::Section>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMemoryMeshShape::Section *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMemoryMeshShape": {
+  "size": 72,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkMemoryMeshShape::Section>",
+    "name": "m_sections"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<unsigned short>",
+    "name": "m_indices16"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<unsigned int>",
+    "name": "m_indices32"
+   },
+   {
+    "offset": 64,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkMemoryMeshTexture": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_filename"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_data"
+   },
+   {
+    "offset": 40,
+    "type": "class hkEnum<enum hkMeshTexture::Format, signed char>",
+    "name": "m_format"
+   },
+   {
+    "offset": 41,
+    "type": "class hkBool",
+    "name": "m_hasMipMaps"
+   },
+   {
+    "offset": 42,
+    "type": "class hkEnum<enum hkMeshTexture::FilterMode, signed char>",
+    "name": "m_filterMode"
+   },
+   {
+    "offset": 43,
+    "type": "class hkEnum<enum hkMeshTexture::TextureUsageType, signed char>",
+    "name": "m_usageHint"
+   },
+   {
+    "offset": 44,
+    "type": "hkInt32",
+    "name": "m_textureCoordChannel"
+   }
+  ]
+ },
+ "hkMemoryMeshVertexBuffer": {
+  "size": 440,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "struct hkVertexFormat",
+    "name": "m_format"
+   },
+   {
+    "offset": 276,
+    "type": "int[32]",
+    "name": "m_elementOffsets"
+   },
+   {
+    "offset": 408,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_memory"
+   },
+   {
+    "offset": 424,
+    "type": "int",
+    "name": "m_vertexStride"
+   },
+   {
+    "offset": 428,
+    "type": "class hkBool",
+    "name": "m_locked"
+   },
+   {
+    "offset": 432,
+    "type": "int",
+    "name": "m_numVertices"
+   },
+   {
+    "offset": 436,
+    "type": "class hkBool",
+    "name": "m_isBigEndian"
+   },
+   {
+    "offset": 437,
+    "type": "class hkBool",
+    "name": "m_isSharable"
+   }
+  ]
+ },
+ "hkResourceContainer": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkArray<class hkRefPtr<class hkMemoryResourceHandle> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMemoryResourceHandle> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArrayBase<class hkRefPtr<class hkMemoryResourceContainer> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMemoryResourceContainer> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<class hkRefPtr<class hkMemoryResourceContainer> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkMemoryResourceContainer> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMemoryResourceContainer": {
+  "size": 64,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 24,
+    "type": "hkMemoryResourceContainer *",
+    "name": "m_parent"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<class hkRefPtr<class hkMemoryResourceHandle> >",
+    "name": "m_resourceHandles"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<class hkRefPtr<class hkMemoryResourceContainer> >",
+    "name": "m_children"
+   }
+  ]
+ },
+ "hkResourceHandle": {
+  "size": 16,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkMemoryResourceHandle::ExternalLink>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMemoryResourceHandle::ExternalLink *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkMemoryResourceHandle::ExternalLink>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMemoryResourceHandle::ExternalLink *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMemoryResourceHandle": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefVariant",
+    "name": "m_variant"
+   },
+   {
+    "offset": 24,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<struct hkMemoryResourceHandle::ExternalLink>",
+    "name": "m_references"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkMultipleVertexBuffer::LockedElement>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::LockedElement *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkMultipleVertexBuffer::LockedElement>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::LockedElement *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkRefPtr<class hkMemoryMeshVertexBuffer>": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkMemoryMeshVertexBuffer *",
+    "name": "m_pntr"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkMultipleVertexBuffer::ElementInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::ElementInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkMultipleVertexBuffer::ElementInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::ElementInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkMultipleVertexBuffer::VertexBufferInfo>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkMultipleVertexBuffer::VertexBufferInfo *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkMultipleVertexBuffer": {
+  "size": 352,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "struct hkVertexFormat",
+    "name": "m_vertexFormat"
+   },
+   {
+    "offset": 280,
+    "type": "class hkArray<struct hkMultipleVertexBuffer::LockedElement>",
+    "name": "m_lockedElements"
+   },
+   {
+    "offset": 296,
+    "type": "class hkRefPtr<class hkMemoryMeshVertexBuffer>",
+    "name": "m_lockedBuffer"
+   },
+   {
+    "offset": 304,
+    "type": "class hkArray<struct hkMultipleVertexBuffer::ElementInfo>",
+    "name": "m_elementInfos"
+   },
+   {
+    "offset": 320,
+    "type": "class hkArray<struct hkMultipleVertexBuffer::VertexBufferInfo>",
+    "name": "m_vertexBufferInfos"
+   },
+   {
+    "offset": 336,
+    "type": "int",
+    "name": "m_numVertices"
+   },
+   {
+    "offset": 340,
+    "type": "class hkBool",
+    "name": "m_isLocked"
+   },
+   {
+    "offset": 344,
+    "type": "hkUint32",
+    "name": "m_updateCount"
+   },
+   {
+    "offset": 348,
+    "type": "class hkBool",
+    "name": "m_writeLock"
+   },
+   {
+    "offset": 349,
+    "type": "class hkBool",
+    "name": "m_isSharable"
+   },
+   {
+    "offset": 350,
+    "type": "class hkBool",
+    "name": "m_constructionComplete"
+   }
+  ]
+ },
+ "hkPostFinishAttribute": {
+  "size": 8,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void (*)(void *)",
+    "name": "m_postFinishFunction"
+   }
+  ]
+ },
+ "hkSimpleLocalFrame": {
+  "size": 128,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkTransformf",
+    "name": "m_transform"
+   },
+   {
+    "offset": 80,
+    "type": "class hkArray<class hkLocalFrame *>",
+    "name": "m_children"
+   },
+   {
+    "offset": 96,
+    "type": "const hkLocalFrame *",
+    "name": "m_parentFrame"
+   },
+   {
+    "offset": 104,
+    "type": "const hkLocalFrameGroup *",
+    "name": "m_group"
+   },
+   {
+    "offset": 112,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkSkinBinding": {
+  "size": 56,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefPtr<class hkMeshShape>",
+    "name": "m_skin"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<class hkMatrix4f>",
+    "name": "m_worldFromBoneTransforms"
+   },
+   {
+    "offset": 40,
+    "type": "class hkArray<class hkStringPtr>",
+    "name": "m_boneNames"
+   }
+  ]
+ },
+ "hkSkinnedRefMeshShape": {
+  "size": 64,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefPtr<class hkSkinnedMeshShape>",
+    "name": "m_skinnedMeshShape"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<short>",
+    "name": "m_bones"
+   },
+   {
+    "offset": 40,
+    "type": "class hkArray<class hkVector4f>",
+    "name": "m_localFromRootTransforms"
+   },
+   {
+    "offset": 56,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkSkinnedMeshShape::BoneSet>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::BoneSet *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkSkinnedMeshShape::BoneSet>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::BoneSet *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkSkinnedMeshShape::BoneSection>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::BoneSection *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkSkinnedMeshShape::Part>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::Part *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkSkinnedMeshShape::Part>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkSkinnedMeshShape::Part *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkStorageSkinnedMeshShape": {
+  "size": 88,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<short>",
+    "name": "m_bonesBuffer"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<struct hkSkinnedMeshShape::BoneSet>",
+    "name": "m_boneSets"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<struct hkSkinnedMeshShape::BoneSection>",
+    "name": "m_boneSections"
+   },
+   {
+    "offset": 64,
+    "type": "class hkArray<struct hkSkinnedMeshShape::Part>",
+    "name": "m_parts"
+   },
+   {
+    "offset": 80,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkStringObject": {
+  "size": 24,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_string"
+   }
+  ]
+ },
  "hkaParameterizedReferenceFrame": {
   "size": 96,
   "align": 16,
@@ -27614,6 +30622,50 @@
     "offset": 16,
     "type": "class hkaSkeletonMapperData",
     "name": "m_mapping"
+   }
+  ]
+ },
+ "hkcdDynamicAabbTree": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkBool",
+    "name": "m_shouldDeleteTree"
+   },
+   {
+    "offset": 24,
+    "type": "void *",
+    "name": "m_treePtr"
+   }
+  ]
+ },
+ "hkcdStaticAabbTree": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkBool",
+    "name": "m_shouldDeleteTree"
+   },
+   {
+    "offset": 24,
+    "type": "void *",
+    "name": "m_treePtr"
    }
   ]
  },
@@ -33216,6 +36268,1140 @@
     "offset": 252,
     "type": "class hkBool",
     "name": "m_fireCollisionCallbacks"
+   }
+  ]
+ },
+ "hkxAnimatedFloat": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_floats"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkxAttribute::Hint, unsigned char>",
+    "name": "m_hint"
+   }
+  ]
+ },
+ "hkxAnimatedMatrix": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_matrices"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkxAttribute::Hint, unsigned char>",
+    "name": "m_hint"
+   }
+  ]
+ },
+ "hkxAnimatedQuaternion": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_quaternions"
+   }
+  ]
+ },
+ "hkxAnimatedVector": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_vectors"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkxAttribute::Hint, unsigned char>",
+    "name": "m_hint"
+   }
+  ]
+ },
+ "hkxBlobMeshShape": {
+  "size": 56,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkxBlob",
+    "name": "m_blob"
+   },
+   {
+    "offset": 48,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkxCamera": {
+  "size": 80,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkVector4f",
+    "name": "m_from"
+   },
+   {
+    "offset": 32,
+    "type": "class hkVector4f",
+    "name": "m_focus"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_up"
+   },
+   {
+    "offset": 64,
+    "type": "hkReal",
+    "name": "m_fov"
+   },
+   {
+    "offset": 68,
+    "type": "hkReal",
+    "name": "m_far"
+   },
+   {
+    "offset": 72,
+    "type": "hkReal",
+    "name": "m_near"
+   },
+   {
+    "offset": 76,
+    "type": "class hkBool",
+    "name": "m_leftHanded"
+   }
+  ]
+ },
+ "hkxEdgeSelectionChannel": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<int>",
+    "name": "m_selectedEdges"
+   }
+  ]
+ },
+ "hkxEnum": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxEnum::Item>",
+    "name": "m_items"
+   }
+  ]
+ },
+ "hkArrayBase<struct hkxEnvironment::Variable>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkxEnvironment::Variable *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<struct hkxEnvironment::Variable>": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct hkxEnvironment::Variable *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkxEnvironment": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxEnvironment::Variable>",
+    "name": "m_variables"
+   }
+  ]
+ },
+ "hkxIndexBuffer": {
+  "size": 64,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkEnum<enum hkxIndexBuffer::IndexType, signed char>",
+    "name": "m_indexType"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<unsigned short>",
+    "name": "m_indices16"
+   },
+   {
+    "offset": 40,
+    "type": "class hkArray<unsigned int>",
+    "name": "m_indices32"
+   },
+   {
+    "offset": 56,
+    "type": "hkUint32",
+    "name": "m_vertexBaseOffset"
+   },
+   {
+    "offset": 60,
+    "type": "hkUint32",
+    "name": "m_length"
+   }
+  ]
+ },
+ "hkxLight": {
+  "size": 96,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkEnum<enum hkxLight::LightType, signed char>",
+    "name": "m_type"
+   },
+   {
+    "offset": 32,
+    "type": "class hkVector4f",
+    "name": "m_position"
+   },
+   {
+    "offset": 48,
+    "type": "class hkVector4f",
+    "name": "m_direction"
+   },
+   {
+    "offset": 64,
+    "type": "hkColor::Argb",
+    "name": "m_color"
+   },
+   {
+    "offset": 68,
+    "type": "hkReal",
+    "name": "m_angle"
+   },
+   {
+    "offset": 72,
+    "type": "hkReal",
+    "name": "m_range"
+   },
+   {
+    "offset": 76,
+    "type": "hkReal",
+    "name": "m_fadeStart"
+   },
+   {
+    "offset": 80,
+    "type": "hkReal",
+    "name": "m_fadeEnd"
+   },
+   {
+    "offset": 84,
+    "type": "hkInt16",
+    "name": "m_decayRate"
+   },
+   {
+    "offset": 88,
+    "type": "hkReal",
+    "name": "m_intensity"
+   },
+   {
+    "offset": 92,
+    "type": "class hkBool",
+    "name": "m_shadowCaster"
+   }
+  ]
+ },
+ "hkxMaterial": {
+  "size": 224,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxAttributeGroup>",
+    "name": "m_attributeGroups"
+   },
+   {
+    "offset": 32,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 40,
+    "type": "class hkArray<struct hkxMaterial::TextureStage>",
+    "name": "m_stages"
+   },
+   {
+    "offset": 64,
+    "type": "class hkVector4f",
+    "name": "m_diffuseColor"
+   },
+   {
+    "offset": 80,
+    "type": "class hkVector4f",
+    "name": "m_ambientColor"
+   },
+   {
+    "offset": 96,
+    "type": "class hkVector4f",
+    "name": "m_specularColor"
+   },
+   {
+    "offset": 112,
+    "type": "class hkVector4f",
+    "name": "m_emissiveColor"
+   },
+   {
+    "offset": 128,
+    "type": "class hkArray<class hkRefPtr<class hkxMaterial> >",
+    "name": "m_subMaterials"
+   },
+   {
+    "offset": 144,
+    "type": "class hkRefVariant",
+    "name": "m_extraData"
+   },
+   {
+    "offset": 152,
+    "type": "hkReal[2]",
+    "name": "m_uvMapScale"
+   },
+   {
+    "offset": 160,
+    "type": "hkReal[2]",
+    "name": "m_uvMapOffset"
+   },
+   {
+    "offset": 168,
+    "type": "hkReal",
+    "name": "m_uvMapRotation"
+   },
+   {
+    "offset": 172,
+    "type": "class hkEnum<enum hkxMaterial::UVMappingAlgorithm, unsigned int>",
+    "name": "m_uvMapAlgorithm"
+   },
+   {
+    "offset": 176,
+    "type": "hkReal",
+    "name": "m_specularMultiplier"
+   },
+   {
+    "offset": 180,
+    "type": "hkReal",
+    "name": "m_specularExponent"
+   },
+   {
+    "offset": 184,
+    "type": "class hkEnum<enum hkxMaterial::Transparency, unsigned char>",
+    "name": "m_transparency"
+   },
+   {
+    "offset": 192,
+    "type": "hkUlong",
+    "name": "m_userData"
+   },
+   {
+    "offset": 200,
+    "type": "class hkArray<struct hkxMaterial::Property>",
+    "name": "m_properties"
+   }
+  ]
+ },
+ "hkxMaterialEffect": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 24,
+    "type": "class hkEnum<enum hkxMaterialEffect::EffectType, unsigned char>",
+    "name": "m_type"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_data"
+   }
+  ]
+ },
+ "hkxMaterialShader": {
+  "size": 72,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 24,
+    "type": "class hkEnum<enum hkxMaterialShader::ShaderType, unsigned char>",
+    "name": "m_type"
+   },
+   {
+    "offset": 32,
+    "type": "class hkStringPtr",
+    "name": "m_vertexEntryName"
+   },
+   {
+    "offset": 40,
+    "type": "class hkStringPtr",
+    "name": "m_geomEntryName"
+   },
+   {
+    "offset": 48,
+    "type": "class hkStringPtr",
+    "name": "m_pixelEntryName"
+   },
+   {
+    "offset": 56,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_data"
+   }
+  ]
+ },
+ "hkArrayBase<class hkRefPtr<class hkxMaterialShader> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkxMaterialShader> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkArray<class hkRefPtr<class hkxMaterialShader> >": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "class hkRefPtr<class hkxMaterialShader> *",
+    "name": "m_data"
+   },
+   {
+    "offset": 8,
+    "type": "int",
+    "name": "m_size"
+   },
+   {
+    "offset": 12,
+    "type": "int",
+    "name": "m_capacityAndFlags"
+   }
+  ]
+ },
+ "hkxMaterialShaderSet": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkRefPtr<class hkxMaterialShader> >",
+    "name": "m_shaders"
+   }
+  ]
+ },
+ "hkxMesh": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkRefPtr<class hkxMeshSection> >",
+    "name": "m_sections"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<class hkRefPtr<class hkxMesh::UserChannelInfo> >",
+    "name": "m_userChannelInfos"
+   }
+  ]
+ },
+ "hkxMeshSection": {
+  "size": 112,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefPtr<class hkxVertexBuffer>",
+    "name": "m_vertexBuffer"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<class hkRefPtr<class hkxIndexBuffer> >",
+    "name": "m_indexBuffers"
+   },
+   {
+    "offset": 40,
+    "type": "class hkRefPtr<class hkxMaterial>",
+    "name": "m_material"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<class hkRefVariant>",
+    "name": "m_userChannels"
+   },
+   {
+    "offset": 64,
+    "type": "class hkArray<class hkRefPtr<class hkxVertexAnimation> >",
+    "name": "m_vertexAnimations"
+   },
+   {
+    "offset": 80,
+    "type": "class hkArray<float>",
+    "name": "m_linearKeyFrameHints"
+   },
+   {
+    "offset": 96,
+    "type": "class hkArray<struct hkMeshBoneIndexMapping>",
+    "name": "m_boneMatrixMap"
+   }
+  ]
+ },
+ "hkxNode": {
+  "size": 128,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxAttributeGroup>",
+    "name": "m_attributeGroups"
+   },
+   {
+    "offset": 32,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 40,
+    "type": "class hkRefVariant",
+    "name": "m_object"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<class hkMatrix4f>",
+    "name": "m_keyFrames"
+   },
+   {
+    "offset": 64,
+    "type": "class hkArray<class hkRefPtr<class hkxNode> >",
+    "name": "m_children"
+   },
+   {
+    "offset": 80,
+    "type": "class hkArray<struct hkxNode::AnnotationData>",
+    "name": "m_annotations"
+   },
+   {
+    "offset": 96,
+    "type": "class hkArray<float>",
+    "name": "m_linearKeyFrameHints"
+   },
+   {
+    "offset": 112,
+    "type": "class hkStringPtr",
+    "name": "m_userProperties"
+   },
+   {
+    "offset": 120,
+    "type": "class hkBool",
+    "name": "m_selected"
+   },
+   {
+    "offset": 121,
+    "type": "class hkBool",
+    "name": "m_bone"
+   }
+  ]
+ },
+ "hkxNodeSelectionSet": {
+  "size": 56,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxAttributeGroup>",
+    "name": "m_attributeGroups"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<class hkRefPtr<class hkxNode> >",
+    "name": "m_selectedNodes"
+   },
+   {
+    "offset": 48,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   }
+  ]
+ },
+ "hkxScene": {
+  "size": 240,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_modeller"
+   },
+   {
+    "offset": 24,
+    "type": "class hkStringPtr",
+    "name": "m_asset"
+   },
+   {
+    "offset": 32,
+    "type": "hkReal",
+    "name": "m_sceneLength"
+   },
+   {
+    "offset": 36,
+    "type": "hkUint32",
+    "name": "m_numFrames"
+   },
+   {
+    "offset": 40,
+    "type": "class hkRefPtr<class hkxNode>",
+    "name": "m_rootNode"
+   },
+   {
+    "offset": 48,
+    "type": "class hkArray<class hkRefPtr<class hkxNodeSelectionSet> >",
+    "name": "m_selectionSets"
+   },
+   {
+    "offset": 64,
+    "type": "class hkArray<class hkRefPtr<class hkxCamera> >",
+    "name": "m_cameras"
+   },
+   {
+    "offset": 80,
+    "type": "class hkArray<class hkRefPtr<class hkxLight> >",
+    "name": "m_lights"
+   },
+   {
+    "offset": 96,
+    "type": "class hkArray<class hkRefPtr<class hkxMesh> >",
+    "name": "m_meshes"
+   },
+   {
+    "offset": 112,
+    "type": "class hkArray<class hkRefPtr<class hkxMaterial> >",
+    "name": "m_materials"
+   },
+   {
+    "offset": 128,
+    "type": "class hkArray<class hkRefPtr<class hkxTextureInplace> >",
+    "name": "m_inplaceTextures"
+   },
+   {
+    "offset": 144,
+    "type": "class hkArray<class hkRefPtr<class hkxTextureFile> >",
+    "name": "m_externalTextures"
+   },
+   {
+    "offset": 160,
+    "type": "class hkArray<class hkRefPtr<class hkxSkinBinding> >",
+    "name": "m_skinBindings"
+   },
+   {
+    "offset": 176,
+    "type": "class hkArray<class hkRefPtr<class hkxSpline> >",
+    "name": "m_splines"
+   },
+   {
+    "offset": 192,
+    "type": "class hkMatrix3f",
+    "name": "m_appliedTransform"
+   }
+  ]
+ },
+ "hkxSkinBinding": {
+  "size": 128,
+  "align": 16,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkRefPtr<class hkxMesh>",
+    "name": "m_mesh"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<class hkStringPtr>",
+    "name": "m_nodeNames"
+   },
+   {
+    "offset": 40,
+    "type": "class hkArray<class hkMatrix4f>",
+    "name": "m_bindPose"
+   },
+   {
+    "offset": 64,
+    "type": "class hkMatrix4f",
+    "name": "m_initSkinTransform"
+   }
+  ]
+ },
+ "hkxSparselyAnimatedBool": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkBool>",
+    "name": "m_bools"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<float>",
+    "name": "m_times"
+   }
+  ]
+ },
+ "hkxSparselyAnimatedEnum": {
+  "size": 56,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<int>",
+    "name": "m_ints"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<float>",
+    "name": "m_times"
+   },
+   {
+    "offset": 48,
+    "type": "class hkRefPtr<class hkxEnum>",
+    "name": "m_enum"
+   }
+  ]
+ },
+ "hkxSparselyAnimatedString": {
+  "size": 48,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<class hkStringPtr>",
+    "name": "m_strings"
+   },
+   {
+    "offset": 32,
+    "type": "class hkArray<float>",
+    "name": "m_times"
+   }
+  ]
+ },
+ "hkxSpline": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<struct hkxSpline::ControlPoint>",
+    "name": "m_controlPoints"
+   },
+   {
+    "offset": 32,
+    "type": "class hkBool",
+    "name": "m_isClosed"
+   }
+  ]
+ },
+ "hkxTextureFile": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkStringPtr",
+    "name": "m_filename"
+   },
+   {
+    "offset": 24,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 32,
+    "type": "class hkStringPtr",
+    "name": "m_originalFilename"
+   }
+  ]
+ },
+ "hkxTextureInplace": {
+  "size": 56,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "char[4]",
+    "name": "m_fileType"
+   },
+   {
+    "offset": 24,
+    "type": "class hkArray<unsigned char>",
+    "name": "m_data"
+   },
+   {
+    "offset": 40,
+    "type": "class hkStringPtr",
+    "name": "m_name"
+   },
+   {
+    "offset": 48,
+    "type": "class hkStringPtr",
+    "name": "m_originalFilename"
+   }
+  ]
+ },
+ "hkxTriangleSelectionChannel": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<int>",
+    "name": "m_selectedTriangles"
+   }
+  ]
+ },
+ "hkxVertexAnimation": {
+  "size": 192,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "hkReal",
+    "name": "m_time"
+   },
+   {
+    "offset": 24,
+    "type": "class hkxVertexBuffer",
+    "name": "m_vertData"
+   },
+   {
+    "offset": 160,
+    "type": "class hkArray<int>",
+    "name": "m_vertexIndexMap"
+   },
+   {
+    "offset": 176,
+    "type": "class hkArray<struct hkxVertexAnimation::UsageMap>",
+    "name": "m_componentMap"
+   }
+  ]
+ },
+ "hkxVertexFloatDataChannel": {
+  "size": 40,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_perVertexFloats"
+   },
+   {
+    "offset": 32,
+    "type": "class hkEnum<enum hkxVertexFloatDataChannel::VertexFloatDimensions, unsigned char>",
+    "name": "m_dimensions"
+   }
+  ]
+ },
+ "hkxVertexIntDataChannel": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<int>",
+    "name": "m_perVertexInts"
+   }
+  ]
+ },
+ "hkxVertexSelectionChannel": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<int>",
+    "name": "m_selectedVertices"
+   }
+  ]
+ },
+ "hkxVertexVectorDataChannel": {
+  "size": 32,
+  "align": 8,
+  "vtable": true,
+  "fields": [
+   {
+    "offset": 8,
+    "type": "hkUint32",
+    "name": "m_memSizeAndRefCount"
+   },
+   {
+    "offset": 16,
+    "type": "class hkArray<float>",
+    "name": "m_perVertexVectors"
    }
   ]
  },
