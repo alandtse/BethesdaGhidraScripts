@@ -1,0 +1,932 @@
+{
+ "hknpBodyId": {
+  "size": 4,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint32_t",
+    "name": "m_value"
+   }
+  ]
+ },
+ "hknpConstraintId": {
+  "size": 4,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint32_t",
+    "name": "m_value"
+   }
+  ]
+ },
+ "hknpBodyCinfo": {
+  "size": 96,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "const void *",
+    "name": "shape"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint32_t",
+    "name": "reservedBodyId"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "motionId"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t",
+    "name": "qualityId"
+   },
+   {
+    "offset": 17,
+    "type": "std::uint8_t",
+    "name": "pad11"
+   },
+   {
+    "offset": 18,
+    "type": "std::uint16_t",
+    "name": "materialId"
+   },
+   {
+    "offset": 20,
+    "type": "std::uint32_t",
+    "name": "collisionFilterInfo"
+   },
+   {
+    "offset": 24,
+    "type": "std::int32_t",
+    "name": "flags"
+   },
+   {
+    "offset": 28,
+    "type": "float",
+    "name": "collisionLookAheadDistance"
+   },
+   {
+    "offset": 32,
+    "type": "const char *",
+    "name": "name"
+   },
+   {
+    "offset": 40,
+    "type": "std::uint64_t",
+    "name": "userData"
+   },
+   {
+    "offset": 48,
+    "type": "struct RE::NiPoint4",
+    "name": "position"
+   },
+   {
+    "offset": 64,
+    "type": "struct RE::NiPoint4",
+    "name": "orientation"
+   },
+   {
+    "offset": 80,
+    "type": "std::uint8_t",
+    "name": "spuFlags"
+   },
+   {
+    "offset": 81,
+    "type": "std::uint8_t[7]",
+    "name": "pad51"
+   },
+   {
+    "offset": 88,
+    "type": "void *",
+    "name": "localFrame"
+   }
+  ]
+ },
+ "hknpConstraintCinfo": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "constraintData"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint32_t",
+    "name": "bodyIdA"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "bodyIdB"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t",
+    "name": "flags"
+   },
+   {
+    "offset": 17,
+    "type": "std::uint8_t[7]",
+    "name": "pad11"
+   }
+  ]
+ },
+ "hknpConstraintManager": {
+  "size": 48,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "world"
+   },
+   {
+    "offset": 8,
+    "type": "void *",
+    "name": "constraintBuffer"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint32_t",
+    "name": "capacity"
+   },
+   {
+    "offset": 20,
+    "type": "_Bool",
+    "name": "constraintBufferIsUserOwned"
+   },
+   {
+    "offset": 21,
+    "type": "std::uint8_t[3]",
+    "name": "pad15"
+   },
+   {
+    "offset": 24,
+    "type": "struct planck::hknpConstraintId",
+    "name": "firstDestroyedConstraintId"
+   },
+   {
+    "offset": 28,
+    "type": "struct planck::hknpConstraintId",
+    "name": "firstFreeConstraintId"
+   },
+   {
+    "offset": 32,
+    "type": "std::uint32_t",
+    "name": "numAllocatedConstraints"
+   },
+   {
+    "offset": 36,
+    "type": "std::uint32_t",
+    "name": "numDestroyedConstraints"
+   },
+   {
+    "offset": 40,
+    "type": "struct planck::hknpConstraintId",
+    "name": "peakConstraintId"
+   },
+   {
+    "offset": 44,
+    "type": "std::uint8_t[4]",
+    "name": "pad2C"
+   }
+  ]
+ },
+ "hknpConstraint": {
+  "size": 56,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct planck::hknpBodyId",
+    "name": "m_bodyIdA"
+   },
+   {
+    "offset": 4,
+    "type": "struct planck::hknpBodyId",
+    "name": "m_bodyIdB"
+   },
+   {
+    "offset": 8,
+    "type": "void *",
+    "name": "m_data"
+   },
+   {
+    "offset": 16,
+    "type": "struct planck::hknpConstraintId",
+    "name": "m_constraintId"
+   },
+   {
+    "offset": 20,
+    "type": "std::uint16_t",
+    "name": "pad14"
+   },
+   {
+    "offset": 22,
+    "type": "std::uint8_t",
+    "name": "flags"
+   },
+   {
+    "offset": 23,
+    "type": "std::uint8_t",
+    "name": "constraintType"
+   },
+   {
+    "offset": 24,
+    "type": "std::uint64_t",
+    "name": "solverAtomsCache"
+   },
+   {
+    "offset": 32,
+    "type": "std::uint16_t",
+    "name": "atomsField"
+   },
+   {
+    "offset": 34,
+    "type": "std::int16_t",
+    "name": "runtimeAtoms"
+   },
+   {
+    "offset": 36,
+    "type": "std::uint8_t",
+    "name": "runtimeMeta"
+   },
+   {
+    "offset": 37,
+    "type": "std::uint8_t",
+    "name": "pad25"
+   },
+   {
+    "offset": 38,
+    "type": "std::int16_t",
+    "name": "runtimeSize"
+   },
+   {
+    "offset": 40,
+    "type": "void *",
+    "name": "m_runtime"
+   },
+   {
+    "offset": 48,
+    "type": "std::uint64_t",
+    "name": "pad30"
+   }
+  ]
+ },
+ "hkpConstraintMotor": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "vtable"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint16_t",
+    "name": "memSizeAndFlags"
+   },
+   {
+    "offset": 10,
+    "type": "std::uint16_t",
+    "name": "referenceCount"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "pad0C"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t",
+    "name": "type"
+   },
+   {
+    "offset": 17,
+    "type": "std::uint8_t[7]",
+    "name": "pad11"
+   }
+  ]
+ },
+ "hkpLimitedForceConstraintMotor": {
+  "size": 32,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "vtable"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint16_t",
+    "name": "memSizeAndFlags"
+   },
+   {
+    "offset": 10,
+    "type": "std::uint16_t",
+    "name": "referenceCount"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "pad0C"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t",
+    "name": "type"
+   },
+   {
+    "offset": 17,
+    "type": "std::uint8_t[7]",
+    "name": "pad11"
+   },
+   {
+    "offset": 24,
+    "type": "float",
+    "name": "minForce"
+   },
+   {
+    "offset": 28,
+    "type": "float",
+    "name": "maxForce"
+   }
+  ]
+ },
+ "hkpPositionConstraintMotor": {
+  "size": 48,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "vtable"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint16_t",
+    "name": "memSizeAndFlags"
+   },
+   {
+    "offset": 10,
+    "type": "std::uint16_t",
+    "name": "referenceCount"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "pad0C"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t",
+    "name": "type"
+   },
+   {
+    "offset": 17,
+    "type": "std::uint8_t[7]",
+    "name": "pad11"
+   },
+   {
+    "offset": 24,
+    "type": "float",
+    "name": "minForce"
+   },
+   {
+    "offset": 28,
+    "type": "float",
+    "name": "maxForce"
+   },
+   {
+    "offset": 32,
+    "type": "float",
+    "name": "tau"
+   },
+   {
+    "offset": 36,
+    "type": "float",
+    "name": "damping"
+   },
+   {
+    "offset": 40,
+    "type": "float",
+    "name": "proportionalRecoveryVelocity"
+   },
+   {
+    "offset": 44,
+    "type": "float",
+    "name": "constantRecoveryVelocity"
+   }
+  ]
+ },
+ "hkpConstraintAtom": {
+  "size": 2,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint16_t",
+    "name": "type"
+   }
+  ]
+ },
+ "hkpSetLocalTransformsConstraintAtom": {
+  "size": 144,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint16_t",
+    "name": "type"
+   },
+   {
+    "offset": 2,
+    "type": "std::uint8_t[14]",
+    "name": "pad02"
+   },
+   {
+    "offset": 16,
+    "type": "std::uint8_t[64]",
+    "name": "transformA"
+   },
+   {
+    "offset": 80,
+    "type": "std::uint8_t[64]",
+    "name": "transformB"
+   }
+  ]
+ },
+ "hkpSetupStabilizationAtom": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint16_t",
+    "name": "type"
+   },
+   {
+    "offset": 2,
+    "type": "_Bool",
+    "name": "enabled"
+   },
+   {
+    "offset": 3,
+    "type": "std::uint8_t",
+    "name": "pad03"
+   },
+   {
+    "offset": 4,
+    "type": "float",
+    "name": "maxAngle"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint64_t",
+    "name": "pad08"
+   }
+  ]
+ },
+ "hkpRagdollMotorConstraintAtom": {
+  "size": 96,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint16_t",
+    "name": "type"
+   },
+   {
+    "offset": 2,
+    "type": "_Bool",
+    "name": "enabled"
+   },
+   {
+    "offset": 3,
+    "type": "std::uint8_t",
+    "name": "pad03"
+   },
+   {
+    "offset": 4,
+    "type": "std::int16_t",
+    "name": "initializedOffset"
+   },
+   {
+    "offset": 6,
+    "type": "std::int16_t",
+    "name": "previousTargetAnglesOffset"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint8_t[8]",
+    "name": "pad08"
+   },
+   {
+    "offset": 16,
+    "type": "float[12]",
+    "name": "target_bRca"
+   },
+   {
+    "offset": 64,
+    "type": "hkpConstraintMotor *[3]",
+    "name": "motors"
+   },
+   {
+    "offset": 88,
+    "type": "std::uint8_t[8]",
+    "name": "pad58"
+   }
+  ]
+ },
+ "hkpLinMotorConstraintAtom": {
+  "size": 24,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::uint16_t",
+    "name": "type"
+   },
+   {
+    "offset": 2,
+    "type": "_Bool",
+    "name": "isEnabled"
+   },
+   {
+    "offset": 3,
+    "type": "std::uint8_t",
+    "name": "motorAxis"
+   },
+   {
+    "offset": 4,
+    "type": "std::int16_t",
+    "name": "initializedOffset"
+   },
+   {
+    "offset": 6,
+    "type": "std::int16_t",
+    "name": "previousTargetPosOffset"
+   },
+   {
+    "offset": 8,
+    "type": "float",
+    "name": "targetPosition"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint8_t[4]",
+    "name": "pad0C"
+   },
+   {
+    "offset": 16,
+    "type": "hkpConstraintMotor *",
+    "name": "motor"
+   }
+  ]
+ },
+ "hkbWorldFromModelModeData": {
+  "size": 8,
+  "align": 2,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "std::int16_t",
+    "name": "poseMatchingBone0"
+   },
+   {
+    "offset": 2,
+    "type": "std::int16_t",
+    "name": "poseMatchingBone1"
+   },
+   {
+    "offset": 4,
+    "type": "std::int16_t",
+    "name": "poseMatchingBone2"
+   },
+   {
+    "offset": 6,
+    "type": "WorldFromModelMode",
+    "name": "mode"
+   }
+  ]
+ },
+ "hkbRagdollDriver": {
+  "size": 192,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "void *",
+    "name": "vtable"
+   },
+   {
+    "offset": 8,
+    "type": "std::uint16_t",
+    "name": "memSizeAndFlags"
+   },
+   {
+    "offset": 10,
+    "type": "std::uint16_t",
+    "name": "referenceCount"
+   },
+   {
+    "offset": 12,
+    "type": "std::uint32_t",
+    "name": "pad0C"
+   },
+   {
+    "offset": 16,
+    "type": "float",
+    "name": "ragdollBlendOutTime"
+   },
+   {
+    "offset": 20,
+    "type": "struct planck::hkbWorldFromModelModeData",
+    "name": "worldFromModelModeData"
+   },
+   {
+    "offset": 28,
+    "type": "_Bool",
+    "name": "autoAddRemoveRagdollToWorld"
+   },
+   {
+    "offset": 29,
+    "type": "_Bool",
+    "name": "useAsynchronousStepping"
+   },
+   {
+    "offset": 30,
+    "type": "std::uint8_t[2]",
+    "name": "pad1E"
+   },
+   {
+    "offset": 32,
+    "type": "std::uint8_t[48]",
+    "name": "lastWorldFromModel"
+   },
+   {
+    "offset": 80,
+    "type": "struct planck::hkbWorldFromModelModeData",
+    "name": "worldFromModelModeDataInternal"
+   },
+   {
+    "offset": 88,
+    "type": "std::uint8_t[16]",
+    "name": "reportingWhenKeyframed"
+   },
+   {
+    "offset": 104,
+    "type": "hkbCharacter *",
+    "name": "character"
+   },
+   {
+    "offset": 112,
+    "type": "hkaRagdollInstance *",
+    "name": "ragdoll"
+   },
+   {
+    "offset": 120,
+    "type": "void *",
+    "name": "ragdollPoseWS"
+   },
+   {
+    "offset": 128,
+    "type": "void *",
+    "name": "poweredController"
+   },
+   {
+    "offset": 136,
+    "type": "hkaRagdollRigidBodyController *",
+    "name": "ragdollController"
+   },
+   {
+    "offset": 144,
+    "type": "void *",
+    "name": "lastPoseLocal"
+   },
+   {
+    "offset": 152,
+    "type": "std::int32_t",
+    "name": "lastNumPoseLocal"
+   },
+   {
+    "offset": 156,
+    "type": "float",
+    "name": "lastFrameRigidBodyOnFraction"
+   },
+   {
+    "offset": 160,
+    "type": "float",
+    "name": "lastFramePoweredOnFraction"
+   },
+   {
+    "offset": 164,
+    "type": "float",
+    "name": "timeRigidBodyControllerActive"
+   },
+   {
+    "offset": 168,
+    "type": "float",
+    "name": "ragdollBlendOutTimeElapsed"
+   },
+   {
+    "offset": 172,
+    "type": "_Bool",
+    "name": "canAddRagdollToWorld"
+   },
+   {
+    "offset": 173,
+    "type": "_Bool",
+    "name": "shouldReinitializeRagdollController"
+   },
+   {
+    "offset": 174,
+    "type": "std::uint8_t[9]",
+    "name": "unkAE"
+   },
+   {
+    "offset": 183,
+    "type": "_Bool",
+    "name": "isEnabled"
+   },
+   {
+    "offset": 184,
+    "type": "_Bool",
+    "name": "isRigidBodyControllerEnabled"
+   },
+   {
+    "offset": 185,
+    "type": "_Bool",
+    "name": "isPoweredControllerEnabled"
+   },
+   {
+    "offset": 186,
+    "type": "_Bool",
+    "name": "wasRigidBodyControllerEnabledLastFrame"
+   },
+   {
+    "offset": 187,
+    "type": "_Bool",
+    "name": "ragdollPoseWasUsed"
+   },
+   {
+    "offset": 188,
+    "type": "_Bool",
+    "name": "allBonesKeyframed"
+   },
+   {
+    "offset": 189,
+    "type": "std::uint8_t[3]",
+    "name": "padBD"
+   }
+  ]
+ },
+ "hkVector4f": {
+  "size": 16,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "float",
+    "name": "x"
+   },
+   {
+    "offset": 4,
+    "type": "float",
+    "name": "y"
+   },
+   {
+    "offset": 8,
+    "type": "float",
+    "name": "z"
+   },
+   {
+    "offset": 12,
+    "type": "float",
+    "name": "w"
+   }
+  ]
+ },
+ "hkQsTransform": {
+  "size": 48,
+  "align": 16,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "struct planck::hkVector4f",
+    "name": "m_translation"
+   },
+   {
+    "offset": 16,
+    "type": "struct planck::hkVector4f",
+    "name": "m_rotation"
+   },
+   {
+    "offset": 32,
+    "type": "struct planck::hkVector4f",
+    "name": "m_scale"
+   }
+  ]
+ },
+ "hkbGeneratorOutput": {
+  "size": 16,
+  "align": 8,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "Tracks *",
+    "name": "m_tracks"
+   },
+   {
+    "offset": 8,
+    "type": "_Bool",
+    "name": "m_deleteTracks"
+   }
+  ]
+ },
+ "hkaKeyFrameHierarchyUtilityControlData": {
+  "size": 40,
+  "align": 4,
+  "vtable": false,
+  "fields": [
+   {
+    "offset": 0,
+    "type": "float",
+    "name": "m_hierarchyGain"
+   },
+   {
+    "offset": 4,
+    "type": "float",
+    "name": "m_velocityGain"
+   },
+   {
+    "offset": 8,
+    "type": "float",
+    "name": "m_positionGain"
+   },
+   {
+    "offset": 12,
+    "type": "float",
+    "name": "m_positionMaxLinearVelocity"
+   },
+   {
+    "offset": 16,
+    "type": "float",
+    "name": "m_positionMaxAngularVelocity"
+   },
+   {
+    "offset": 20,
+    "type": "float",
+    "name": "m_snapGain"
+   },
+   {
+    "offset": 24,
+    "type": "float",
+    "name": "m_snapMaxLinearVelocity"
+   },
+   {
+    "offset": 28,
+    "type": "float",
+    "name": "m_snapMaxAngularVelocity"
+   },
+   {
+    "offset": 32,
+    "type": "float",
+    "name": "m_snapMaxLinearDistance"
+   },
+   {
+    "offset": 36,
+    "type": "float",
+    "name": "m_snapMaxAngularDistance"
+   }
+  ]
+ }
+}

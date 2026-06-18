@@ -113,12 +113,19 @@ def write_tu(path, classes, bad_includes):
 
 
 def compile_tu(path, dump=False):
-    args = [CLCL, "/std:c++14", "-fsyntax-only", "-W0",
-            "-I", str(SDK), "-DHK_COMPILER_HAS_INTRINSICS_IA32", str(path)]
+    # Build args in a fixed clean order (no index-insertion -- that split the
+    # -I/<dir> pairs when -m32 was absent, breaking the x64 dump pass).
+    args = [CLCL, "/std:c++14", "-fsyntax-only", "-W0"]
     if ARCH == 'x86':
-        args.insert(1, "-m32")
+        args.append("-m32")
     if dump:
-        args[2:2] = ["-Xclang", "-fdump-record-layouts"]
+        args += ["-Xclang", "-fdump-record-layouts"]
+    # extra include dirs first (shim for legacy <typeinfo.h>/<new.h> that
+    # pre-2010 Havok expects), then the SDK root.
+    for inc in (os.environ.get('BGS_HAVOK_INC', '') or '').split(';'):
+        if inc.strip():
+            args += ["-I", inc.strip()]
+    args += ["-I", str(SDK), "-DHK_COMPILER_HAS_INTRINSICS_IA32", str(path)]
     p = subprocess.run(args, capture_output=True, text=True)
     return p.returncode, p.stdout, p.stderr
 
