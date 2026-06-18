@@ -115,6 +115,63 @@ def _unk_offsets(dt):
     return offs
 
 
+def _vtable_class_map(prog):
+    """{vtable_address_offset: class_name} from VTABLE_<Class> symbols."""
+    st = prog.getSymbolTable()
+    out = {}
+    it = st.getAllSymbols(False)
+    while it.hasNext():
+        sym = it.next()
+        n = sym.getName()
+        if n.startswith('VTABLE_'):
+            out[sym.getAddress().getOffset()] = n[len('VTABLE_'):]
+    return out
+
+
+def _const_addr_off(vn, depth=0):
+    """Resolve a varnode to a constant RAM address offset (the ``&VTABLE``
+    target) through copy/cast/ptrsub.  None if not a constant address."""
+    from ghidra.program.model.pcode import PcodeOp
+    if vn is None or depth > 6:
+        return None
+    if vn.isConstant():
+        return int(vn.getOffset())
+    if vn.isAddress():
+        return int(vn.getAddress().getOffset())
+    d = vn.getDef()
+    if d is None:
+        return None
+    oc, ins = d.getOpcode(), d.getInputs()
+    if oc in (PcodeOp.COPY, PcodeOp.CAST, PcodeOp.INDIRECT) and ins:
+        return _const_addr_off(ins[0], depth + 1)
+    if (oc == PcodeOp.PTRSUB and len(ins) >= 2
+            and ins[0].isConstant() and ins[1].isConstant()):
+        return int(ins[0].getOffset()) + int(ins[1].getOffset())
+    return None
+
+
+def _constructed_class(hf, this_name, vtmap):
+    """If the function stores a known vtable address to ``this+0``, return
+    the class name (from vtmap).  Identifies a constructor STRUCTURALLY --
+    a ctor writes its class vtable to offset 0 -- so it works regardless of
+    whether the function carries a constructor-shaped NAME (ours don't)."""
+    from ghidra.program.model.pcode import PcodeOp
+    it = hf.getPcodeOps()
+    while it.hasNext():
+        op = it.next()
+        if op.getOpcode() != PcodeOp.STORE:
+            continue
+        ins = op.getInputs()
+        if len(ins) < 3:
+            continue
+        if _addr_off(ins[1], this_name, PcodeOp) != 0:
+            continue
+        v = _const_addr_off(ins[2])
+        if v is not None and v in vtmap:
+            return vtmap[v]
+    return None
+
+
 def run():
     from ghidra.app.decompiler import DecompInterface
     prog = currentProgram  # noqa: F821
@@ -135,56 +192,60 @@ def run():
         if offs:
             unk_by_class[dt.getName()] = offs
 
-    ctors_by_class = {}
-    for f in fm.getFunctions(True):
-        ps = f.getParameters()
-        if not ps:
-            continue
-        # param-0 of a method is the ``this`` pointer: ``TESObjectREFR *``.
-        # Strip the single trailing pointer marker to get the bare class.
-        # (NOT rstrip('*') / rstrip('64') -- rstrip removes a CHARACTER
-        # SET, so it would corrupt names ending in those chars, e.g.
-        # ``BSTArray64`` -> ``BSTArray``, ``hkVector4`` -> ``hkVector``.)
-        nm = ps[0].getDataType().getName()
-        if nm.endswith('*'):
-            nm = nm[:-1].rstrip()
-        cls = nm
-        if cls in unk_by_class and cp_plan.is_ctor(f.getName(), cls):
-            ctors_by_class.setdefault(cls, []).append(f)
+    # Candidate constructors are found STRUCTURALLY, not by name: a ctor
+    # references (and stores to this+0) its class's vtable.  Our binaries
+    # don't carry constructor-shaped function names, so the name heuristic
+    # (cp_plan.is_ctor) finds nothing -- the vtable cross-reference does.
+    rm = prog.getReferenceManager()
+    af = prog.getAddressFactory().getDefaultAddressSpace()
+    vtmap = _vtable_class_map(prog)
+    target_vt = {off: c for off, c in vtmap.items() if c in unk_by_class}
+
+    cand_funcs = set()
+    for off in target_vt:
+        addr = af.getAddress(off)
+        for ref in rm.getReferencesTo(addr):
+            f = fm.getFunctionContaining(ref.getFromAddress())
+            if f is not None:
+                cand_funcs.add(f)
+    cand_list = list(cand_funcs)
+    if MAX_CLASSES:
+        cand_list = cand_list[:MAX_CLASSES * 6]
 
     decomp = DecompInterface()
     decomp.openProgram(prog)
     rows = []
-    classes_done = named = typed_unk = 0
-    targets = list(ctors_by_class.items())
-    if MAX_CLASSES:
-        targets = targets[:MAX_CLASSES]
-    print('ctor-mine: %d unk-bearing structs, %d have a candidate constructor'
-          % (len(unk_by_class), len(ctors_by_class)))
-    for cls, ctors in targets:
-        classes_done += 1
-        scored = []
-        cache = {}
-        for f in ctors[:6]:
-            try:
-                r = decomp.decompileFunction(f, TIMEOUT, monitor)  # noqa: F821
-                if not (r and r.decompileCompleted()):
-                    continue
-                hf = r.getHighFunction()
-                lsm = hf.getLocalSymbolMap()
-                if lsm.getNumParams() < 1:
-                    continue
-                this_name = lsm.getParamSymbol(0).getName()
-                asg = _ctor_assignments(hf, this_name)
-                cache[f.getEntryPoint().toString()] = asg
-                scored.append((f.getEntryPoint().toString(), len(asg)))
-            except Exception:
+    named = typed_unk = 0
+    best_by_class = {}                      # cls -> (n_assign, assignments)
+    print('ctor-mine: %d unk-bearing structs, %d unk-class vtables, '
+          '%d functions reference a target vtable'
+          % (len(unk_by_class), len(target_vt), len(cand_list)))
+    for f in cand_list:
+        try:
+            r = decomp.decompileFunction(f, TIMEOUT, monitor)  # noqa: F821
+            if not (r and r.decompileCompleted()):
                 continue
-        best = cp_plan.best_ctor(scored)
-        if best is None:
+            hf = r.getHighFunction()
+            lsm = hf.getLocalSymbolMap()
+            if lsm.getNumParams() < 1:
+                continue
+            this_name = lsm.getParamSymbol(0).getName()
+            cls = _constructed_class(hf, this_name, vtmap)
+            if cls is None or cls not in unk_by_class:
+                continue
+            asg = _ctor_assignments(hf, this_name)
+            if not asg:                     # destructors write vtables too but
+                continue                    # carry no field=param writes -> skip
+            prev = best_by_class.get(cls)
+            if prev is None or len(asg) > prev[0]:
+                best_by_class[cls] = (len(asg), asg)
+        except Exception:
             continue
+    decomp.dispose()
+
+    for cls, (_n, asg) in best_by_class.items():
         unk = unk_by_class.get(cls, set())
-        for off, (tn, pname) in sorted(cache[best].items()):
+        for off, (tn, pname) in sorted(asg.items()):
             label = cp_plan.field_label(pname) or ''
             is_unk = off in unk
             rows.append((cls, '0x%X' % off, tn, label,
@@ -193,7 +254,7 @@ def run():
                 named += 1
             if is_unk:
                 typed_unk += 1
-    decomp.dispose()
+    classes_done = len(best_by_class)
 
     rows.sort(key=lambda r: (r[4] != 'unknown', r[0], int(r[1], 16)))
     if not os.path.isdir(os.path.dirname(out_csv)):
