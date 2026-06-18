@@ -32,6 +32,7 @@ DRIVERS = {
     'string_anchored_rename': CORE_DIR / 'string_anchored_rename.py',
     'ctor_mine':              CORE_DIR / 'ctor_mine.py',
     'globals_harvest':        CORE_DIR / 'globals_harvest.py',
+    'globals_apply':          CORE_DIR / 'globals_apply.py',
 }
 
 

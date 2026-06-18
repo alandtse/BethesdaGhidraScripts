@@ -39,9 +39,12 @@ DRIVER_PATHS = {
     'string_anchored_rename': CORE_DIR / 'string_anchored_rename.py',
     'ctor_mine':              CORE_DIR / 'ctor_mine.py',
     'globals_harvest':        CORE_DIR / 'globals_harvest.py',
+    'globals_apply':          CORE_DIR / 'globals_apply.py',
 }
-# Drivers that mutate the program (require a save).
-MUTATING = {'string_anchored_rename'}
+# Drivers that mutate the program (require a save).  globals_apply only
+# mutates when BGS_ENRICH_APPLY=go; saving an unchanged program is a
+# no-op, so listing it here is safe either way.
+MUTATING = {'string_anchored_rename', 'globals_apply'}
 
 # Default target set: every x64 MSVC program in the standard Combined.gpr
 # layout.  FalloutNV_Xbox_Debug (PPC) is deliberately absent.
@@ -117,8 +120,10 @@ def main():
                 # Per-program, per-driver output goes to a stable CSV path so
                 # ctor_mine/globals_harvest don't collide across programs.
                 tag = prog_path.strip('/').replace('/', '_').replace(' ', '_').replace('.', '_')
+                gq = str(CORE_DIR / 'refs' / f'globals_queue_{tag}.csv')
                 os.environ['BGS_CTOR_CSV'] = str(CORE_DIR / 'refs' / f'ctor_fields_{tag}.csv')
-                os.environ['BGS_GLOBALS_CSV'] = str(CORE_DIR / 'refs' / f'globals_queue_{tag}.csv')
+                os.environ['BGS_GLOBALS_CSV'] = gq          # globals_harvest writes
+                os.environ['BGS_GLOBALS_APPLY_CSV'] = gq    # globals_apply reads
                 label = f"{prog_path}  [{driver}]"
                 print(f"\n{'=' * 70}\n{label}\n{'=' * 70}")
                 t0 = time.time()
