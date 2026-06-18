@@ -40,11 +40,14 @@ DRIVER_PATHS = {
     'ctor_mine':              CORE_DIR / 'ctor_mine.py',
     'globals_harvest':        CORE_DIR / 'globals_harvest.py',
     'globals_apply':          CORE_DIR / 'globals_apply.py',
+    'settings_harvest':       CORE_DIR / 'settings_harvest.py',
+    'console_harvest':        CORE_DIR / 'console_harvest.py',
 }
-# Drivers that mutate the program (require a save).  globals_apply only
-# mutates when BGS_ENRICH_APPLY=go; saving an unchanged program is a
-# no-op, so listing it here is safe either way.
-MUTATING = {'string_anchored_rename', 'globals_apply'}
+# Drivers that mutate the program (require a save).  The *_harvest/apply
+# drivers only mutate when BGS_ENRICH_APPLY=go; saving an unchanged
+# program is a no-op, so listing them here is safe either way.
+MUTATING = {'string_anchored_rename', 'globals_apply',
+            'settings_harvest', 'console_harvest'}
 
 # Default target set: every x64 MSVC program in the standard Combined.gpr
 # layout.  FalloutNV_Xbox_Debug (PPC) is deliberately absent.

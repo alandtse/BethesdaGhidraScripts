@@ -33,6 +33,8 @@ DRIVERS = {
     'ctor_mine':              CORE_DIR / 'ctor_mine.py',
     'globals_harvest':        CORE_DIR / 'globals_harvest.py',
     'globals_apply':          CORE_DIR / 'globals_apply.py',
+    'settings_harvest':       CORE_DIR / 'settings_harvest.py',
+    'console_harvest':        CORE_DIR / 'console_harvest.py',
 }
 
 
