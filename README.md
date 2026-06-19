@@ -21,7 +21,7 @@ exes/skyrim/vr/SkyrimVR.exe       Skyrim VR    (1.4.15)
 exes/f4/og/Fallout4.exe           Fallout 4 OG (1.10.163) — types only
 exes/f4/ng/Fallout4.exe           Fallout 4 NG (1.10.984)
 exes/f4/ae/Fallout4.exe           Fallout 4 AE (1.11.191)
-exes/f4/221/Fallout4.exe          Fallout 4    (1.11.221)
+exes/f4/221/Fallout4.exe          Fallout 4 AE (1.11.221)
 exes/f4/vr/Fallout4VR.exe         Fallout 4 VR (1.2.72)   — types only
 exes/starfield/sf/Starfield.exe   Starfield    (1.16.236 / 1.16.242 / 1.16.244) — labels + vtables
 exes/fnv/og/FalloutNV.exe         Fallout NV   (1.4.0.525, x86) — xNVSE-sourced
@@ -135,8 +135,7 @@ first run.
 | Skyrim VR      | `exes/skyrim/vr`    | `1-4-15-0` (csv)   | `powerof3/CommonLibSSE`                           |
 | Fallout 4 OG   | `exes/f4/og`        | `1-10-163-0`       | `libxse/commonlibf4`                              |
 | Fallout 4 NG   | `exes/f4/ng`        | `1-10-984-0`       | `libxse/commonlibf4`                              |
-| Fallout 4 AE   | `exes/f4/ae`        | `1-11-191-0`       | `libxse/commonlibf4`                              |
-| Fallout 4 1.11.221 | `exes/f4/221`   | `1-11-221-0`       | `libxse/commonlibf4` (+ 1.11.221 PDB publics)     |
+| Fallout 4 AE   | `exes/f4/ae`, `exes/f4/221` | `1-11-191-0` / `1-11-221-0` | `libxse/commonlibf4` (+ 1.11.221 PDB publics) |
 | Fallout 4 VR   | `exes/f4/vr`        | `1-2-72-0` (csv)   | `libxse/commonlibf4`                              |
 | Starfield      | `exes/starfield/sf` | `1-16-236-0` / `1-16-242-0` / `1-16-244-0` (V5, auto) | `Starfield-Reverse-Engineering/CommonLibSF`       |
 | Fallout NV     | `exes/fnv/og`       | n/a — xNVSE hardcoded VAs | `xNVSE/NVSE` (x86) + optional `refs/fnv_names.csv` |
@@ -278,28 +277,6 @@ only touch `FUN_*`/undefined slots — never imported or user-set names.
 | `globals_harvest` / `globals_apply` | Types global singletons by the class whose methods consume them |
 | `settings_harvest` | Names + types game-setting value fields (`fXxx`/`bXxx`/`iXxx`) |
 | `console_harvest` / `console_harvest_sf` | Names console-command handlers (`Cmd_*`) — table-based, plus Starfield's code-based registration |
-
-### Havok struct pipeline
-
-A separate pipeline (`scripts/havok/`) imports **Havok engine struct layouts**
-into a program's Data Type Manager, typed from the Havok SDK version each game
-actually shipped (verified against version strings in the binaries):
-
-- `build_layouts` — compile Havok SDK headers to exact MSVC x64/x86 layouts (clang `-fdump-record-layouts`)
-- `build_pdb_layouts` — extract exact layouts from Havok library PDBs (llvm-pdbutil)
-- `apply_structs` / `apply_this` — import the structs and type `this` in Havok methods
-
-| Game | Havok version | Offsets |
-|---|---|---|
-| Fallout New Vegas | 7.1.0 (x86) | exact |
-| Skyrim SE / AE / VR | 2010.2.0 | exact |
-| Fallout 4 (all) | 2014.1 + Planck `hknp`/`hkp` | exact |
-| Starfield | 2018.1.0 | approximate — no version string in the binary; verify before relying on offsets |
-
-Havok reflection (member-offset metadata) is stripped from retail Bethesda
-builds, so layouts come from the SDK headers/PDBs — which you supply; the SDKs
-are not bundled. Without a matching SDK, the Havok step is skipped and the rest
-of the pipeline is unaffected.
 
 ---
 
