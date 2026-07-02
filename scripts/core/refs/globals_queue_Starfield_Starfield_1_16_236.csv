@@ -1,0 +1,2 @@
+global_addr,current_symbol,inferred_type,is_pointer,confidence,votes,total,distinct_classes,class_votes,callers,decision_type
+0x145F4AFD0,PlayerCharacter::Singleton,ArrowProjectile,0,medium,1,1,1,ArrowProjectile:1,Unk_0A,

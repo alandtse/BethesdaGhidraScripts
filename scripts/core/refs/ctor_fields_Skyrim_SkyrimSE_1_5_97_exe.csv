@@ -1,0 +1,161 @@
+class,offset,type,name,slot_state
+BSTempEffectDebris,0x40,undefined1,12,unknown
+ExtraInfoGeneralTopic,0x10,undefined8,2,unknown
+ExtraPackage,0x10,undefined8,2,unknown
+ExtraShouldWear,0x10,undefined1,2,unknown
+MapCamera,0x58,undefined8,2,unknown
+MovementControllerAI,0x110,undefined4,2,unknown
+StatsNode,0x40,undefined4,3,unknown
+StatsNode,0x48,undefined4,4,unknown
+StatsNode,0x50,longlong,5,unknown
+StatsNode,0x58,longlong,6,unknown
+bhkCharacterPointCollector,0x220,undefined8,2,unknown
+AbstractHeap,0x30,undefined8,4,known
+AbstractHeap,0x40,undefined4,5,known
+AbstractHeap,0x48,undefined8,2,known
+AbstractHeap,0x50,undefined8,3,known
+AbstractHeap,0x58,undefined8,3,known
+AbstractHeap,0xA4,undefined1,7,known
+AbstractHeap,0xA5,undefined1,6,known
+ActiveEffect,0x40,undefined8,3,known
+ActiveEffect,0x48,EffectItem *,4,known
+ActorMagicCaster,0xB8,undefined8,2,known
+ActorMagicCaster,0xF4,undefined4,3,known
+ActorValueInfo,0x50,byte *,3,known
+ActorValueMeter,0x48,undefined4,3,known
+AddCellGrassTask,0x38,TESObjectCELL *,2,known
+BGSBaseAlias,0x10,undefined8,2,known
+BGSBaseAlias,0x18,undefined4,3,known
+BGSDecalNode,0x140,char,3,known
+BGSEntryPointFunctionDataActivateChoice,0x10,undefined8,2,known
+BGSEntryPointFunctionDataActivateChoice,0x22,undefined2,3,known
+BSDynamicTriShape,0x148,ulonglong,2,known
+BSDynamicTriShape,0x158,ushort,4,known
+BSDynamicTriShape,0x15A,ushort,3,known
+BSDynamicTriShape,0x170,undefined4,5,known
+BSFaceGenKeyframeMultiple,0x8,Type,2,known
+BSGeometry,0x138,undefined8,2,known
+BSGeometry,0x148,undefined8,3,known
+BSMultiBoundAABB,0x48,undefined4,5,known
+BSMultiBoundAABB,0x4C,int,6,known
+BSMultiBoundAABB,0x50,undefined1,4,known
+BSPortalSharedNode,0x140,NiTimeController *,2,known
+BSSceneGraph,0x128,longlong *,4,known
+BSSceneGraph,0x138,undefined1,3,known
+BSShadowFrustumLight,0x568,float,4,known
+BSShadowFrustumLight,0x56C,float,5,known
+BSShadowFrustumLight,0x570,float,6,known
+BSTempEffect,0x10,undefined4,3,known
+BSTempEffectDebris,0x38,undefined8,4,known
+BSTempEffectGeometryDecal,0x38,longlong *,5,known
+BSTempEffectGeometryDecal,0xA4,undefined4,8,known
+BSTempEffectGeometryDecal,0xAC,undefined4,10,known
+BSTempEffectParticle,0x40,undefined8,4,known
+BSTempEffectParticle,0x88,longlong,5,known
+BSTempEffectSimpleDecal,0x170,undefined8,2,known
+BSTempEffectWeaponBlood,0x30,longlong,3,known
+BSTriShape,0x158,undefined2,5,known
+BSTriShape,0x15A,undefined2,4,known
+BSXFlags,0x18,undefined4,2,known
+DialoguePackage,0xF1,undefined1,4,known
+ExtraCount,0x10,undefined2,2,known
+ExtraGhost,0x10,undefined1,2,known
+ExtraPackage,0x1C,undefined2,3,known
+ExtraRank,0x10,undefined4,2,known
+ExtraSayToTopicInfo,0x38,undefined8,2,known
+ExtraSoul,0x10,undefined1,2,known
+Hazard,0xB8,Actor_vtbl_184 *,2,known
+ImageSpaceModifierInstance,0x14,undefined4,3,known
+ImageSpaceModifierInstance,0x20,undefined4,2,known
+ImageSpaceModifierInstance,0x28,uint,5,known
+ImageSpaceModifierInstanceDOF,0x64,undefined4,2,known
+ImageSpaceModifierInstanceDOF,0x68,undefined4,5,known
+ImageSpaceModifierInstanceDOF,0x6C,undefined4,6,known
+LoadStorageWrapper,0x20,longlong,2,known
+Main,0x18,undefined8,2,known
+Main,0x20,undefined8,3,known
+MessageBoxData,0x38,undefined4,6,known
+MessageBoxData,0x48,undefined4,7,known
+MessageBoxData,0x4C,undefined1,5,known
+Moon,0xB0,undefined4,3,known
+Moon,0xB4,undefined4,4,known
+Moon,0xB8,undefined4,5,known
+Moon,0xBC,undefined4,6,known
+Moon,0xC0,undefined4,7,known
+Moon,0xC4,undefined4,8,known
+NiColorInterpolator,0x28,longlong,2,known
+NiControllerManager,0xA8,undefined1,3,known
+NiControllerSequence,0x18,uint,3,known
+NiControllerSequence,0x1C,uint,4,known
+NiCullingProcess,0x8,undefined1,3,known
+NiCullingProcess,0x10,undefined8,2,known
+NiFile,0x20,uint,4,known
+NiFile,0x40,uint,3,known
+NiFloatInterpolator,0x18,undefined4,2,known
+NiGeometry,0x120,longlong,2,known
+NiGeometryData,0x10,undefined2,2,known
+NiGeometryData,0x30,NiObject_vtbl *,4,known
+NiGeometryData,0x40,NiObject_vtbl *,6,known
+NiPSysGravityModifier,0x30,undefined8,3,known
+NiPSysGravityModifier,0x44,undefined4,5,known
+NiPSysGravityModifier,0x48,undefined4,6,known
+NiPSysGravityModifier,0x4C,undefined4,7,known
+NiPSysGravityModifier,0x50,undefined4,8,known
+NiPSysGravityModifier,0x54,undefined4,9,known
+NiPSysModifier,0x18,uint,3,known
+NiParticles,0x158,longlong *,2,known
+SaveStorageWrapper,0x20,longlong,2,known
+StandardItemData,0x8,longlong,3,known
+StatsNode,0x44,undefined4,2,known
+TESTopic,0x31,undefined1,2,known
+ThirdPersonState,0x10,undefined8,2,known
+ThirdPersonState,0x18,undefined4,3,known
+TweenMenuCameraState,0x10,undefined8,2,known
+TweenMenuCameraState,0x18,undefined4,3,known
+VATSCameraState,0x10,undefined8,2,known
+VATSCameraState,0x18,undefined4,3,known
+WeaponEnchantmentController,0x8,undefined8,2,known
+WeaponEnchantmentController,0x10,longlong *,3,known
+ZeroOverheadHeap,0x8,SIZE_T,2,known
+ZeroOverheadHeap,0x10,undefined8,3,known
+hkLifoAllocator,0x10,undefined4,2,known
+hkMoppBvTreeShapeBase,0x18,undefined4,2,known
+hkMoppBvTreeShapeBase,0x28,hkReferencedObject *,3,known
+hkaAnimationControl,0x38,longlong,2,known
+hkaDefaultAnimationControl,0x38,undefined8,2,known
+hkaDefaultAnimationControl,0x68,undefined4,4,known
+hkbNode,0x80,hkReferencedObject *,2,known
+hkbNode,0x88,hkReferencedObject *,3,known
+hkbRagdollDriver,0x1C,undefined1,3,known
+hkbRagdollDriver,0x80,undefined8,2,known
+hkpAabbPhantom,0x4C,undefined4,3,known
+hkpAction,0x20,undefined8,4,known
+hkpAction,0x30,longlong,2,known
+hkpAction,0x38,longlong,3,known
+hkpBoxShape,0x20,undefined4,3,known
+hkpBroadPhase,0x10,undefined2,2,known
+hkpBroadPhase,0x12,undefined2,3,known
+hkpBroadPhase,0x14,undefined4,4,known
+hkpCachingShapePhantom,0x4C,undefined4,4,known
+hkpCapsuleShape,0x20,undefined4,4,known
+hkpCapsuleShape,0x3C,undefined4,4,known
+hkpCapsuleShape,0x4C,undefined4,4,known
+hkpCharacterContext,0x18,hkReferencedObject *,2,known
+hkpCharacterContext,0x20,undefined4,3,known
+hkpCharacterContext,0x24,undefined4,3,known
+hkpCompressedMeshShape,0x30,int,2,known
+hkpCompressedMeshShape,0x40,undefined4,3,known
+hkpConstraintInstance,0x18,undefined8,4,known
+hkpConstraintInstance,0x28,undefined8,2,known
+hkpConstraintInstance,0x30,undefined8,3,known
+hkpConstraintInstance,0x38,undefined1,5,known
+hkpConvexVerticesShape,0x20,undefined4,2,known
+hkpMoppBvTreeShape,0x58,hkReferencedObject *,2,known
+hkpMouseSpringAction,0x60,undefined4,4,known
+hkpMouseSpringAction,0x64,int,5,known
+hkpMouseSpringAction,0x6C,undefined4,6,known
+hkpShapeCollection,0x18,undefined4,2,known
+hkpShapeCollection,0x29,undefined1,3,known
+hkpSimpleShapePhantom,0x4C,undefined4,4,known
+hkpSimulationIsland,0x20,undefined8,2,known
+hkpSphereShape,0x20,undefined4,2,known

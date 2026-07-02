@@ -39,6 +39,7 @@ class F4AddressLibrary:
         self.ng_db: Dict[int, int] = {}
         self.ae_db: Dict[int, int] = {}
         self.vr_db: Dict[int, int] = {}
+        self.db_221: Dict[int, int] = {}
 
     def load_bin(self, file_path: str) -> Dict[int, int]:
         if not os.path.exists(file_path):
@@ -94,6 +95,7 @@ class F4AddressLibrary:
         self.ng_db = self.load_bin(ng_path)
         self.ae_db = self.load_bin(os.path.join(base_path, 'version-1-11-191-0.bin'))
         self.vr_db = self.load_csv(os.path.join(base_path, 'version-1-2-72-0.csv'))
+        self.db_221 = self.load_bin(os.path.join(base_path, 'version-1-11-221-0.bin'))
 
     def get_ae(self, id_: int) -> Optional[int]:
         return self.ae_db.get(id_) if id_ else None

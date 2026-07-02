@@ -173,13 +173,20 @@ def _unique_match_masked(src_sig, src_mask, window, tgt_text, tgt_idx, prefix_k=
 
 def port_symbols(src_rvas, src_text_rva, src_text,
                  tgt_text_rva, tgt_text, tgt_idx,
-                 window=32, prefix_k=6, masked=False, progress_every=0):
+                 window=32, prefix_k=6, masked=False, progress_every=0,
+                 src_sig_cache=None):
     """Port list of (name, src_rva) → list of (name, tgt_rva).
 
     src_rva / tgt_rva are PE RVAs (not absolute VAs).  Skips symbols that
     fall outside .text or match ambiguously.  With `masked=True`, wildcards
     rel32/rip-rel displacements so cross-build matches (OG↔VR, NG↔VR) work.
     If `progress_every` > 0, prints a stats dump every N source symbols.
+
+    ``src_sig_cache`` is an optional dict ``{rva: (src_sig, src_mask)}``
+    that lets callers share masked-signature computations across multiple
+    target passes (Capstone disasm of 90k+ source RVAs is otherwise
+    repeated per target, doubling the runtime when going 1->N).
+    Populated in place when ``masked=True``.
     """
     ported = []
     stats = {'ok': 0, 'missing_src': 0, 'no_prefix': 0, 'ambiguous_or_zero': 0}
@@ -197,7 +204,13 @@ def port_symbols(src_rvas, src_text_rva, src_text,
             stats['missing_src'] += 1
             continue
         if masked:
-            src_sig, src_mask = compute_masked_sig(src_text, off, window=window)
+            cache_hit = src_sig_cache is not None and rva in src_sig_cache
+            if cache_hit:
+                src_sig, src_mask = src_sig_cache[rva]
+            else:
+                src_sig, src_mask = compute_masked_sig(src_text, off, window=window)
+                if src_sig_cache is not None:
+                    src_sig_cache[rva] = (src_sig, src_mask)
             tgt_off = _unique_match_masked(src_sig, src_mask, window, tgt_text, tgt_idx, prefix_k)
             if tgt_off is None:
                 prefix = bytes(src_sig[:prefix_k])

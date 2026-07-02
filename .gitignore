@@ -12,3 +12,4 @@ __pycache__
 
 # Built release bundles (output of scripts/build_release_bundle.ps1)
 /release/
+build/

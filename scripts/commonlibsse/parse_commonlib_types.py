@@ -162,7 +162,9 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
     return _json.dumps(symbols, separators=(',', ':'))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_map=None):
+def run_version(version, symbols_json, fallback_symbols_json='[]',
+                address_lib_map=None, pdb_structs=None, pdb_enums=None,
+                gog_variants=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -185,6 +187,56 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_m
         extra_scope_paths=[COMMONLIB_INCLUDE],
     )
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
+
+    # Merge SkyrimSE.pdb-derived enums (AST wins on name collision).
+    if pdb_enums:
+        n_added = n_members = 0
+        for cls, en in pdb_enums.items():
+            if cls in enums:
+                continue
+            en2 = dict(en)
+            en2['values'] = [tuple(v) for v in en.get('values', [])]
+            enums[cls] = en2
+            n_added += 1
+            n_members += len(en2['values'])
+        if n_added:
+            print('PDB enum merge: {} new ({} members)'.format(n_added, n_members))
+
+    # Merge SkyrimSE.pdb-derived types into the clang AST result so SE/AE/VR
+    # all inherit Bethesda's full internal class hierarchy (the parts
+    # CommonLibSSE doesn't document).  Mirrors the FNV pdb-types merge.
+    if pdb_structs:
+        n_added = n_upgraded = 0
+        for cls, st in pdb_structs.items():
+            existing = structs.get(cls)
+            if existing is None:
+                structs[cls] = st
+                n_added += 1
+                continue
+            ex_fields = existing.get('fields', [])
+            non_vft = [f for f in ex_fields
+                       if not f.get('name', '').startswith('__vftable')]
+            if existing.get('size', 0) == 0 or not non_vft:
+                # Empty clang stub -- upgrade with PDB layout, keep clang's
+                # class methods + vtable info if any
+                upgraded = dict(st)
+                upgraded['vmethods']         = existing.get('vmethods', {})
+                upgraded['methods']          = existing.get('methods', {})
+                upgraded['has_vtable']       = existing.get('has_vtable', False)
+                upgraded['bases']            = existing.get('bases', [])
+                upgraded['_overload_aliases'] = existing.get('_overload_aliases', {})
+                structs[cls] = upgraded
+                n_upgraded += 1
+        print('PDB type merge: {} new + {} upgraded (clang AST is authoritative '
+              'for documented types)'.format(n_added, n_upgraded))
+        # Re-run flatten so PDB-introduced bases cascade fields down into
+        # their derived classes (mirrors FNV's post-PDB flatten pass).
+        try:
+            from ghidra_import_gen import flatten_structs as _flatten
+            _flatten(structs)
+        except Exception as e:
+            print('  WARNING: post-PDB flatten failed: {}: {}'.format(
+                type(e).__name__, e))
 
     symbols_json = _enrich_symbols_with_sigs(symbols_json, structs)
 
@@ -212,6 +264,40 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', address_lib_m
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source, address_lib_map=address_lib_map)
     print('Output: {} ({} enums, {} structs)'.format(output_path, n_enums, n_structs))
+
+    # --- GOG / extra-AE-build variants ---
+    # ``gog_variants`` is [(label, build_db, rev_1170), ...].  Every AE-keyed
+    # symbol is re-keyed through its address-library ID (stable across all
+    # AE builds): 1.6.1170-RVA -> ID -> build-RVA.  Types/vtables are byte-
+    # identical across AE builds, so we reuse this parse's AST results and
+    # only swap the offsets.  Closes the gap where the GOG Edition binary
+    # was applied with Steam 1.6.1170 offsets.
+    import json as _json
+    for label, build_db, rev_1170 in (gog_variants or []):
+        def _rekey(json_blob):
+            out = []
+            kept = dropped = 0
+            for s in _json.loads(json_blob):
+                a = s.get('a')
+                ai = s.get('ai') or (rev_1170.get(a) if a else None)
+                if ai is None or ai not in build_db:
+                    dropped += 1
+                    continue
+                ns = dict(s)
+                ns['a'] = build_db[ai]
+                ns['ai'] = ai
+                out.append(ns)
+                kept += 1
+            return _json.dumps(out, separators=(',', ':')), kept, dropped
+        sym_blob, k1, d1 = _rekey(symbols_json)
+        fb_blob, k2, d2 = _rekey(fallback_symbols_json)
+        variant_path = output_path.replace('.py', '_{}.py'.format(label))
+        generate_script(enums, structs, vtable_structs, variant_path,
+                        version, sym_blob, fb_blob, template_source,
+                        address_lib_map=address_lib_map)
+        print('Output: {} (re-keyed {} symbols + {} fallbacks; '
+              'dropped {}+{} without a {} mapping)'.format(
+                  variant_path, k1, k2, d1, d2, label))
 
 
 def _detect_exe_versions():
@@ -246,10 +332,12 @@ def main():
     print('=== Detecting exe versions ===')
     se_ver, ae_ver = _detect_exe_versions()
 
-    # Load address databases using detected versions
+    # Load address databases (AddressLibrary picks fixed versions:
+    # SE 1.5.97, AE 1.6.1170, VR 1.4.15 -- detected exe versions are
+    # logged for diagnostics but don't currently feed the loader).
+    _ = (se_ver, ae_ver)  # noqa: F841 -- kept for future per-version selection
     addr_lib = AddressLibrary()
-    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'),
-                      se_version=se_ver, ae_version=ae_ver)
+    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'))
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
     print('\n=== Collecting symbols via regex relocation parser ===')
@@ -348,9 +436,18 @@ def main():
     print('Added {} new symbols from AE rename, merged AE offset into {} existing'.format(
         rename_added, rename_merged))
 
-    # SE PDB public symbols fallback
+    # SE PDB public symbols fallback.  Prefer the pdbparse-backed loader
+    # (rich, parses S_PUB32 records directly) but fall back to the
+    # llvm-pdbutil pretty --externals dump when pdbparse isn't available
+    # (e.g. Python 3.12+ where the ``construct`` dep won't install).
     se_pdb_path = os.path.join(PROJECT_DIR, 'extras', 'SkyrimSE.pdb')
     se_pdb_names = load_se_pdb_names(se_pdb_path)
+    if not se_pdb_names:
+        from pdb_publics_skyrim import load_pdb_names as _load_via_pretty
+        se_pdb_names = _load_via_pretty()
+        if se_pdb_names:
+            print('  Using llvm-pdbutil pretty fallback: {} publics'.format(
+                len(se_pdb_names)))
     pdb_added = pdb_merged = 0
     for se_off, name in se_pdb_names.items():
         if se_off in sym_seen_se:
@@ -369,6 +466,53 @@ def main():
         pdb_added += 1
     print('Added {} new symbols from SE PDB, merged SE offset into {} existing'.format(
         pdb_added, pdb_merged))
+
+    # --- Structured signatures from SkyrimSE.pdb --globals ---
+    # The globals stream is the only part of this PDB carrying full
+    # function signatures (ret + callconv + args).  Attach parsed 'sd'
+    # descriptors to every SE-keyed symbol so the generated scripts apply
+    # typed signatures (mirrors FNV's Xbox-PDB sig pipeline).
+    sigs_path = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_func_sigs.json')
+    if os.path.isfile(sigs_path):
+        import json as _j
+        sys.path.insert(0, os.path.join(PROJECT_DIR, 'scripts', 'commonlibnvse'))
+        try:
+            from pdb_sig_to_structured import parse_sig as _parse_sig
+            rva_sigs = _j.loads(open(sigs_path, encoding='utf-8').read())
+            types_known = set()
+            enums_known = set()
+            tp = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_types.json')
+            ep = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_enums.json')
+            if os.path.isfile(tp):
+                types_known = set(_j.loads(open(tp, encoding='utf-8').read()))
+            if os.path.isfile(ep):
+                for cls in _j.loads(open(ep, encoding='utf-8').read()):
+                    enums_known.add(cls)
+                    enums_known.add(cls.replace('::', '_'))
+            n_sd = n_sd_fail = 0
+            for s in symbols:
+                if s.get('sd') or s.get('t') != 'func':
+                    continue
+                se_off = s.get('s')
+                if not se_off:
+                    continue
+                rec = rva_sigs.get('0x{:08X}'.format(se_off))
+                if not rec:
+                    continue
+                try:
+                    sd = _parse_sig(rec['sig'], types_known, enums_known, {})
+                except Exception:
+                    sd = None
+                if sd is not None:
+                    s['sd'] = sd
+                    n_sd += 1
+                else:
+                    n_sd_fail += 1
+            print('Attached {} structured sigs from PDB globals '
+                  '({} unparseable)'.format(n_sd, n_sd_fail))
+        except ImportError as e:
+            print('  WARNING: sig parser unavailable ({}); skipping '
+                  'globals-sig attach'.format(e))
 
     # Normalize __ → :: in all names
     for s in symbols:
@@ -421,8 +565,113 @@ def main():
         'ae':  ae_fallback_json,
         'svr': '[]',
     }
+
+    # --- Persisted bytesig-port results (refs/bytesig_ported_<ver>.csv) ---
+    # Written by commonlibsse/bytesig_port_combined.py --write-back-script.
+    # Merging here makes the ported names survive regeneration: previously
+    # they only lived inside the generated scripts and every regen wiped
+    # them until the ~42-min port was re-run.
+    def _merge_bytesig_csv(fb_json, csv_name, rva_key):
+        csv_path = os.path.join(SCRIPT_DIR, 'refs', csv_name)
+        if not os.path.isfile(csv_path):
+            return fb_json
+        existing = _json.loads(fb_json)
+        used = {s.get(rva_key) for s in existing if s.get(rva_key)}
+        n_added = 0
+        with open(csv_path, encoding='utf-8') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#'):
+                    continue
+                parts = ln.split(',', 2)
+                if len(parts) < 2:
+                    continue
+                try:
+                    rva = int(parts[0], 16)
+                except ValueError:
+                    continue
+                if rva in used:
+                    continue
+                used.add(rva)
+                existing.append({'n': parts[1], 't': 'func', 'sig': '',
+                                 rva_key: rva,
+                                 'src': parts[2] if len(parts) > 2 else 'bytesig-port'})
+                n_added += 1
+        if n_added:
+            print('  merged {} persisted bytesig names from {}'.format(
+                n_added, csv_name))
+        return _json.dumps(existing, separators=(',', ':'))
+
+    fb_for['ae']  = _merge_bytesig_csv(fb_for['ae'],  'bytesig_ported_ae.csv', 'a')
+    fb_for['svr'] = _merge_bytesig_csv(fb_for['svr'], 'bytesig_ported_vr.csv', 'v')
+    fb_for['se']  = _merge_bytesig_csv(fb_for['se'],  'bytesig_ported_se.csv', 's')
+
+    # --- SkyrimSE.pdb-derived type layouts (Bethesda's full class hierarchy) ---
+    # Parse once, share across SE/AE/VR.  CommonLibSSE documents only the
+    # public-facing classes; the PDB exposes ~19k internal Bethesda types
+    # with full field layouts that lift every F4-style "empty stub" struct
+    # to a real layout for Ghidra (same FNV gained from Fallout_Debug PDB).
+    pdb_structs = {}
+    pdb_types_json = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_types.json')
+    if os.path.isfile(pdb_types_json):
+        from pathlib import Path as _Path
+        # Reuse the FNV converter -- pointer-size-agnostic, output 'ptr' is
+        # resolved by Ghidra against the loaded program's pointer width.
+        sys.path.insert(0, os.path.join(PROJECT_DIR, 'scripts', 'commonlibnvse'))
+        from pdb_types_to_pipeline import convert_pdb_types as _convert_pdb_types
+        try:
+            pdb_structs, n_skipped, n_fields = _convert_pdb_types(
+                _Path(pdb_types_json),
+                category='/CommonLibSSE/PDB')
+            print('\nLoaded {} PDB structs ({} fields total, skipped {} empty/anon)'.format(
+                len(pdb_structs), n_fields, n_skipped))
+        except Exception as e:
+            print('WARNING: SkyrimSE PDB type load failed: {}: {}'.format(
+                type(e).__name__, e))
+            pdb_structs = {}
+    else:
+        print('\nNo SkyrimSE.pdb types JSON at {} -- run '
+              'scripts/commonlibnvse/parse_pdb_pretty.py against the PDB '
+              'pretty dump first to populate it.'.format(pdb_types_json))
+
+    # --- SkyrimSE.pdb-derived enums (Bethesda internal enums beyond CommonLibSSE) ---
+    pdb_enums = {}
+    pdb_enums_json = os.path.join(SCRIPT_DIR, 'refs', 'skyrimse_pdb_enums.json')
+    if os.path.isfile(pdb_enums_json):
+        try:
+            with open(pdb_enums_json, encoding='utf-8') as f:
+                pdb_enums = _json.load(f)
+            # Re-tag category from FNV default to Skyrim bucket.
+            for cls, en in pdb_enums.items():
+                en['category'] = '/CommonLibSSE/PDB'
+            print('Loaded {} PDB enums'.format(len(pdb_enums)))
+        except Exception as e:
+            print('WARNING: SkyrimSE PDB enum load failed: {}: {}'.format(
+                type(e).__name__, e))
+            pdb_enums = {}
+
+    # --- GOG AE builds from skyrimae.relib (meh321's all-builds ID DB) ---
+    # The relib carries per-build ID->RVA maps for every AE release.  We
+    # emit re-keyed variants of the AE script for the GOG builds so the
+    # GOG Edition binary gets correct offsets instead of Steam 1.6.1170's.
+    gog_variants = []
+    relib_path = os.path.join(PROJECT_DIR, 'extern',
+                              'AddressLibraryDatabase', 'skyrimae.relib')
+    if os.path.isfile(relib_path):
+        from address_library import load_relib_version
+        rev_1170 = {rva: i for i, rva in addr_lib.ae_db.items()}
+        for label, build in (('GOG_1_6_1179', (1, 6, 1179, 0)),
+                             ('GOG_1_6_1170', (1, 6, 1170, 0, 1))):
+            db = load_relib_version(relib_path, build)
+            if db:
+                gog_variants.append((label, db, rev_1170))
+                print('Loaded relib build {}: {:,} entries'.format(
+                    '.'.join(str(x) for x in build), len(db)))
+
     for version in ('se', 'ae', 'svr'):
-        run_version(version, symbols_json, fb_for[version])
+        run_version(version, symbols_json, fb_for[version],
+                    pdb_structs=pdb_structs, pdb_enums=pdb_enums,
+                    gog_variants=gog_variants if version == 'ae' else None)
 
 
 if __name__ == '__main__':

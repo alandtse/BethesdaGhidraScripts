@@ -8,7 +8,7 @@ signatures, and address-library symbols into Ghidra for Bethesda game binaries.
 1. Clone the repo:
 
 ```bash
-git clone https://github.com/doodlum/BethesdaGhidraScripts.git
+git clone https://github.com/1001Bits/BethesdaGhidraScripts.git
 cd BethesdaGhidraScripts
 ```
 
@@ -21,8 +21,9 @@ exes/skyrim/vr/SkyrimVR.exe       Skyrim VR    (1.4.15)
 exes/f4/og/Fallout4.exe           Fallout 4 OG (1.10.163) — types only
 exes/f4/ng/Fallout4.exe           Fallout 4 NG (1.10.984)
 exes/f4/ae/Fallout4.exe           Fallout 4 AE (1.11.191)
+exes/f4/221/Fallout4.exe          Fallout 4 AE (1.11.221)
 exes/f4/vr/Fallout4VR.exe         Fallout 4 VR (1.2.72)   — types only
-exes/starfield/sf/Starfield.exe   Starfield    (1.16.236 / 1.16.242) — labels + vtables
+exes/starfield/sf/Starfield.exe   Starfield    (1.16.236 / 1.16.242 / 1.16.244) — labels + vtables
 exes/fnv/og/FalloutNV.exe         Fallout NV   (1.4.0.525, x86) — xNVSE-sourced
 ```
 
@@ -134,9 +135,9 @@ first run.
 | Skyrim VR      | `exes/skyrim/vr`    | `1-4-15-0` (csv)   | `powerof3/CommonLibSSE`                           |
 | Fallout 4 OG   | `exes/f4/og`        | `1-10-163-0`       | `libxse/commonlibf4`                              |
 | Fallout 4 NG   | `exes/f4/ng`        | `1-10-984-0`       | `libxse/commonlibf4`                              |
-| Fallout 4 AE   | `exes/f4/ae`        | `1-11-191-0`       | `libxse/commonlibf4`                              |
+| Fallout 4 AE   | `exes/f4/ae`, `exes/f4/221` | `1-11-191-0` / `1-11-221-0` | `libxse/commonlibf4` (+ 1.11.221 PDB publics) |
 | Fallout 4 VR   | `exes/f4/vr`        | `1-2-72-0` (csv)   | `libxse/commonlibf4`                              |
-| Starfield      | `exes/starfield/sf` | `1-16-236-0` / `1-16-242-0` (V5, auto) | `Starfield-Reverse-Engineering/CommonLibSF`       |
+| Starfield      | `exes/starfield/sf` | `1-16-236-0` / `1-16-242-0` / `1-16-244-0` (V5, auto) | `Starfield-Reverse-Engineering/CommonLibSF`       |
 | Fallout NV     | `exes/fnv/og`       | n/a — xNVSE hardcoded VAs | `xNVSE/NVSE` (x86) + optional `refs/fnv_names.csv` |
 
 You don't need all of them. The script detects which executables are present
@@ -179,7 +180,7 @@ Starfield 1.16.236.0 import, versus 299 from auto-analysis alone.
 The SF pipeline reads the FileVersion resource from `Starfield.exe`
 (SteamStub scrambles `VS_FIXEDFILEINFO`, but the string table is
 untouched) and loads the matching `versionlib-X-Y-Z-W.bin` from
-`addresslibrary/starfield/`.  Both 1.16.236 and 1.16.242 ship pre-bundled;
+`addresslibrary/starfield/`.  1.16.236, 1.16.242 and 1.16.244 ship pre-bundled;
 to support a future SF patch, drop the new bin into that directory and
 the loader picks it up automatically.  Mismatched builds fail loud
 (listing what IS available) instead of silently mis-naming functions.
@@ -205,7 +206,7 @@ SF import, `run.py` invokes
    binary's layout.
 
 If you're on a build that doesn't have a pre-shipped shift map (e.g.
-1.16.242 today), please share the dumped
+1.16.242 / 1.16.244 today), please share the dumped
 `scripts/commonlibsf/refs/sf_<version>_vtables.csv.gz` in a GitHub
 issue so the next release can ship a pre-built shift map for everyone
 else on that version.
@@ -256,6 +257,26 @@ rather than guessed. In practice ~99.75% of struct fields are fully typed.
 | Struct fields | 24,216 | 34,243 | 34,231 |
 | Fully typed | 99.76% | 99.75% | 99.75% |
 | Vtable structs | 1,292 | 2,023 | 2,024 |
+
+---
+
+## Enrichment drivers (beyond CommonLib import)
+
+CommonLib import gets you exact types where CommonLib has coverage. On top of
+that, the repo ships **binary-derived enrichment drivers** that recover names
+and types straight from the analyzed binary — valuable where CommonLib is thin
+(newer builds, Starfield, FNV) or absent. They run against any analyzed Ghidra
+project via `scripts/discover_combined.py` (multi-program sequencer) or
+`scripts/apply_enrichment_to_user_project.py` (one driver, one program), and
+only touch `FUN_*`/undefined slots — never imported or user-set names.
+
+| Driver | What it recovers |
+|---|---|
+| `string_anchored_rename` | Names `FUN_*` from self-identifying debug/log strings the function references |
+| `ctor_mine` / `ctor_apply` | Mines constructors for field names + embedded-object types, applies them to the struct |
+| `globals_harvest` / `globals_apply` | Types global singletons by the class whose methods consume them |
+| `settings_harvest` | Names + types game-setting value fields (`fXxx`/`bXxx`/`iXxx`) |
+| `console_harvest` / `console_harvest_sf` | Names console-command handlers (`Cmd_*`) — table-based, plus Starfield's code-based registration |
 
 ---
 

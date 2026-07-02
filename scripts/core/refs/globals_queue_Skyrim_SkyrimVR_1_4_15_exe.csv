@@ -1,0 +1,12 @@
+global_addr,current_symbol,inferred_type,is_pointer,confidence,votes,total,distinct_classes,class_votes,callers,decision_type
+0x141F831F8,BGSDynamicPersistenceManager::GetSingleton,BGSDynamicPersistenceManager,0,high,5,5,1,BGSDynamicPersistenceManager:5,CommandEffect::Func20_140546E20 FUN_14093f2c0 FUN_14023a5f0 FUN_14023b0d0 TESQuest::sub_140374B20,
+0x141F83210,GarbageCollector::GetSingleton,GarbageCollector,0,high,4,4,1,GarbageCollector:4,TESForm::sub_140298190 Actor::PickUpObject_1405E6580 FUN_1402e9950 FUN_14023a5f0,
+0x142FC4658,Pathing::GetSingleton,Pathing,0,high,4,4,1,Pathing:4,FUN_140496680 CrossHairPickData::Pick_1403AA4B0,
+0x142FC52E0,BGSImpactManager::GetSingleton,BGSImpactManager,0,high,3,3,1,BGSImpactManager:3,Explosion::sub_140739EE0 Actor::CalculateCurrentHitTargetForWeaponSwing_140629090 std::_Func_impl__lambda_4db5206b65ba775ef204880748cf6775__std::allocator_int__BSContainer::ForEachResult_BSScript::Object_____ptr64_bool__CTOR,
+0x142FEB200,g_BGSSaveLoadGame,BGSSaveLoadGame,0,high,2,2,1,BGSSaveLoadGame:2,TESDataHandler::CreateReferenceAtLocation TESObjectREFR::InitNonNPCAnimation_140294A90,
+0x142F8AB30,VATS::GetSingleton,VATS,0,high,2,2,1,VATS:2,RevertGlobalData FUN_140589350,
+0x142F8A410,ScreenSplatter::GetSingleton,ScreenSplatter,0,medium,1,1,1,ScreenSplatter:1,ConsoleFunc__handler::ClearScreenBlood_140319B20,
+0x141F850E8,SubtitleManager::GetSingleton,SubtitleManager,0,medium,1,1,1,SubtitleManager:1,DeathFadeCallback_vf_sub_1406EDD60,
+0x141F83220,g_faceGen,BSFaceGenManager,0,medium,1,1,1,BSFaceGenManager:1,FUN_1403d2970,
+0x142FEA518,DAT_142fea518,BSScaleformImageLoader,1,medium,1,1,1,BSScaleformImageLoader:1,BSScaleformExternalTexture::LoadPNG,
+0x142FEB9F0,g_theplayer,BGSDefaultObjectManager,0,low,1,2,2,BGSDefaultObjectManager:1 NiPoint3:1,FUN_14066dfd0 MenuEventHandler::ProcessMouseMove_1408B3560,

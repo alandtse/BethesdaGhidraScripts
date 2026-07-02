@@ -1,0 +1,21 @@
+# BSim intra-FNV (sim>=0.85, sig>=15): 0xRVA|name|sim|sig
+0x00406DE0|FID_conflict:~CDialogBar|1.000|17.4
+0x004431F0|AlchemyItem_vf004|1.000|20.5
+0x00443240|AlchemyItem_vf004|1.000|20.5
+0x00450BF0|AlchemyItem_vf004|1.000|20.5
+0x00450C20|AlchemyItem_vf004|1.000|20.5
+0x0047F9F0|FID_conflict:~CDialogBar|0.866|15.4
+0x004D5850|AlchemyItem_vf004|1.000|20.5
+0x005018B0|GameSettingCollection_vf002|1.000|15.2
+0x00590010|GameSettingCollection_vf002|1.000|15.2
+0x0061CB30|AlchemyItem_vf004|1.000|20.5
+0x00623820|AlchemyItem_vf004|1.000|20.5
+0x00626FA0|ExtraOcclusionPlaneRefData_vf000|0.869|15.8
+0x0066E300|AlchemyItem_vf004|1.000|20.5
+0x006FD920|AlchemyItem_vf004|1.000|20.5
+0x006FD950|AlchemyItem_vf004|1.000|20.5
+0x0070AD00|ExtraAnimAnimation_Destroy|1.000|20.4
+0x0083C220|GameSettingCollection_vf002|1.000|15.2
+0x00850330|AlchemyItem_vf004|1.000|20.5
+0x0096E150|GameSettingCollection_vf002|1.000|15.2
+0x009C8870|AlchemyItem_vf004|1.000|20.5

@@ -1014,8 +1014,8 @@ def run():
     tx_syms = currentProgram.startTransaction('Symbol import')
     try:
         _import_symbols()
-        _import_vtable_names()
         _import_fallback_symbols()
+        _import_vtable_names()
     finally:
         currentProgram.endTransaction(tx_syms, True)
 
@@ -1041,12 +1041,18 @@ def _import_types():
     print('Created {} enums'.format(len(ENUMS)))
 
     monitor.setMessage('Creating vtable structs...')
+    # Slot offsets are emitted at 8-byte (x64) stride by the generator.
+    # Rescale to the loaded program's pointer size so 32-bit targets
+    # (FNV) get correct 4-byte-stride layouts instead of every-other-slot.
+    _vt_psize = currentProgram.getDefaultPointerSize()
     for vt in VTABLES:
         vname, class_full_name, vtbl_size, category, slots = vt
-        s = StructureDataType(CategoryPath(category), vname, vtbl_size)
+        scaled_size = (vtbl_size // 8) * _vt_psize if _vt_psize != 8 else vtbl_size
+        s = StructureDataType(CategoryPath(category), vname, scaled_size)
         for slot_off, slot_name, slot_ret, slot_params in slots:
             field_name = slot_name.replace('~', '_dtor_') if slot_name.startswith('~') else slot_name
-            if slot_off + 8 <= vtbl_size:
+            real_off = (slot_off // 8) * _vt_psize
+            if real_off + _vt_psize <= scaled_size:
                 try:
                     if slot_ret is not None and slot_params is not None:
                         fdef = FunctionDefinitionDataType(CategoryPath(category), field_name + '_t', dtm)
@@ -1059,10 +1065,10 @@ def _import_types():
                                 pdt = resolve_type(ptype) or _PTR
                                 param_defs.append(ParameterDefinitionImpl(pname, pdt, ''))
                             fdef.setArguments(param_defs)
-                        fptr = dtm.getPointer(dtm.addDataType(fdef, CONFLICT), 8)
-                        s.replaceAtOffset(slot_off, fptr, 8, field_name, '')
+                        fptr = dtm.getPointer(dtm.addDataType(fdef, CONFLICT), _vt_psize)
+                        s.replaceAtOffset(real_off, fptr, _vt_psize, field_name, '')
                     else:
-                        s.replaceAtOffset(slot_off, _PTR, 8, field_name, '')
+                        s.replaceAtOffset(real_off, _PTR, _vt_psize, field_name, '')
                 except Exception:
                     pass
         dt = dtm.addDataType(s, CONFLICT)
@@ -1136,6 +1142,7 @@ def _import_symbols():
     version_key = {
         'se': 's', 'ae': 'a', 'svr': 'v',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
+        'f4_221': '221',
         'sf': 'sf',
         'fnv': 'fnv',
     }.get(VERSION, 'a')
@@ -1336,7 +1343,9 @@ def _import_vtable_names():
             if slot_name.startswith('fn_'):
                 continue
             try:
-                ptr_addr = vtbl_addr.add(slot_off)
+                # slot_off is emitted at 8-byte stride; rescale for the
+                # loaded program's pointer width (4 on 32-bit FNV).
+                ptr_addr = vtbl_addr.add((slot_off // 8) * ptr_size)
                 if ptr_size == 8:
                     raw = memory.getLong(ptr_addr)
                     if raw < 0:
@@ -1391,7 +1400,7 @@ def _import_vtable_names():
                                 fdef.setReturnType(ret_dt)
                             pdefs = []
                             this_dt = created.get(class_short)
-                            this_ptr = dtm.getPointer(this_dt, 8) if this_dt else _PTR
+                            this_ptr = dtm.getPointer(this_dt, ptr_size) if this_dt else _PTR
                             pdefs.append(ParameterDefinitionImpl('this', this_ptr, ''))
                             for pname, ptype in slot_params:
                                 pdt = resolve_type(ptype) or _PTR
@@ -1487,6 +1496,7 @@ def _import_fallback_symbols():
     version_key = {
         'se': 's', 'ae': 'a', 'svr': 'v',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
+        'f4_221': '221',
         'sf': 'sf',
         'fnv': 'fnv',
     }.get(VERSION, 'a')
@@ -1496,6 +1506,7 @@ def _import_fallback_symbols():
 
     print('Applying ' + str(len(FALLBACK_SYMBOLS)) + ' fallback symbols...')
     count_applied = count_skipped = 0
+    count_fb_sig = count_fb_sig_fail = 0
 
     for s in FALLBACK_SYMBOLS:
         off = s.get(version_key)
@@ -1509,15 +1520,52 @@ def _import_fallback_symbols():
             if not f:
                 DisassembleCommand(addr, None, True).applyTo(currentProgram)
                 f = fm.getFunctionAt(addr)
+            if not f and s.get('t') == 'func':
+                # Disassembly alone doesn't promote the address to a
+                # function -- create one explicitly (same recovery the
+                # primary pass uses; rescues the label-only "no_func"
+                # cases, e.g. 3,333 on Skyrim VR).
+                try:
+                    f = createFunction(addr, None)
+                except:
+                    f = None
 
+            sig_target = None
+            was_renamed = False
             if f:
                 curr = f.getName()
-                if not (curr.startswith('FUN_') or curr.startswith('sub_')):
+                if curr.startswith('FUN_') or curr.startswith('sub_'):
+                    f.setName(sname, SourceType.USER_DEFINED)
+                    sig_target = f
+                    was_renamed = True
+                elif curr == sname:
+                    # Same symbol applied by a previous run -- still eligible
+                    # for signature application (makes sig fixes idempotent
+                    # and retro-applicable by re-running the script).
+                    sig_target = f
+                else:
                     count_skipped += 1
                     continue
-                f.setName(sname, SourceType.USER_DEFINED)
             else:
                 symbol_table.createLabel(addr, sname, SourceType.USER_DEFINED)
+                was_renamed = True
+
+            # Structured signature (DIA / parsed-PDB-sig derived).  Same
+            # apply path as primary symbols; previously fallback symbols
+            # dropped their 'sd' on the floor (e.g. FNV ships ~19k of them).
+            sd = s.get('sd')
+            if sd and sig_target is not None:
+                has_sig = sig_target.getSignature().getReturnType().getClass().getSimpleName() != 'DefaultDataType'
+                if not has_sig:
+                    try:
+                        apply_structured_sig(sd, sname, addr, fm)
+                        count_fb_sig += 1
+                    except:
+                        count_fb_sig_fail += 1
+
+            if not was_renamed:
+                count_skipped += 1
+                continue
 
             comment_parts = []
             se_id = s.get('si')
@@ -1542,6 +1590,8 @@ def _import_fallback_symbols():
             pass
 
     print('Fallback: applied ' + str(count_applied) + ', skipped (already named): ' + str(count_skipped))
+    if count_fb_sig or count_fb_sig_fail:
+        print('Fallback signatures applied: ' + str(count_fb_sig) + ', failed: ' + str(count_fb_sig_fail))
 
 
 run()
@@ -1682,7 +1732,8 @@ def generate_script(
     if _sig_count:
         symbols_json = json.dumps(_syms, separators=(',', ':'))
 
-    lines.append('SYMBOLS = ' + symbols_json)
+    lines.append('import json as _json_sym')
+    lines.append('SYMBOLS = _json_sym.loads(' + repr(symbols_json) + ')')
     lines.append('')
 
     # Upgrade fallback symbols that match vtable slots
@@ -1704,7 +1755,11 @@ def generate_script(
             print('  Upgraded {} vtable-known fallback symbols to {} source'.format(_upgraded, project_name))
             fallback_symbols_json = json.dumps(_fb, separators=(',', ':'))
 
-    lines.append('FALLBACK_SYMBOLS = ' + fallback_symbols_json)
+    # Use json.loads so JSON's ``true``/``false``/``null`` parse safely
+    # in Python (bare ``false`` would NameError; ``True``/``False`` are
+    # capitalized in Python).
+    lines.append('import json as _json')
+    lines.append('FALLBACK_SYMBOLS = _json.loads(' + repr(fallback_symbols_json) + ')')
     lines.append('')
 
     # Address library RVA→ID reverse map (base64 binary blob)

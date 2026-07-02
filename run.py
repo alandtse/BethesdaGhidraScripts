@@ -62,9 +62,10 @@ VERSION_CATALOG = [
     ("f4og",  "f4",        "Fallout 4 OG 1.10.163","f4/og",        "CommonLibImport_F4_OG.py", "fork"),
     ("f4ng",  "f4",        "Fallout 4 NG 1.10.984","f4/ng",        "CommonLibImport_F4_NG.py", "fork"),
     ("f4ae",  "f4",        "Fallout 4 AE 1.11.191","f4/ae",        "CommonLibImport_F4_AE.py", "upstream"),
+    ("f4221", "f4",        "Fallout 4 1.11.221",   "f4/221",       "CommonLibImport_F4_221.py","fork"),
     ("f4vr",  "f4",        "Fallout 4 VR 1.2.72",  "f4/vr",        "CommonLibImport_F4_VR.py", "fork"),
     ("fnv",   "fnv",       "Fallout NV 1.4.0.525", "fnv/og",       "CommonLibImport_FNV.py",   "fork"),
-    ("sf",    "starfield", "Starfield 1.16.236 / 1.16.242", "starfield/sf", "CommonLibImport_SF.py",    "fork"),
+    ("sf",    "starfield", "Starfield 1.16.236 / 1.16.242 / 1.16.244", "starfield/sf", "CommonLibImport_SF.py",    "fork"),
 ]
 
 API_HEADERS = {
@@ -697,6 +698,37 @@ _LOCK_HINTS = ("LockException", "Unable to lock", "already locked",
                "already opened", "is in use", "lock is held")
 
 
+def _wait_for_unlock(project_dir, project_name, step_label):
+    """Block until the project lock is released (or the user skips).
+
+    pyghidra subprocesses sometimes don't release their JVM lock cleanly,
+    so a subsequent step run back-to-back hits a LockException.  Rather
+    than crash, prompt the user to close any open Ghidra session and
+    retry.  Returns True if the project is unlocked (proceed), False if
+    the user skipped this step.
+    """
+    while True:
+        locks = _project_lock_files(project_dir, project_name)
+        if not locks:
+            return True
+        print()
+        print("=" * 60)
+        print(f"  Project {project_name!r} is locked -- cannot run {step_label}.")
+        print("  Close any open Ghidra GUI / pyghidra session, then retry.")
+        print()
+        for p in locks:
+            print(f"  Lock file: {p}")
+        print("=" * 60)
+        print()
+        try:
+            ans = input("  Press Enter to retry, or 's' to skip this step > ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+        if ans == 's':
+            return False
+
+
 def _list_programs_in_project(project_dir, project_name):
     """Return list of (program_path, ...) tuples, or {"locked": "<reason>"}
     on lock detection, or None on any other failure.
@@ -819,6 +851,14 @@ def _enrich_menu():
         return
     program_path, _ = programs[pidx - 1]
 
+    # Opt-in: apply the matching CommonLibImport_*.py first.  Names types,
+    # enums, vtable structs and tens of thousands of functions/labels --
+    # the bulk of the enrichment for projects that have never been touched
+    # by the per-version import pass (the RTTI walk only walks vtables).
+    _offer_commonlib_apply(pdir, pname, program_path)
+
+    if not _wait_for_unlock(pdir, pname, "RTTI vtable pipeline"):
+        return
     args = [sys.executable,
             str(SCRIPTS_DIR / "core" / "run_vtable_pipeline.py"),
             pdir, pname, program_path]
@@ -831,6 +871,121 @@ def _enrich_menu():
     # and the main import pass would do the job).  Off by default since
     # it rewrites existing names.
     _offer_vtable_reconciler(pdir, pname, program_path)
+
+
+def _infer_commonlib_script(program_name):
+    """Return the best-fit ``CommonLibImport_*.py`` basename for a program.
+
+    Order is specific-to-generic so e.g. ``Fallout4_1_11_221.exe`` resolves
+    to the 221 script rather than the catch-all AE one.
+    """
+    n = program_name.lower()
+    if 'starfield' in n:
+        return 'CommonLibImport_SF.py'
+    if 'fallout4vr' in n or 'fallout4_vr' in n:
+        return 'CommonLibImport_F4_VR.py'
+    if 'falloutnv' in n:
+        return 'CommonLibImport_FNV.py'
+    if 'skyrimae' in n and 'gog' in n:
+        # GOG builds have different RVAs than Steam 1.6.1170 -- use the
+        # relib-re-keyed variant (1.6.1179 is the current GOG release).
+        return 'CommonLibImport_AE_GOG_1_6_1179.py'
+    if 'skyrimae' in n:
+        return 'CommonLibImport_AE.py'
+    if 'skyrimse' in n:
+        # Bethesda names both SE and AE binaries SkyrimSE.exe; disambiguate
+        # by embedded version tag, defaulting to AE (current Steam build).
+        if '1_5_97' in n or '1.5.97' in n:
+            return 'CommonLibImport_SE.py'
+        return 'CommonLibImport_AE.py'
+    if 'skyrimvr' in n:
+        return 'CommonLibImport_VR.py'
+    if 'fallout4' in n:
+        # Disambiguate by version tag embedded in the name.
+        if '1_11_221' in n or '1.11.221' in n or '_221' in n or n.endswith('221.exe'):
+            return 'CommonLibImport_F4_221.py'
+        if '1_11_191' in n or '1.11.191' in n or '_ae' in n or ' ae' in n:
+            return 'CommonLibImport_F4_AE.py'
+        if '1_10_984' in n or '1.10.984' in n or '_ng' in n:
+            return 'CommonLibImport_F4_NG.py'
+        if '1_10_163' in n or '1.10.163' in n or '_og' in n:
+            return 'CommonLibImport_F4_OG.py'
+        # Unknown F4 variant -- AE is the most-common modder target.
+        return 'CommonLibImport_F4_AE.py'
+    return None
+
+
+# Per-version pyghidra applier in scripts/.  Each takes
+# ``--project-dir``, ``--project-name`` and ``--program-path``.  Values are
+# (applier_basename, [extra args]); the unified F4 applier accepts
+# ``--version`` so all five F4 variants share one entry point.
+_COMMONLIB_APPLY_SCRIPTS = {
+    'CommonLibImport_SE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'se']),
+    'CommonLibImport_AE.py':     ('apply_skyrim_to_user_project.py', ['--version', 'ae']),
+    'CommonLibImport_AE_GOG_1_6_1179.py':
+        ('apply_skyrim_to_user_project.py',
+         ['--version', 'ae', '--script',
+          str(GHIDRA_SCRIPTS_DIR / 'CommonLibImport_AE_GOG_1_6_1179.py')]),
+    'CommonLibImport_VR.py':     ('apply_skyrim_to_user_project.py', ['--version', 'vr']),
+    'CommonLibImport_F4_OG.py':  ('apply_f4_to_user_project.py',  ['--version', 'og']),
+    'CommonLibImport_F4_NG.py':  ('apply_f4_to_user_project.py',  ['--version', 'ng']),
+    'CommonLibImport_F4_AE.py':  ('apply_f4_to_user_project.py',  ['--version', 'ae']),
+    'CommonLibImport_F4_VR.py':  ('apply_f4_to_user_project.py',  ['--version', 'vr']),
+    'CommonLibImport_F4_221.py': ('apply_f4_to_user_project.py',  ['--version', '221']),
+    'CommonLibImport_FNV.py':    ('apply_fnv_to_user_project.py', []),
+    'CommonLibImport_SF.py':     ('apply_sf_to_user_project.py',  []),
+}
+
+
+def _offer_commonlib_apply(pdir, pname, program_path):
+    """Optional pre-step: apply CommonLibImport_<inferred>.py via pyghidra.
+
+    Detects the matching import script from the program name and runs the
+    per-version applier if one exists.  No-op when there's no applier for
+    this version (e.g. F4 OG/NG/AE/VR -- those still go through menu 5's
+    headless import path against the in-repo project).
+    """
+    program_name = Path(program_path).name
+    suggested = _infer_commonlib_script(program_name)
+    if not suggested:
+        return
+    import_script = GHIDRA_SCRIPTS_DIR / suggested
+    if not import_script.is_file():
+        return
+    entry = _COMMONLIB_APPLY_SCRIPTS.get(suggested)
+    if not entry:
+        # No standalone applier for this version yet.
+        return
+    applier_name, extra_args = entry
+    applier = SCRIPTS_DIR / applier_name
+    if not applier.is_file():
+        return
+
+    print()
+    print("-" * 60)
+    print(f"  Apply {suggested} first? (recommended)")
+    print("-" * 60)
+    print(f"  Adds CommonLib enums + struct layouts + function/label names")
+    print(f"  to this program before the RTTI vtable walk runs.  Skip if")
+    print(f"  you've already applied it to this project.")
+    print()
+    try:
+        ans = input("  Apply now? (Y/n) > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if ans == 'n':
+        return
+
+    if not _wait_for_unlock(pdir, pname, f"CommonLib apply ({suggested})"):
+        return
+    cmd = [sys.executable, str(applier),
+           *extra_args,
+           '--project-dir',  pdir,
+           '--project-name', pname,
+           '--program-path', program_path]
+    _header(f"CommonLib apply ({suggested})")
+    subprocess.run(cmd, check=False)
 
 
 def _offer_vtable_reconciler(pdir, pname, program_path):
@@ -861,20 +1016,7 @@ def _offer_vtable_reconciler(pdir, pname, program_path):
 
     # Pick the import script whose VTABLES should be the source of truth.
     program_name = Path(program_path).name
-    suggested = None
-    name_lower = program_name.lower()
-    if 'starfield' in name_lower:
-        suggested = 'CommonLibImport_SF.py'
-    elif 'fallout4vr' in name_lower:
-        suggested = 'CommonLibImport_F4_VR.py'
-    elif 'fallout4' in name_lower:
-        suggested = 'CommonLibImport_F4_AE.py'  # most common; user can override
-    elif 'skyrimse' in name_lower:
-        suggested = 'CommonLibImport_AE.py'
-    elif 'skyrimvr' in name_lower:
-        suggested = 'CommonLibImport_VR.py'
-    elif 'falloutnv' in name_lower:
-        suggested = 'CommonLibImport_FNV.py'
+    suggested = _infer_commonlib_script(program_name)
 
     print()
     print("  Available CommonLibImport scripts:")
@@ -905,6 +1047,8 @@ def _offer_vtable_reconciler(pdir, pname, program_path):
         return
     dry_run = dry_ans != 'n'
 
+    if not _wait_for_unlock(pdir, pname, f"vtable reconciler ({chosen.name})"):
+        return
     cmd = [sys.executable,
            str(SCRIPTS_DIR / 'core' / 'vtable_name_reconciler.py'),
            '--project-dir',  pdir,

@@ -1,0 +1,72 @@
+# source-file cluster names: 0x<rva>|qname|<cpp basename>|<mangled>
+0x00006D00|EffectSettingCollection::ClearData|EffectSettingCollection|void __cdecl EffectSettingCollection::ClearData()
+0x00006D50|EffectSettingCollection::ClearKnownEffects|EffectSettingCollection|virtual void __cdecl EffectSettingCollection::ClearKnownEffects() = 0
+0x0000AB30|MagicSystem::GetWortcraftEffectCount|MagicSystem|virtual int __cdecl MagicSystem::GetWortcraftEffectCount(int aiSkillLevel) = 0
+0x0008BBFD|TESSpellList::FreeSpellList|TESSpellList|void __cdecl TESSpellList::FreeSpellList()
+0x0008BC30|TESSpellList::AddSpell|TESSpellList|bool __cdecl TESSpellList::AddSpell(SpellItem* apSpellIn)
+0x0008BF50|TESSpellList::AddSpell|TESSpellList|bool __cdecl TESSpellList::AddSpell(TESLevSpell* apSpellIn)
+0x0008BFA1|TESSpellList::AddSpell|TESSpellList|bool __cdecl TESSpellList::AddSpell(TESForm* apSpellIn)
+0x0008C06D|TESSpellList::Save|TESSpellList|void __cdecl TESSpellList::Save()
+0x000BC980|InventoryChanges::ResetCachedWeights|InventoryChanges|void __cdecl InventoryChanges::ResetCachedWeights()
+0x000BCA60|InventoryChanges::~InventoryChanges|InventoryChanges|void __cdecl InventoryChanges::~InventoryChanges()
+0x000BCC30|InventoryChanges::RemoveHotKeyItem|InventoryChanges|void __cdecl InventoryChanges::RemoveHotKeyItem(ItemChange* apItem, int aiHotkey)
+0x000BCCB0|InventoryChanges::GetObjectInList|InventoryChanges|ItemChange* __cdecl InventoryChanges::GetObjectInList(TESBoundObject* apObj, bool ableveled, unsigned int aId)
+0x000BCD10|InventoryChanges::WearingVoiceModulateItem|InventoryChanges|bool __cdecl InventoryChanges::WearingVoiceModulateItem()
+0x000BD030|InventoryChanges::WearingObject|InventoryChanges|ExtraDataList* __cdecl InventoryChanges::WearingObject(TESBoundObject* apObj, bool bshouldwear)
+0x000D8830|Renderer::SetBackgroundColor|Renderer|virtual bool __cdecl Renderer::SetBackgroundColor(NiColor& arColor) = 0
+0x000DCBE0|ScreenCustomSplatter::Update|ScreenCustomSplatter|virtual void __cdecl ScreenCustomSplatter::Update() = 0
+0x000DE580|ScreenSplatter::Update|ScreenSplatter|virtual void __cdecl ScreenSplatter::Update() = 0
+0x0018F7F0|BGSMusicType::BGSMusicType|BGSMusicType|void __cdecl BGSMusicType::BGSMusicType()
+0x0020BCF0|TESQuest::SetDisplayedInHUD|TESQuest|void __cdecl TESQuest::SetDisplayedInHUD(bool abVal)
+0x0020BD90|TESQuest::TESQuest|TESQuest|void __cdecl TESQuest::TESQuest()
+0x0020C5C0|TESQuest::~TESQuest|TESQuest|virtual void __cdecl TESQuest::~TESQuest()
+0x0020C5F0|TESQuest::ClearData|TESQuest|virtual void __cdecl TESQuest::ClearData()
+0x0020C630|TESQuest::ClearStageList|TESQuest|void __cdecl TESQuest::ClearStageList()
+0x0020C660|TESQuest::ClearObjectiveList|TESQuest|void __cdecl TESQuest::ClearObjectiveList()
+0x002234D0|new|hkVisualDebugger|virtual void* __cdecl hkVisualDebugger::operator new(unsigned int nbytes) = 0
+0x002234F0|hkVisualDebugger::deleteClient|hkVisualDebugger|void __cdecl hkVisualDebugger::deleteClient(int i)
+0x00223570|hkVisualDebugger::writeStep|hkVisualDebugger|void __cdecl hkVisualDebugger::writeStep(int i, float t)
+0x00232B40|Moon::~Moon|Moon|virtual void __cdecl Moon::~Moon()
+0x00232EC0|Moon::UpdatePhase|Moon|virtual bool __cdecl Moon::UpdatePhase(Sky* apSky) = 0
+0x0023DAFF|SkyTextureManager::LoadTextureInBackground|SkyTextureManager|virtual void __cdecl SkyTextureManager::LoadTextureInBackground(NiPointer<NiTexture>* apspTexture, const char* apFilename) = 0
+0x00287D40|BSTempEffectParticle::BSTempEffectParticle|BSTempEffectParticle|void __cdecl BSTempEffectParticle::BSTempEffectParticle()
+0x00287EF7|BSTempEffectParticle::BSTempEffectParticle|BSTempEffectParticle|void __cdecl BSTempEffectParticle::BSTempEffectParticle(TESObjectCELL* apCell, float afLifetime, const char* apParticleFilename, NiAVObject* apFollowObject)
+0x00287F26|BSTempEffectParticle::Spawn|BSTempEffectParticle|virtual BSTempEffectParticle* __cdecl BSTempEffectParticle::Spawn(TESObjectCELL* apCell, float afLifetime, const char* apParticleFilename, NiPoint3 aVector, NiPoint3 aPosition, float afScale, unsigned int aiFlags, NiAVObject* apFollowObject) = 0
+0x0028809F|BSTempEffectParticle::Spawn|BSTempEffectParticle|virtual BSTempEffectParticle* __cdecl BSTempEffectParticle::Spawn(TESObjectCELL* apCell, float afLifetime, const char* apParticleFilename, NiMatrix3 aRotation, NiPoint3 aPosition, float afScale, unsigned int aiFlags, NiAVObject* apFollowObject) = 0
+0x002884C0|BSTempEffectParticle::Init|BSTempEffectParticle|void __cdecl BSTempEffectParticle::Init(NiNode* apSceneParent, NiMatrix3 aRotation, NiPoint3 aPosition, float afScale, unsigned int aiFlags)
+0x002FE6F1|FaderManager::FaderManager|FaderManager|void __cdecl FaderManager::FaderManager()
+0x00403AE0|ActiveEffect::ActiveEffect|ActiveEffect|void __cdecl ActiveEffect::ActiveEffect(MagicCaster* apCaster, MagicItem* apSpell, EffectItem* apEffect)
+0x00403C93|ActiveEffect::~ActiveEffect|ActiveEffect|virtual void __cdecl ActiveEffect::~ActiveEffect()
+0x00403CD4|ActiveEffect::Copy|ActiveEffect|virtual ActiveEffect* __cdecl ActiveEffect::Copy()
+0x00403E80|ActiveEffect::SetEnchantmentSource|ActiveEffect|void __cdecl ActiveEffect::SetEnchantmentSource(TESBoundObject* apSource)
+0x00407DF0|BoundItemEffect::BoundItemEffect|BoundItemEffect|void __cdecl BoundItemEffect::BoundItemEffect(MagicCaster* apCaster, MagicItem* apSpell, EffectItem* apEffect)
+0x0040803C|BoundItemEffect::~BoundItemEffect|BoundItemEffect|virtual void __cdecl BoundItemEffect::~BoundItemEffect()
+0x0040827A|BoundItemEffect::Copy|BoundItemEffect|virtual ActiveEffect* __cdecl BoundItemEffect::Copy()
+0x0043563E|ImpactMixer::PlayJumpLand|ImpactMixer|virtual void __cdecl ImpactMixer::PlayJumpLand(TESObjectREFR* apRef, MATERIAL_TYPE aiMaterial) = 0
+0x0043D890|MenuTopic::MenuTopic|MenuTopic|void __cdecl MenuTopic::MenuTopic()
+0x0043DA30|MenuTopic::MenuTopic|MenuTopic|void __cdecl MenuTopic::MenuTopic(TESQuest* apQuest, TESTopic* apTopic, TESTopicInfo* apInfo, TESObjectREFR* apSpeaker, bool abInfoRefusal)
+0x0043DA50|MenuTopic::~MenuTopic|MenuTopic|void __cdecl MenuTopic::~MenuTopic()
+0x004CE9B6|BaseProcess::GetCachedRadius|BaseProcess|float __cdecl BaseProcess::GetCachedRadius(CachedValuesOwner* apOwner)
+0x004CE9F1|BaseProcess::GetCachedWidth|BaseProcess|float __cdecl BaseProcess::GetCachedWidth(CachedValuesOwner* apOwner)
+0x004CECA2|BaseProcess::GetCachedLength|BaseProcess|float __cdecl BaseProcess::GetCachedLength(CachedValuesOwner* apOwner)
+0x0052C680|MiddleLowProcess::ProcessCombat|MiddleLowProcess|virtual void __cdecl MiddleLowProcess::ProcessCombat(Actor* apActor)
+0x0052C900|MiddleLowProcess::ProcessCombatOneHour|MiddleLowProcess|virtual bool __cdecl MiddleLowProcess::ProcessCombatOneHour(Actor* apActor, float afTimeDelta)
+0x0052C950|MiddleLowProcess::GetActorValue|MiddleLowProcess|virtual int __cdecl MiddleLowProcess::GetActorValue(TESActorBase* apActorBase, ActorValue::Index aiWhich, Actor* apActor)
+0x0052C98B|MiddleLowProcess::GetActorFloatValue|MiddleLowProcess|virtual float __cdecl MiddleLowProcess::GetActorFloatValue(TESActorBase* apActorBase, ActorValue::Index aiWhich, Actor* apActor)
+0x005EBAB0|BackUpPackage::BackUpPackage|BackUpPackage|void __cdecl BackUpPackage::BackUpPackage(Actor* apActor, TESObjectCELL* pcell, TESObjectREFR* apRef)
+0x005EBAE0|BackUpPackage::InitializeBackUpPackage|BackUpPackage|void __cdecl BackUpPackage::InitializeBackUpPackage(Actor* apActor, TESObjectCELL* apcell, TESObjectREFR* apRef)
+0x005EDF40|DialoguePackage::DialoguePackage|DialoguePackage|void __cdecl DialoguePackage::DialoguePackage()
+0x008CF740|hkVisualDebugger::removeTrackedObject|hkVisualDebugger|void __cdecl hkVisualDebugger::removeTrackedObject(void* obj)
+0x008CFCF8|hkVisualDebugger::removeTrackedObjectCallback|hkVisualDebugger|void __cdecl hkVisualDebugger::removeTrackedObjectCallback(void (__cdecl *)(void*, hkClass*, hkBool, unsigned long, void*) callback)
+0x008E0CA0|new|hkaSkeletonMapper|virtual void* __cdecl hkaSkeletonMapper::operator new(unsigned int nbytes) = 0
+0x008E25F0|hkaSkeletonMapper::checkTransform|hkaSkeletonMapper|virtual bool __cdecl hkaSkeletonMapper::checkTransform(hkaSkeletonMapperData::MappingType type, hkQsTransform& q) = 0
+0x008E26F0|hkaSkeletonMapper::setMulWithScaling|hkaSkeletonMapper|virtual void __cdecl hkaSkeletonMapper::setMulWithScaling(hkaSkeletonMapperData::MappingType type, hkQsTransform& dst, hkQsTransform& map, hkQsTransform& src) = 0
+0x008E4951|hkaSkeletonMapperUtils::findSimpleMapping|hkaSkeletonMapperUtils|virtual hkaSkeletonMapperData::SimpleMapping* __cdecl hkaSkeletonMapperUtils::findSimpleMapping(short boneA, hkaSkeletonMapperData& mapperdata) = 0
+0x008E5000|hkaSkeletonMapperUtils::scaleMapping|hkaSkeletonMapperUtils|virtual void __cdecl hkaSkeletonMapperUtils::scaleMapping(hkaSkeletonMapper& mapper, float scale) = 0
+0x008E592D|hkaSkeletonMapperUtils::computeChainLengthAndPosition|hkaSkeletonMapperUtils|virtual void __cdecl hkaSkeletonMapperUtils::computeChainLengthAndPosition(hkaSkeleton* skeleton, hkQsTransform* pose, short start, short end, float& lengthOut, hkVector4& posOut) = 0
+0x008E5E4D|hkaSkeletonMapperUtils::computeChainMapping|hkaSkeletonMapperUtils|virtual void __cdecl hkaSkeletonMapperUtils::computeChainMapping(hkaSkeletonMapperData::MappingType type, hkaSkeleton* skeletonA, hkQsTransform* poseA, short startA, short endA, hkaSkeleton* skeletonB, hkQsTransform* poseB, short startB, short endB, hkaSkeletonMapperData::ChainMapping& mapAFromBOut) = 0
+0x00971498|hkpTransformCollapseUtil::transformTransformShape|hkpTransformCollapseUtil|virtual hkpShape* __cdecl hkpTransformCollapseUtil::transformTransformShape(hkpShape* shape, hkTransform& transform) = 0
+0x00A3FB1C|hkaDefaultAnimatedReferenceFrame::~hkaDefaultAnimatedReferenceFrame|hkaDefaultAnimatedReferenceFrame|virtual void __cdecl hkaDefaultAnimatedReferenceFrame::~hkaDefaultAnimatedReferenceFrame()
+0x00A4C730|hkaTrackAnalysis::calcDynamicStats|hkaTrackAnalysis|virtual void __cdecl hkaTrackAnalysis::calcDynamicStats(const unsigned short* staticMaskT, const unsigned short* staticMaskF, unsigned int numTracksT, unsigned int numTracksF, hkaTrackAnalysis::AnalysisStats& out) = 0
+0x00A4C7D5|hkaTrackAnalysis::calcStatsQsTransform|hkaTrackAnalysis|virtual void __cdecl hkaTrackAnalysis::calcStatsQsTransform(const unsigned short* mask, unsigned int numTracks, hkaTrackAnalysis::AnalysisStats& out) = 0
+0x00A4CA5A|hkaTrackAnalysis::calcStats|hkaTrackAnalysis|virtual void __cdecl hkaTrackAnalysis::calcStats(const unsigned short* staticMaskT, const unsigned short* staticMaskF, unsigned int numTracksT, unsigned int numTracksF, hkaTrackAnalysis::AnalysisStats& out) = 0

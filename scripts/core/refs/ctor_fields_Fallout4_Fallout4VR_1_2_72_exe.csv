@@ -1,0 +1,56 @@
+class,offset,type,name,slot_state
+AlarmPackage,0xC8,void *,2,known
+BSGeometry,0x188,void *,0,known
+BSGeometry,0x190,ulonglong,1,known
+BSMultiBoundAABB,0x48,uint,3,known
+BSMultiBoundAABB,0x4C,uint,4,known
+BSMultiBoundAABB,0x50,bool,2,known
+BSTempEffectGeometryDecal,0x48,BSTriShape *,4,known
+BSTempEffectParticle,0x8C,float,6,known
+BSTempEffectParticle,0x90,uint,7,known
+BSTempEffectParticle,0x98,NiAVObject *,5,known
+BSTempEffectWeaponBlood,0x30,NiAVObject *,3,known
+BSTriShape,0x1A0,uint,3,known
+ExtraPoison,0x18,uint,3,known
+HUDCompassMarkerBase,0x108,float,1,known
+Hazard,0x130,void *,2,known
+ImageSpaceEffectHDR,0x380,ulonglong,0,known
+ImageSpaceEffectHDR,0x3C7,bool,1,known
+ImageSpaceModifierInstanceForm,0x10,float,1,known
+ImageSpaceModifierInstanceForm,0x18,NiAVObject *,4,known
+ImageSpaceModifierInstanceForm,0x28,TESImageSpaceModifier *,2,known
+NiControllerManager,0xA8,bool,1,known
+NiFile,0x10,ulonglong,2,known
+NiFile,0x48,OpenMode,3,known
+PipboyPerksData,0xA0,PipboyArray *,3,known
+PipboyPlayerInfoData,0x100,PipboyObject *,3,known
+PipboyRadioData,0xA8,PipboyArray *,3,known
+PipboySpecialData,0xA0,PipboyArray *,2,known
+PipboyValue,0x10,PipboyValue *,2,known
+ReferenceEffect,0x30,ReferenceEffectController *,2,known
+TES,0x20,NiNode *,3,known
+TES,0x28,NiNode *,4,known
+TES,0x30,NiNode *,6,known
+TES,0x98,Sky *,5,known
+TESRegionList,0x18,bool,0,known
+TESTopic,0x31,undefined1,2,known
+TESWaterDisplacement,0x10,undefined8 *,4,known
+TESWaterDisplacement,0x18,undefined8,3,known
+TESWaterDisplacement,0x20,undefined4,2,known
+TESWaterObject,0x20,longlong *,2,known
+TESWaterReflections,0x10,undefined2,4,known
+TESWaterReflections,0x40,undefined8 *,3,known
+TrespassPackage,0xD0,TESForm *,3,known
+TrespassPackage,0xDC,int,2,known
+bhkNPCollisionObject,0x20,bhkPhysicsSystem *,3,known
+bhkNPCollisionObject,0x28,uint,0,known
+bhkPhysicsSystem,0x10,NiObject_vtbl *,2,known
+bhkWorldM,0xF0,undefined8,3,known
+bhkWorldM,0xF8,undefined8,4,known
+bhkWorldM,0x104,undefined4,5,known
+hknpCharacterContext,0x18,void *,2,known
+hknpCollisionQueryCollector,0x90,void *,2,known
+hknpCollisionQueryCollector,0x98,void *,4,known
+hknpCollisionQueryCollector,0xAC,bool,1,known
+hknpCollisionQueryCollector,0xAD,bool,3,known
+hknpCollisionQueryCollector,0xAE,bool,4,known

@@ -116,10 +116,19 @@ def _enrich_symbols(symbols_list, structs):
 # exists so a VR-aware overlay can add (e.g.) `-DBGS_FALLOUT4_VR=1` and emit
 # a correctly-shifted vtable layout for F4VR without affecting OG/NG/AE.
 F4_TARGETS = (
-    ('f4_og', 'CommonLibImport_F4_OG.py', '[]',  'og.csv', []),
-    ('f4_ng', 'CommonLibImport_F4_NG.py', '[]',  'ng.csv', []),
+    # OG/NG inherit the IDA fallback pool: meh321's ID namespace is shared
+    # across OG/NG/AE/221, so IDA entries cross-resolve via their 'ai' ID
+    # (see the n_ng_resolved/n_og_resolved loop in main).  VR keeps '[]'
+    # -- its community ID namespace is disjoint, nothing would resolve.
+    ('f4_og', 'CommonLibImport_F4_OG.py', None,  'og.csv', []),
+    ('f4_ng', 'CommonLibImport_F4_NG.py', None,  'ng.csv', []),
     ('f4_ae', 'CommonLibImport_F4_AE.py', None,  'ae.csv', []),
     ('f4_vr', 'CommonLibImport_F4_VR.py', '[]',  'vr.csv', []),
+    # 1.11.221 uses meh321's version-1-11-221-0.bin (same ID namespace as
+    # AE/NG).  Direct address-library resolution covers every CommonLibF4
+    # symbol; AE->221 byte-sig porting (run_bytesig_port.py) still fills
+    # in IDA-name extras whose source pool is AE-only.
+    ('f4_221', 'CommonLibImport_F4_221.py', '[]',  '221.csv', []),
 )
 
 
@@ -140,7 +149,7 @@ def main():
     addr_lib.load_all(ADDRLIB_DIR)
     print(f'Address libraries — OG: {len(addr_lib.og_db):,}, '
           f'NG: {len(addr_lib.ng_db):,}, AE: {len(addr_lib.ae_db):,}, '
-          f'VR: {len(addr_lib.vr_db):,}')
+          f'VR: {len(addr_lib.vr_db):,}, 221: {len(addr_lib.db_221):,}')
 
     # --- Relocation scan ---
     print('\n=== Collecting symbols via relocation parser ===')
@@ -169,10 +178,12 @@ def main():
         ng = addr_lib.ng_db.get(id_val)
         ae = addr_lib.ae_db.get(id_val)
         vr = addr_lib.vr_db.get(id_val)
+        v221 = addr_lib.db_221.get(id_val)
         if og: sym['og'] = og
         if ng: sym['ng'] = ng
         if ae: sym['a']  = ae
         if vr: sym['v']  = vr
+        if v221: sym['221'] = v221
 
     symbols = []
     for fs in func_syms:
@@ -199,8 +210,9 @@ def main():
     n_ng = sum(1 for s in symbols if 'ng' in s)
     n_ae = sum(1 for s in symbols if 'a'  in s)
     n_vr = sum(1 for s in symbols if 'v'  in s)
+    n_221 = sum(1 for s in symbols if '221' in s)
     print(f'\nTotal symbols: {len(symbols)} '
-          f'(OG: {n_og}, NG: {n_ng}, AE: {n_ae}, VR: {n_vr})')
+          f'(OG: {n_og}, NG: {n_ng}, AE: {n_ae}, VR: {n_vr}, 221: {n_221})')
 
     # --- Type parsing setup (per-version below) ---
     print('\n=== Parsing types (clang AST) — per version ===')
@@ -242,18 +254,57 @@ def main():
     # invalidates the cache automatically.
     ae_rva_to_id = {rva: id_val for id_val, rva in addr_lib.ae_db.items()}
     ida_fallback = []
+    n_ng_resolved = n_og_resolved = n_221_resolved = 0
     for rva, name in ida_names.items():
         entry = {'n': name, 't': 'func', 'sig': '', 'a': rva, 'src': 'IDAImportNames'}
         ae_id = ae_rva_to_id.get(rva)
         if ae_id is not None:
             entry['ai'] = ae_id
+            # The meh321 ID namespace is shared across OG/NG/AE/221, so an
+            # AE-derived ID resolves directly in the sibling DBs.  This is
+            # what lets NG and OG (previously fallback='[]') inherit the
+            # IDA name pool.  VR stays out: its community IDs are disjoint.
+            ng = addr_lib.ng_db.get(ae_id)
+            og = addr_lib.og_db.get(ae_id)
+            v221 = addr_lib.db_221.get(ae_id)
+            if ng:
+                entry['ng'] = ng
+                n_ng_resolved += 1
+            if og:
+                entry['og'] = og
+                n_og_resolved += 1
+            if v221 and '221' not in entry:
+                entry['221'] = v221
+                n_221_resolved += 1
         ida_fallback.append(entry)
     not_in_primary = sum(1 for s in ida_fallback if s['a'] not in primary_rvas)
     print(f'IDA fallback symbols: {len(ida_fallback):,} loaded '
-          f'({not_in_primary:,} not in primary)')
+          f'({not_in_primary:,} not in primary; cross-resolved: '
+          f'NG {n_ng_resolved:,}, OG {n_og_resolved:,}, 221 {n_221_resolved:,})')
 
     fallback_json_ae = _json.dumps(ida_fallback, separators=(',', ':'))
-    symbols_json     = _json.dumps(symbols, separators=(',', ':'))
+
+    # --- F4 1.11.221 PDB publics (Bethesda debug PDB) ---
+    print('\n=== Loading Fallout4 1.11.221 debug PDB publics ===')
+    from pdb_publics_f4_221 import load_publics as _load_f4_221_publics
+    f4_221_publics = _load_f4_221_publics()
+    primary_221_rvas = {s['221'] for s in symbols if s.get('221')}
+    f4_221_fallback = [s for s in f4_221_publics
+                       if s['221'] not in primary_221_rvas]
+    n_221_func  = sum(1 for s in f4_221_fallback if s['t'] == 'func')
+    n_221_label = sum(1 for s in f4_221_fallback if s['t'] == 'label')
+    print(f'F4 1.11.221 PDB publics: {len(f4_221_publics):,} loaded, '
+          f'{len(f4_221_fallback):,} new ({n_221_func:,} funcs, '
+          f'{n_221_label:,} labels)')
+    # Merge IDA names that cross-resolved to a 221 RVA (PDB publics win on
+    # collision -- they're authoritative for this build).
+    used_221 = {s['221'] for s in f4_221_fallback}
+    ida_into_221 = [e for e in ida_fallback
+                    if e.get('221') and e['221'] not in used_221]
+    print(f'  + IDA names cross-resolved into 221 pool: {len(ida_into_221):,}')
+    fallback_json_221 = _json.dumps(f4_221_fallback + ida_into_221,
+                                    separators=(',', ':'))
+    fallback_json_by_ver = {'f4_221': fallback_json_221}
 
     # --- Per-version: parse → build vtable structs → verify anchors → generate ---
     # One AST parse per target so a VR-aware overlay can change the layout for
@@ -262,10 +313,58 @@ def main():
     # version-specific layout fixes a one-line change in F4_TARGETS.
     anchors_dir = os.path.join(SCRIPT_DIR, 'anchors')
     print('\nGenerating Ghidra scripts...')
+    # Per-version RVA key used both by the generated script's version_key
+    # map and by the persisted-bytesig merge below.
+    _ver_rva_key = {'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a',
+                    'f4_vr': 'v', 'f4_221': '221'}
+
+    def _merge_bytesig_csv(fb_json, ver):
+        """Merge refs/bytesig_ported_<short>.csv into a fallback pool.
+
+        Written by bytesig_port_combined.py / run_bytesig_port.py; makes
+        ported names survive regeneration instead of living only inside
+        the previously-generated script.
+        """
+        short = ver.replace('f4_', '')
+        csv_path = os.path.join(SCRIPT_DIR, 'refs',
+                                'bytesig_ported_{}.csv'.format(short))
+        if not os.path.isfile(csv_path):
+            return fb_json
+        rva_key = _ver_rva_key[ver]
+        existing = _json.loads(fb_json)
+        used = {s.get(rva_key) for s in existing if s.get(rva_key)}
+        n_added = 0
+        with open(csv_path, encoding='utf-8') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#'):
+                    continue
+                parts = ln.split(',', 2)
+                if len(parts) < 2:
+                    continue
+                try:
+                    rva = int(parts[0], 16)
+                except ValueError:
+                    continue
+                if rva in used:
+                    continue
+                used.add(rva)
+                existing.append({'n': parts[1], 't': 'func', 'sig': '',
+                                 rva_key: rva,
+                                 'src': parts[2] if len(parts) > 2 else 'bytesig-port'})
+                n_added += 1
+        if n_added:
+            print('  merged {} persisted bytesig names from {}'.format(
+                n_added, os.path.basename(csv_path)))
+        return _json.dumps(existing, separators=(',', ':'))
+
     for ver, fname, fb_json, anchors_name, parse_defines in F4_TARGETS:
         print(f'\n--- {ver} ---')
-        if fb_json is None:
+        if ver in fallback_json_by_ver:
+            fb_json = fallback_json_by_ver[ver]
+        elif fb_json is None:
             fb_json = fallback_json_ae
+        fb_json = _merge_bytesig_csv(fb_json, ver)
         parse_args = list(base_parse_args) + list(parse_defines)
         enums, structs, template_source = collect_types(
             FALLOUT_H, RE_INCLUDE, parse_args,
@@ -274,6 +373,11 @@ def main():
         print(f'  found {len(enums)} enums, {len(structs)} structs/classes')
 
         _enrich_symbols(symbols, structs)
+        # Serialize AFTER enrichment: _enrich_symbols mutates 'sd'
+        # (structured signature) fields onto the symbol dicts.  A
+        # pre-loop dump silently dropped every signature from the
+        # generated scripts ("Signatures applied: 0" at apply time).
+        symbols_json = _json.dumps(symbols, separators=(',', ':'))
 
         vtable_structs = _build_vtable_structs(structs)
         _inject_vtable_fields(structs, vtable_structs)

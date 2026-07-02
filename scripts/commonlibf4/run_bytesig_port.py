@@ -40,8 +40,32 @@ _SCRIPT_DIR  = Path(__file__).resolve().parent
 _PROJECT_DIR = _SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(_PROJECT_DIR / "scripts" / "core"))
 
+import ast
 from bytesig_port import load_pe_text, build_prefix_index, port_symbols  # noqa: E402
 from steamless     import ensure_unpacked                                # noqa: E402
+
+
+_JSON_LOADS_RE = re.compile(r"^_json(?:_sym)?\.loads\((.+)\)$")
+
+
+def _extract_symbols_array(content: str, var_name: str = "SYMBOLS"):
+    """Pull a SYMBOLS/FALLBACK_SYMBOLS list out of a generated import script.
+
+    The generator emits one of two forms (see ghidra_import_gen.py):
+      * raw JSON literal:        ``SYMBOLS = [{...}]``
+      * json.loads()-wrapped:    ``SYMBOLS = _json_sym.loads('[{...}]')``
+
+    The wrapped form is used so JSON booleans (``true``/``false``) parse
+    safely under Python at script load.  Either way return the parsed list.
+    """
+    m = re.search(rf"^{var_name} = (.+?)$", content, re.M)
+    if not m:
+        return None
+    val = m.group(1).strip()
+    wrap = _JSON_LOADS_RE.match(val)
+    if wrap is not None:
+        val = ast.literal_eval(wrap.group(1))
+    return json.loads(val)
 
 
 EXES_DIR       = _PROJECT_DIR / "exes" / "f4"
@@ -54,6 +78,7 @@ VERSION_TO_BIN_NAME = {
     "ng": "Fallout4.exe",
     "ae": "Fallout4.exe",
     "vr": "Fallout4VR.exe",
+    "221": "Fallout4.exe",
 }
 
 
@@ -82,10 +107,9 @@ def _load_commonlib_f4_names(source: str) -> dict[str, int]:
     if not script.is_file():
         return {}
     content = script.read_text(encoding="utf-8")
-    m = re.search(r"^SYMBOLS = (.+?)$", content, re.M)
-    if not m:
+    syms = _extract_symbols_array(content, "SYMBOLS")
+    if syms is None:
         return {}
-    syms = json.loads(m.group(1))
     out: dict[str, int] = {}
     for s in syms:
         if s.get("t") != "func":
@@ -134,7 +158,8 @@ def _load_ida_names() -> dict[str, int]:
 
 
 def _merge_into_script(target: str, target_rva_key: str,
-                       ported: list[tuple[str, int]]) -> int:
+                       ported: list[tuple[str, int]],
+                       src_tag: str = "AE-bytesig-port") -> int:
     """Inject ported (name, target_rva) entries into the target's generated
     script's SYMBOLS array.  Returns the number of new entries added.
 
@@ -148,12 +173,11 @@ def _merge_into_script(target: str, target_rva_key: str,
         print(f"  {fname}: not found, skipping merge")
         return 0
     content = script.read_text(encoding="utf-8")
-    m = re.search(r"^SYMBOLS = (.+?)$", content, re.M)
-    if not m:
+    syms = _extract_symbols_array(content, "SYMBOLS")
+    if syms is None:
         print(f"  {fname}: no SYMBOLS array, skipping merge")
         return 0
-
-    syms = json.loads(m.group(1))
+    m = re.search(r"^SYMBOLS = (.+?)$", content, re.M)
     by_name: dict[str, dict] = {}
     for s in syms:
         if s.get("t") == "func":
@@ -164,24 +188,79 @@ def _merge_into_script(target: str, target_rva_key: str,
         existing = by_name.get(name)
         if existing is not None and target_rva_key not in existing:
             existing[target_rva_key] = rva
-            existing.setdefault("src_bytesig", "AE-bytesig-port")
+            existing.setdefault("src_bytesig", src_tag)
             augmented += 1
         elif existing is None:
             syms.append({
                 "n": name, "t": "func", "sig": "",
                 target_rva_key: rva,
-                "src": "AE-bytesig-port",
+                "src": src_tag,
             })
             added += 1
-    new_blob = "SYMBOLS = " + json.dumps(syms, separators=(",", ":"))
+    # Preserve the safe-loads wrapper so JSON ``false``/``true``/``null``
+    # round-trip through the rewrite (see ghidra_import_gen.py).  Always
+    # write the wrapped form -- backward-compatible with both reader paths.
+    symbols_json = json.dumps(syms, separators=(",", ":"))
+    new_blob = "SYMBOLS = _json_sym.loads(" + repr(symbols_json) + ")"
     content = content[:m.start()] + new_blob + content[m.end():]
     script.write_text(content, encoding="utf-8")
     print(f"  {fname}: merged {augmented} augmented + {added} new entries "
           f"({len(ported)} ported)")
+
+    # Persist so parse_commonlib_types.py re-merges on regen (union, first-win).
+    from bytesig_port_combined import _persist_ported_csv
+    _persist_ported_csv(
+        _SCRIPT_DIR / "refs" / f"bytesig_ported_{target}.csv", ported, src_tag)
     return augmented + added
 
 
-TARGET_TO_RVA_KEY = {"og": "og", "ng": "ng", "vr": "v"}
+TARGET_TO_RVA_KEY = {"og": "og", "ng": "ng", "vr": "v", "221": "221", "ae": "a"}
+
+
+_F4_221_PDB_PUBLICS = (
+    _PROJECT_DIR / "scripts" / "commonlibf4" / "refs" / "f4_221_pdb_publics.txt")
+
+
+def _load_f4_221_pdb_names() -> dict[str, int]:
+    """{name: rva} from the Bethesda debug PDB publics dump.
+
+    Source: ``Fallout4_1_11_221_for_debug.pdb`` dumped via
+    ``llvm-pdbutil pretty --externals`` and checked into refs/.
+    Filtered to function-shaped C++ qualified names (drops RTTI_*,
+    vftable, lambdas, std:: noise, raw ``?``-mangled leftovers).
+    """
+    if not _F4_221_PDB_PUBLICS.is_file():
+        return {}
+    line_re = re.compile(
+        r"^\s*public\s+\[0x([0-9A-Fa-f]+)\]\s+(\S.*?)\s*$")
+    bad_substr = ("RTTI_", "::`vftable'", "::`RTTI",
+                  "type_info::", "`typeinfo for", "anonymous namespace",
+                  "`vector-deleting-destructor", "<lambda_")
+    name_rx = re.compile(r"^[A-Za-z_][\w:]*$")
+    out: dict[str, int] = {}
+    with open(_F4_221_PDB_PUBLICS, "r", encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            m = line_re.match(ln)
+            if not m:
+                continue
+            try:
+                rva = int(m.group(1), 16)
+            except ValueError:
+                continue
+            if rva == 0:
+                continue
+            raw = m.group(2)
+            if any(b in raw for b in bad_substr):
+                continue
+            # Strip args ``Foo::Bar(args)`` -> ``Foo::Bar``.  Walks back to the
+            # matching '(' so templated names with embedded parens survive.
+            qname = raw.split("(", 1)[0].strip()
+            if not qname or "<" in qname or ">" in qname:
+                continue
+            if not name_rx.match(qname):
+                continue
+            out.setdefault(qname, rva)
+    return out
 
 
 def run(targets: list[str]) -> None:
@@ -222,6 +301,10 @@ def run(targets: list[str]) -> None:
 
     src_rvas = list(name_to_src_rva.items())
 
+    # Cache masked source signatures across the target loop -- Capstone
+    # disasm of N source RVAs is otherwise repeated per target.
+    src_sig_cache_ae: dict[int, tuple] = {}
+
     for tgt in targets:
         if tgt == src_ver:
             continue  # don't port a binary to itself
@@ -253,7 +336,8 @@ def run(targets: list[str]) -> None:
                 ported2, stats2 = port_symbols(
                     unmatched, src_text_rva, src_text,
                     tgt_text_rva, tgt_text, tgt_idx,
-                    window=48, prefix_k=6, masked=True, progress_every=0)
+                    window=48, prefix_k=6, masked=True, progress_every=0,
+                    src_sig_cache=src_sig_cache_ae)
                 ported.extend(ported2)
                 print(f"    masked: ok={stats2['ok']:,} "
                       f"no_prefix={stats2['no_prefix']:,} "
@@ -265,13 +349,76 @@ def run(targets: list[str]) -> None:
         rva_key = TARGET_TO_RVA_KEY[tgt]
         _merge_into_script(tgt, rva_key, ported)
 
+    # --- 1.11.221 PDB-public source pass ---
+    # The Bethesda debug PDB ships ~22k demangled publics for 1.11.221.
+    # Most names aren't in CommonLibF4 / IDA's AE source pool, so an
+    # AE-side port misses them entirely.  Run a second pass with the 221
+    # binary as the source so OG / NG / AE / VR each inherit the PDB
+    # names CommonLibF4 doesn't document.
+    pdb_names = _load_f4_221_pdb_names()
+    if not pdb_names:
+        print("\n  No 1.11.221 PDB-public source pool — skip 221-source pass.")
+        return
+    src221_path = _binary_for("221")
+    if src221_path is None or not src221_path.is_file():
+        print(f"\n  exes/f4/221/Fallout4.exe not present — skip 221-source pass.")
+        return
+    print(f"\n=== 1.11.221 PDB-public source pass ===")
+    print(f"  Source binary: F4 221 ({src221_path.name})")
+    print(f"  Source name pool: {len(pdb_names):,} unique PDB publics")
+    print(f"  Loading source binary: {src221_path}")
+    _, src221_text_rva, src221_text = load_pe_text(str(src221_path))
+    print(f"    .text RVA={src221_text_rva:#x} size={len(src221_text):,}")
+    src221_rvas = list(pdb_names.items())
+
+    # Same cache trick for the 221-source pass.
+    src_sig_cache_221: dict[int, tuple] = {}
+
+    for tgt in targets:
+        if tgt == "221":
+            continue  # already named directly by parse_commonlib_types
+        tgt_path = _binary_for(tgt)
+        if tgt_path is None or not tgt_path.is_file():
+            print(f"  {tgt.upper()}: binary not present in exes/f4/{tgt}/ — "
+                  f"skipping")
+            continue
+        print(f"\n  --- 221 -> {tgt.upper()} ---")
+        _, tgt_text_rva, tgt_text = load_pe_text(str(tgt_path))
+        tgt_idx = build_prefix_index(tgt_text, k=6)
+        print(f"    {len(tgt_idx):,} unique 6-byte prefixes")
+        print("  Pass 1: exact 32-byte match ...")
+        ported, stats = port_symbols(
+            src221_rvas, src221_text_rva, src221_text,
+            tgt_text_rva, tgt_text, tgt_idx,
+            window=32, prefix_k=6, masked=False, progress_every=0)
+        print(f"    exact: ok={stats['ok']:,} no_prefix={stats['no_prefix']:,} "
+              f"ambig={stats['ambiguous_or_zero']:,}")
+        ported_names = {n for n, _ in ported}
+        unmatched = [(n, r) for (n, r) in src221_rvas if n not in ported_names]
+        if unmatched:
+            print(f"  Pass 2: masked 48-byte retry on {len(unmatched):,} unmatched ...")
+            try:
+                ported2, stats2 = port_symbols(
+                    unmatched, src221_text_rva, src221_text,
+                    tgt_text_rva, tgt_text, tgt_idx,
+                    window=48, prefix_k=6, masked=True, progress_every=0,
+                    src_sig_cache=src_sig_cache_221)
+                ported.extend(ported2)
+                print(f"    masked: ok={stats2['ok']:,} "
+                      f"no_prefix={stats2['no_prefix']:,} "
+                      f"ambig={stats2['ambiguous_or_zero']:,}")
+            except ImportError as e:
+                print(f"    SKIPPED ({e})")
+        rva_key = TARGET_TO_RVA_KEY[tgt]
+        _merge_into_script(tgt, rva_key, ported, src_tag="221-PDB-bytesig-port")
+
 
 def main() -> None:
-    args = [a.lower() for a in sys.argv[1:]] or ["og", "ng", "vr"]
-    bad = [a for a in args if a not in ("og", "ng", "ae", "vr")]
+    args = [a.lower() for a in sys.argv[1:]] or ["og", "ng", "vr", "221"]
+    bad = [a for a in args if a not in ("og", "ng", "ae", "vr", "221")]
     if bad:
         print(f"Unknown target(s): {bad}")
-        print("Usage: python run_bytesig_port.py [og] [ng] [vr]")
+        print("Usage: python run_bytesig_port.py [og] [ng] [vr] [221]")
         sys.exit(2)
     run(args)
 

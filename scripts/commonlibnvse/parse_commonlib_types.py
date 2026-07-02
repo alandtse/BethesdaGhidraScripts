@@ -177,6 +177,122 @@ def main():
     # 2. Type extraction via libclang (best-effort)
     enums, structs, vtable_structs, template_source = _try_clang_types(verbose=True)
 
+    # 2a. PDB-derived enums (3.4k of them; clang produces ~40).  Merge
+    # from all 4 PDBs (Debug + Retail + Release-Beta + Release-MemDebug),
+    # first-win, WITHOUT clobbering xNVSE enums.
+    pdb_enums_paths = [
+        r'C:\GhidraProjects\scripts\Fallout_Debug_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_Beta_enums.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_MemDebug_enums.json',
+    ]
+    pdb_enums_json = pdb_enums_paths[0]
+    try:
+        import json as _j
+        n_added = 0
+        n_total_members = 0
+        for p in pdb_enums_paths:
+            if not os.path.isfile(p):
+                continue
+            pdb_enums = _j.loads(open(p, encoding='utf-8').read())
+            for cls, en in pdb_enums.items():
+                if cls in enums:
+                    continue
+                en['values'] = [tuple(v) for v in en.get('values', [])]
+                enums[cls] = en
+                n_added += 1
+                n_total_members += len(en['values'])
+        print('PDB enums merged (all 4 builds): {} added '
+              '({} members)'.format(n_added, n_total_members))
+    except Exception as e:
+        print('WARNING: PDB enum merge failed: {}: {}'.format(
+            type(e).__name__, e))
+
+    # 2b. PDB-derived type layouts -- merge into structs from ALL 4 PDBs.
+    # Debug build wins on collisions (most fields, best layouts); the
+    # other builds add structs Debug didn't surface (different inlining
+    # may expose types that were optimized away in Debug).
+    pdb_merge_count = 0  # noqa: F841
+
+    pdb_types_json = r'C:\GhidraProjects\scripts\Fallout_Debug_types.json'
+    pdb_extra_types = [
+        r'C:\GhidraProjects\scripts\Fallout_types.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_Beta_types.json',
+        r'C:\GhidraProjects\scripts\Fallout_Release_MemDebug_types.json',
+    ]
+    if os.path.isfile(pdb_types_json):
+        try:
+            from pdb_types_to_pipeline import convert_pdb_types
+            from pathlib import Path
+            pdb_typedefs_json = r'C:\GhidraProjects\scripts\Fallout_Debug_typedefs.json'
+            pdb_structs, n_skip, n_field = convert_pdb_types(
+                Path(pdb_types_json),
+                Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None,
+                Path(pdb_typedefs_json) if os.path.isfile(pdb_typedefs_json) else None)
+            n_added = 0
+            n_upgraded = 0
+            for cls, st in pdb_structs.items():
+                existing = structs.get(cls)
+                if existing is None:
+                    structs[cls] = st
+                    n_added += 1
+                    continue
+                # Existing clang entry -- check if it has REAL field data
+                ex_fields = existing.get('fields', [])
+                non_vft = [f for f in ex_fields
+                           if not f.get('name', '').startswith('__vftable')]
+                if existing.get('size', 0) == 0 or not non_vft:
+                    # Empty clang stub -- upgrade with PDB layout, but keep
+                    # clang's class methods + vtable info if any
+                    upgraded = dict(st)
+                    upgraded['vmethods']         = existing.get('vmethods', {})
+                    upgraded['methods']          = existing.get('methods', {})
+                    upgraded['has_vtable']       = existing.get('has_vtable', False)
+                    upgraded['bases']            = existing.get('bases', [])
+                    upgraded['_overload_aliases'] = existing.get('_overload_aliases', {})
+                    structs[cls] = upgraded
+                    n_upgraded += 1
+            print('PDB types merged (Debug): {} new + {} upgraded (skipped: {} '
+                  'empty/anon, {} fields total in source)'.format(
+                  n_added, n_upgraded, n_skip, n_field))
+
+            # Pull NEW (not in Debug) structs from the other 3 PDBs.
+            n_extra = 0
+            for extra_path in pdb_extra_types:
+                if not os.path.isfile(extra_path):
+                    continue
+                extra_structs, _, _ = convert_pdb_types(
+                    Path(extra_path),
+                    Path(pdb_enums_json) if os.path.isfile(pdb_enums_json) else None,
+                    # Typedefs are build-independent; without them every
+                    # alias-typed field degrades to bytes:N in the 3
+                    # non-Debug builds' structs.
+                    Path(pdb_typedefs_json) if os.path.isfile(pdb_typedefs_json) else None)
+                for cls, st in extra_structs.items():
+                    if cls in structs:
+                        continue
+                    structs[cls] = st
+                    n_extra += 1
+            print('PDB types merged (other 3 builds): {} new added'.format(n_extra))
+        except Exception as e:
+            print('WARNING: PDB type merge failed: {}: {}'.format(
+                type(e).__name__, e))
+
+    # 2c. After merging PDB inheritance into structs, re-run flatten to
+    # cascade base-class fields into derived PDB types.  Without this,
+    # the 5,645 PDB classes with bases would only show their own fields
+    # in Ghidra, missing all inherited members.
+    try:
+        from ghidra_import_gen import flatten_structs as _flatten
+        before = sum(1 for s in structs.values() if s['fields'])
+        _flatten(structs)
+        after = sum(1 for s in structs.values() if s['fields'])
+        print('Post-PDB flatten: {} -> {} structs with field data'.format(
+              before, after))
+    except Exception as e:
+        print('WARNING: post-PDB flatten failed: {}: {}'.format(
+              type(e).__name__, e))
+
     # 3. Assemble SYMBOLS array
     symbols      = _make_symbols(func_syms, label_syms)
     symbols_json = _json.dumps(symbols, separators=(',', ':'))
@@ -185,6 +301,18 @@ def main():
     n_label = sum(1 for s in symbols if s['t'] == 'label')
     print('\nSymbols: {} total ({} funcs, {} labels)'.format(
         len(symbols), n_func, n_label))
+
+    # 3b. PDB-derived fallback symbols (NVSE-known + Xbox dev-kit PDB).
+    # Primary xNVSE wins on address collision; fallbacks only fill gaps.
+    primary_addrs = {s['fnv'] for s in symbols if s.get('fnv')}
+    from pdb_naming import build_fallback_symbols
+    fb_all = build_fallback_symbols()
+    fallback_symbols = [s for s in fb_all if s['a'] not in primary_addrs]
+    n_fb_func  = sum(1 for s in fallback_symbols if s['t'] == 'func')
+    n_fb_label = sum(1 for s in fallback_symbols if s['t'] == 'label')
+    print('Fallback symbols (PDB / NVSE-known, new only): {} total ({} funcs, {} labels)'.format(
+        len(fallback_symbols), n_fb_func, n_fb_label))
+    fallback_symbols_json = _json.dumps(fallback_symbols, separators=(',', ':'))
 
     # 4. Vtable anchor verification (only if we successfully parsed
     # vtables -- labels-only run skips this).
@@ -207,7 +335,7 @@ def main():
         output_path,
         version='fnv',
         symbols_json=symbols_json,
-        fallback_symbols_json='[]',
+        fallback_symbols_json=fallback_symbols_json,
         template_source=template_source,
         project_name='xNVSE',
     )

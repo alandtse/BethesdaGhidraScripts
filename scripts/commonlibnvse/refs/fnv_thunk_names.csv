@@ -1,0 +1,12 @@
+# thunk names: 0x<rva>|j_<target_name>|0x<target_rva>
+0x007D16E0|j_NiD3DShader::PreProcessPipeline|0x00A81170
+0x007E08B0|j_NiD3DShader::RecreateRendererData|0x00A814B0
+0x00A8D250|j_NiD3DShader::SetupRenderingPass|0x00A805B0
+0x00A8D2E0|j_NiD3DShader::SetupShaderPrograms|0x00A811D0
+0x00A8D2F0|j_NiD3DShader::PrepareGeometryForRendering|0x00A812F0
+0x00A8D300|j_NiShader::SetupBoneMatrices|0x0068F3F0
+0x00A8D310|j_NiD3DShader::PostProcessPipeline|0x00A805F0
+0x00A8D320|j_NiD3DShader::FirstPass|0x00A80580
+0x00A8D330|j_NiD3DShader::NextPass|0x00A80590
+0x00A8D340|j_NiD3DShader::DestroyRendererData|0x00A81470
+0x00A91700|j_NiPersistentSrcTextureRendererData::LinkObject|0x00698110

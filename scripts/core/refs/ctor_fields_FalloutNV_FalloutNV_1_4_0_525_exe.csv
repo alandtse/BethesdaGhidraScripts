@@ -1,0 +1,283 @@
+class,offset,type,name,slot_state
+AILinearTaskThread,0x4C,undefined4,1,known
+AITaskThread,0x4C,undefined4,1,known
+ActorPathHandler,0x4,undefined *,apActor,known
+ActorPathHandler,0x8,undefined *,apActorMover,known
+ActorValueInfo,0x38,undefined *,apScriptName,known
+ArchiveFile,0x10,uint,4,known
+ArchiveFile,0x154,uint,4,known
+ArchiveFile,0x15C,undefined4,3,known
+AudioLoadTask,0x30,undefined *,apSound,known
+BGSDecalNode,0xB0,bool,abSkinnedNode,known
+BGSDistantObjectBlockLoadTask,0x34,int,aiX,known
+BGSDistantObjectBlockLoadTask,0x38,int,aiY,known
+BGSDistantObjectBlockLoadTask,0x3C,int,aiLevel,known
+BGSDistantObjectBlockLoadTask,0x40,undefined *,apBlock,known
+BGSDistantObjectBlockLoadTask,0x44,undefined *,apWorld,known
+BGSDistantTreeBlockLoadTask,0x30,undefined *,apBlock,known
+BGSDistantTreeBlockLoadTask,0x38,int,aiX,known
+BGSDistantTreeBlockLoadTask,0x3C,int,aiY,known
+BGSDistantTreeBlockLoadTask,0x40,int,aiLevel,known
+BGSReconstructCellBlocksMap,0x14,undefined1,1,known
+BGSTerrainChunkLoadTask,0x34,int,aiX,known
+BGSTerrainChunkLoadTask,0x38,int,aiY,known
+BGSTerrainChunkLoadTask,0x3C,int,aiLevel,known
+BGSTerrainChunkLoadTask,0x40,undefined *,apChunk,known
+BGSTerrainChunkLoadTask,0x44,undefined *,apWorld,known
+BSExtraData,0x4,undefined1,1,known
+BSFaceGenKeyframe,0x4,undefined4,1,known
+BSFaceGenMorphDifferential,0x8,undefined4,1,known
+BSFaceGenMorphStatistical,0x8,undefined4,1,known
+BSFaceGenMorphStatistical,0xC,undefined4,2,known
+BSFile,0x10,uint,aiBufferSize,known
+BSFile,0x28,NiFile_OpenMode,aeMode,known
+BSPSysArrayEmitter,0x58,undefined4,3,known
+BSPSysMultiTargetEmitterCtlr,0x5C,undefined4,2,known
+BSPSysMultiTargetEmitterCtlr,0x60,undefined2,3,known
+BSPSysSimpleColorModifier,0x48,undefined4,5,known
+BSPSysSimpleColorModifier,0x4C,undefined4,6,known
+BSPSysSimpleColorModifier,0x50,undefined4,7,known
+BSPSysSimpleColorModifier,0x54,undefined4,8,known
+BSPSysSimpleColorModifier,0x58,undefined4,9,known
+BSPSysSimpleColorModifier,0x5C,undefined4,10,known
+BSPSysStripUpdateModifier,0x18,undefined4,2,known
+BSSceneGraph,0xB8,bool,abMenuSceneGraph,known
+BSScissorTriShape,0xC4,undefined4,1,known
+BSScissorTriShape,0xC8,undefined4,2,known
+BSScissorTriShape,0xCC,undefined4,3,known
+BSScissorTriShape,0xD0,undefined4,4,known
+BSTempNode,0xAC,undefined4,1,known
+CheckWithinMultiBoundTask,0x18,undefined *,apBoundRef,known
+CombatGroupStrategy,0x4,uint,1,known
+ExteriorCellLoaderTask,0x18,undefined4,1,known
+ExteriorCellLoaderTask,0x1C,undefined4,2,known
+ExtraAmmo,0xC,undefined4,1,known
+ExtraAmmo,0x10,undefined4,2,known
+ExtraAnim,0xC,undefined4,1,known
+ExtraAnimNoteReceiver,0xC,undefined4,1,known
+ExtraAudioBuoyMarker,0xC,error_type,1,known
+ExtraAudioMarker,0xC,error_type,1,known
+ExtraCellAcousticSpace,0xC,undefined4,1,known
+ExtraCellClimate,0xC,undefined4,1,known
+ExtraCellImageSpace,0xC,undefined4,1,known
+ExtraCellMusicType,0xC,undefined4,1,known
+ExtraCharge,0xC,undefined4,1,known
+ExtraCombatStyle,0xC,undefined4,1,known
+ExtraGlobal,0xC,undefined4,1,known
+ExtraHasNoRumors,0xC,undefined1,1,known
+ExtraHeadingTarget,0xC,undefined4,1,known
+ExtraInfoGeneralTopic,0xC,undefined4,1,known
+ExtraLeveledItem,0xC,undefined4,1,known
+ExtraLight,0xC,undefined4,1,known
+ExtraMapMarker,0xC,undefined4,1,known
+ExtraModdingItem,0xC,undefined1,1,known
+ExtraModelSwap,0xC,undefined4,1,known
+ExtraModelSwap,0x10,undefined4,2,known
+ExtraObjectHealth,0xC,undefined4,1,known
+ExtraOriginalReference,0xC,undefined4,1,known
+ExtraPackage,0xC,undefined4,1,known
+ExtraPackage,0x10,undefined4,2,known
+ExtraPackage,0x14,undefined4,3,known
+ExtraPackage,0x18,undefined1,4,known
+ExtraPackage,0x19,undefined1,5,known
+ExtraPackage,0x1A,undefined1,6,known
+ExtraPackageData,0xC,undefined4,1,known
+ExtraPackageStartLocation,0xC,undefined4,2,known
+ExtraPackageStartLocation,0x1C,undefined4,4,known
+ExtraPersistentCell,0xC,int,1,known
+ExtraPoison,0xC,undefined4,1,known
+ExtraPrimitive,0xC,undefined4,1,known
+ExtraRadiation,0xC,undefined4,1,known
+ExtraRadius,0xC,undefined4,1,known
+ExtraReferencePointer,0xC,undefined4,1,known
+ExtraRefractionProperty,0xC,undefined4,1,known
+ExtraRegionList,0xC,undefined4,1,known
+ExtraSayToTopicInfo,0xC,undefined4,1,known
+ExtraScale,0xC,undefined4,1,known
+ExtraScript,0xC,undefined4,1,known
+ExtraSeed,0xC,undefined1,1,known
+ExtraTimeLeft,0xC,undefined4,1,known
+ExtraTresPassPackage,0xC,undefined4,1,known
+ExtraUses,0xC,undefined1,1,known
+IMemoryHeap,0x4,undefined4,3,known
+IMemoryHeap,0x10,undefined4,4,known
+IMemoryHeap,0x14,undefined4,1,known
+IMemoryHeap,0x18,undefined4,2,known
+IMemoryHeap,0x1C,undefined4,2,known
+ImageSpaceModifierInstanceDOF,0x20,undefined4,4,known
+ImageSpaceModifierInstanceDOF,0x24,undefined4,5,known
+ImageSpaceModifierInstanceDOF,0x28,undefined4,6,known
+ImageSpaceModifierInstanceDOF,0x2C,undefined4,3,known
+ImageSpaceModifierInstanceForm,0x1C,undefined *,apMod,known
+IntSeenData,0x24,undefined1,1,known
+IntSeenData,0x25,undefined1,2,known
+InterfacedClass,0x8,undefined4,2,known
+LipTask,0x30,undefined4,2,known
+LipTask,0x38,undefined4,1,known
+MagicHitEffect,0x18,undefined4,2,known
+MagicHitEffect,0x1C,undefined4,1,known
+MagicProjectile,0x94,undefined *,apCaster,known
+MagicProjectile,0x98,undefined *,apSpell,known
+MagicProjectile,0x9C,undefined *,apDominantEffect,known
+MagicProjectile,0xA0,undefined *,apAVEffect,known
+MemoryHeap,0x20F0,undefined1,4,known
+NiBSplineFloatInterpolator,0x20,undefined4,2,known
+NiBSplineInterpolator,0x14,int,1,known
+NiBSplineInterpolator,0x18,int,2,known
+NiBlendInterpolator,0xD,byte,3,known
+NiBlendInterpolator,0x1C,undefined4,2,known
+NiBoolInterpolator,0xC,undefined1,1,known
+NiCapsuleCapsuleIntersector,0x38,int,1,known
+NiCapsuleCapsuleIntersector,0x3C,int,2,known
+NiCapsuleSphereIntersector,0x38,int,1,known
+NiCapsuleSphereIntersector,0x3C,int,2,known
+NiCapsuleTriIntersector,0x38,int,1,known
+NiColorInterpolator,0x1C,int,1,known
+NiFile,0x10,void *,3,known
+NiFile,0x28,int,2,known
+NiFloatInterpolator,0xC,undefined4,1,known
+NiGeometry,0xB8,int,1,known
+NiIntersector,0x4,float,fMaxTime,known
+NiIntersector,0x8,float,fDerivativeTimeStep,known
+NiIntersector,0x10,float,fPseudodistanceThreshold,known
+NiIntersector,0x14,int,iMaxIterations,known
+NiLookAtInterpolator,0x10,undefined4,1,known
+NiMemStream,0x10,undefined4,1,known
+NiMemStream,0x18,undefined4,2,known
+NiMemStream,0x1C,undefined4,2,known
+NiPSysEmitter,0x1C,undefined4,2,known
+NiPSysEmitter,0x20,undefined4,3,known
+NiPSysEmitter,0x24,undefined4,4,known
+NiPSysEmitter,0x28,undefined4,5,known
+NiPSysEmitter,0x2C,undefined4,6,known
+NiPSysEmitter,0x30,undefined4,7,known
+NiPSysEmitter,0x34,undefined4,8,known
+NiPSysEmitter,0x38,undefined4,9,known
+NiPSysEmitter,0x3C,undefined4,10,known
+NiPSysEmitter,0x40,undefined4,11,known
+NiPSysEmitter,0x44,undefined4,14,known
+NiPSysEmitter,0x48,undefined4,12,known
+NiPSysEmitter,0x4C,undefined4,13,known
+NiPSysVolumeEmitter,0x54,undefined4,2,known
+NiPathInterpolator,0x18,int,1,known
+NiPathInterpolator,0x1C,int,2,known
+NiPoint3Interpolator,0xC,undefined4,1,known
+NiPoint3Interpolator,0x10,undefined4,2,known
+NiPoint3Interpolator,0x14,undefined4,3,known
+NiSphereBV,0x10,undefined *,kABV,known
+NiSphereTriIntersector,0x38,int,1,known
+NiTextureTransformController,0x3C,void *,2,known
+NiTextureTransformController,0x48,undefined4,3,known
+NiTexturingProperty_Map,0x8,int,1,known
+NiTexturingProperty_Map,0xC,undefined4,5,known
+NiTransformInterpolator,0x2C,int,1,known
+NiTriBasedGeomData,0x40,undefined2,1,known
+NonActorMagicCaster,0x20,undefined4,1,known
+PathingLOSMap,0x3C,undefined4,1,known
+PathingLOSMap,0x40,undefined4,2,known
+PathingLOSMap,0x44,undefined4,3,known
+PathingLOSMap,0x48,undefined4,4,known
+QueuedAnimIdle,0x38,undefined *,apRef,known
+QueuedFileLoad,0x34,undefined4,3,known
+QueuedHelmet,0x28,int,aiVal,known
+QueuedMagicItem,0x28,undefined4,1,known
+QueuedMagicItem,0x2C,undefined4,2,known
+QueuedReference,0x28,undefined *,apRef,known
+QueuedReplacementKF,0x38,undefined4,3,known
+QueuedReplacementKF,0x3C,undefined4,4,known
+QueuedReplacementKFList,0x28,uint,1,known
+QueuedTreeBillboard,0x38,undefined4,3,known
+QueuedTreeModel,0x48,undefined4,1,known
+QueuedTreeModel,0x4C,int,2,known
+RadioConvTask,0x30,undefined4,1,known
+Setting,0x4,undefined4,2,known
+Setting,0x8,undefined4,1,known
+SkyTask,0x30,undefined4,1,known
+StartMenu_Option,0x4,_func_void_DebugEventLevel_char_ptr *,1,known
+StartMenu_Option,0x8,int,2,known
+StartMenu_Option,0xC,int,3,known
+StructArrayImplementation,0x18,void *,1,known
+TESDialoguePackageData,0x4,undefined4,1,known
+TESDialoguePackageData,0x8,undefined4,2,known
+TESDialoguePackageData,0x14,undefined4,4,known
+TESDialoguePackageData,0x18,undefined1,5,known
+TESDialoguePackageData,0x1C,undefined4,6,known
+TESFollowPackageData,0x8,undefined4,1,known
+TESRegionGrassObject,0x4,undefined *,1,known
+TESRegionGrassObject,0x8,int,2,known
+VecArrayImplementation,0x18,int,numRealPerElem,known
+hkArrayStreamWriter,0x8,undefined *,arr,known
+hkArrayStreamWriter,0x10,hkArrayStreamWriter_ArrayOwnership,o,known
+hkBsdSocket,0x20,int,1,known
+hkDataClassDict,0xC,undefined *,root,known
+hkDisplayCapsule,0x80,float,radius,known
+hkDisplayCapsule,0x84,int,numSides,known
+hkDisplayCapsule,0x88,int,numHeightSegments,known
+hkDisplayConvex,0x8,undefined *,geom,known
+hkDisplayCylinder,0x80,float,radius,known
+hkDisplayCylinder,0x84,int,numSides,known
+hkDisplayCylinder,0x88,int,numHeightSegments,known
+hkFreeListAllocator,0x24,undefined4,1,known
+hkIArchive,0xC,hkBool,byteswap,known
+hkIstream,0x8,undefined *,track,known
+hkLargeBlockAllocator,0x98,undefined4,1,known
+hkMemoryStreamReader,0x8,undefined4,1,known
+hkMemoryStreamReader,0x10,undefined4,2,known
+hkMemoryStreamReader,0x18,int,3,known
+hkNormalTriangleShape,0x10,float,afRadius,known
+hkOArchive,0x8,undefined *,arr,known
+hkOArchive,0xC,hkBool,bs,known
+hkObjectCopier,0x10,"hkFlags_enum hkObjectCopier_ObjectCopierFlagBits,unsigned int",flags,known
+hkOstream,0x8,void *,1,known
+hkScaledMoppBvTreeShape,0x40,void *,2,known
+hkServerDebugDisplayHandler,0xC,undefined *,stream,known
+hkSystemMemoryBlockServer,0x4,uint,minBlockSize,known
+hkSystemMemoryBlockServer,0x10,undefined *,system,known
+hkpAabbTreeWorldManager,0x28,undefined *,jobQueue,known
+hkpAllCdPointCollector,0x3A0,undefined *,apStartCollector,known
+hkpBallGun,0x30,int,numBullets,known
+hkpBoxShape,0x10,undefined4,2,known
+hkpBroadPhaseBorder,0x14,undefined *,entities,known
+hkpBroadPhaseBorder,0x30,int,numEntities,known
+hkpBvAgent,0x8,undefined4,4,known
+hkpBvShape,0x10,hkFinishLoadedObjectFlag,__formal,known
+hkpBvTreeStreamAgent,0x8,undefined4,4,known
+hkpCollidableMediator,0x8,int,1,known
+hkpCollisionDispatcher,0x8,int,1,known
+hkpCompressedMeshShape,0x28,undefined4,1,known
+hkpConstrainedSystemFilter,0x34,void *,1,known
+hkpContactPointViewer,0x30,undefined4,2,known
+hkpConvexPieceShape,0x10,float,radius,known
+hkpConvexTransformShapeBase,0xC,undefined4,1,known
+hkpConvexTransformShapeBase,0x10,undefined4,2,known
+hkpConvexTransformShapeBase,0x18,void *,3,known
+hkpConvexVerticesShape,0x10,undefined4,6,known
+hkpConvexVerticesShape,0x40,undefined4,1,known
+hkpConvexVerticesShape,0x4C,int,2,known
+hkpConvexVerticesShape,0x54,undefined4,3,known
+hkpConvexVerticesShape,0x58,uint,4,known
+hkpCylinderShape,0x10,undefined4,4,known
+hkpExtendedMeshShape,0xB0,undefined4,2,known
+hkpExtendedMeshShape,0xE4,undefined4,1,known
+hkpGskBaseAgent,0x8,undefined *,mgr,known
+hkpMeshShape,0x30,undefined4,2,known
+hkpMeshShape,0x50,undefined4,1,known
+hkpMoppBvTreeShape,0x34,hkFinishLoadedObjectFlag,__formal,known
+hkpMoppCachedShapeMediator,0x14,int *,1,known
+hkpMoppShapeMediator,0x8,int *,1,known
+hkpMultiSphereAgent,0x8,undefined *,mgr,known
+hkpMultiSphereShape,0x10,int,numSpheres,known
+hkpProjectileGun,0x38,undefined4,1,known
+hkpProjectileGun,0x3C,undefined4,2,known
+hkpRemoveTerminalsMoppModifier2,0x1C,void *,2,known
+hkpSampledHeightFieldShape,0x1D,undefined1,2,known
+hkpShapeCollection,0xC,hkpShapeType,type,known
+hkpShapeCollectionAgent,0x8,undefined *,mgr,known
+hkpSimpleContactConstraintData,0x24,undefined4,1,known
+hkpSimulation,0xC,undefined *,world,known
+hkpSphereShape,0x10,float,radius,known
+hkpTransformShape,0x14,hkFinishLoadedObjectFlag,__formal,known
+hkpTriSampledHeightFieldBvTreeShape,0x18,hkFinishLoadedObjectFlag,__formal,known
+hkpTriSampledHeightFieldCollection,0x18,undefined *,shape,known
+hkpTriSampledHeightFieldCollection,0x20,float,radius,known
+std_locale_Locimp,0x14,bool,_Transparent,known
