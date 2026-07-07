@@ -274,6 +274,13 @@ def classify(st, live):
     name, gsize, gcat, gfields, gbases, ghas_vt = st
     gen_members = [(fld[0], fld[1], fld[2], fld[3]) for fld in gfields
                    if not str(fld[1]).startswith('bf:')]
+    # layout_diverges() needs the bitfield members too (it now compares them by
+    # name instead of by offset -- see its docstring) to avoid a false field-count
+    # mismatch against `emembers`, which still has every real bitfield member.
+    # The other consumers of `gen_members` below (_has_fillable_fields,
+    # _gen_vftable) were never designed for 'bf:'-typed entries, so they keep the
+    # filtered list.
+    gen_members_with_bf = [(fld[0], fld[1], fld[2], fld[3]) for fld in gfields]
     gen_ns = _gen_namespace(gcat)
 
     # A generated field list with overlapping offset ranges means the extractor
@@ -348,7 +355,7 @@ def classify(st, live):
         # route to the in-place FILL action. The fill is improve-only + comment-preserving,
         # so real existing fields and hand comments are never lost.
         status = 'STUB_FILL'
-    elif esize == gsize and layout_diverges(emembers, gen_members):
+    elif esize == gsize and layout_diverges(emembers, gen_members_with_bf):
         # Same total size, but the internal layout genuinely disagrees at some
         # offset (not just a cosmetic name/typedef spelling difference) -- a size
         # match is NOT proof of a content match. Route to DIVERGENT so this gets
