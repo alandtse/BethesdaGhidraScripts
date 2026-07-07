@@ -79,3 +79,43 @@ def test_size_disagreement_at_same_offset_diverges():
     existing = [_e(0, 4, 'undefined4', 'a')]
     gen = [_g('a', 'u64', 0, 8)]
     assert cr.layout_diverges(existing, gen)
+
+
+def test_auto_extract_score_recognizes_raw_middle_tail_remainder_fields():
+    # The real Character bug: a handful of genuinely-identified fields poked
+    # into an otherwise-untyped struct, with the remainder split into named
+    # byte-blob chunks. None of _base_raw/_middle/_tail match the old
+    # name-only patterns (_pad/unk/field_/Name_<hex>), so the old score saw
+    # this as "mostly hand-named" and protected it as HANDCURATED forever.
+    existing = [
+        _e(0, 688, 'byte[688]', '_base_raw'),
+        _e(688, 12, 'NiPoint3', 'Rotation'),
+        _e(700, 12, 'NiPoint3', 'Position'),
+        _e(712, 192, 'char[192]', '_middle'),
+        _e(904, 12, 'NiPoint3', 'EditorLocPosition'),
+        _e(916, 388, 'char[388]', '_tail'),
+    ]
+    score = cr.auto_extract_score(existing)
+    # 3 of 6 fields (_base_raw, _middle, _tail) are placeholder-typed remainder
+    # chunks -> score must land at/above the 0.5 handcurated threshold so this
+    # struct is no longer misclassified as hand-curated.
+    assert score >= 0.5
+
+
+def test_auto_extract_score_still_protects_genuinely_hand_curated_struct():
+    # A struct where every field has both a real name AND a real (non-placeholder)
+    # type must still score as hand-curated -- the fix must not become so broad
+    # that deliberately-typed RE work gets treated as an unfinished stub.
+    existing = [
+        _e(0, 4, 'ActorValue', 'actorValue'),
+        _e(4, 4, 'float', 'magnitude'),
+        _e(8, 8, 'struct:RE::TESForm *', 'sourceForm'),
+    ]
+    score = cr.auto_extract_score(existing)
+    assert score < 0.5
+
+
+def test_placeholder_typename_recognizes_byte_arrays_like_char_arrays():
+    assert cr._placeholder_typename('byte[688]')
+    assert cr._placeholder_typename('char[192]')
+    assert not cr._placeholder_typename('struct:RE::NiPoint3')

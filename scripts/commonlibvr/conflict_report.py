@@ -28,11 +28,11 @@ be triaged in a spreadsheet. Override the import path / csv path via the module
 globals IMPORT_PATH / CSV_PATH before exec, or the env vars CLVR_IMPORT / CLVR_CSV.
 """
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from layout_diff import layout_diverges  # noqa: E402
+from layout_diff import (  # noqa: E402
+    layout_diverges, auto_extract_score, _placeholder_typename as placeholder_typename)
 
 import ghidra.program.model.data as D
 
@@ -187,30 +187,6 @@ def _gen_vftable(gen_members, ghas_vt):
     return False
 
 
-_AUTO_SUFFIX = re.compile(r'_[0-9A-Fa-f]{1,4}$')
-
-
-def _auto_extract_score(members):
-    """Fraction of members whose name is the auto-extraction signature
-    'Name_<hex>' (e.g. Enabled_8, CasterRefId_34, FormFlags_10) or _pad_/unk
-    filler. NOTE: the hex token is the ORIGINAL (often SE) offset baked into the
-    name and need not equal the member's current offset, so we match the pattern,
-    not the value. High score => machine-generated names (safe to overwrite);
-    low score => clean descriptive names (PDB symbols or hand RE) -> protect."""
-    if not members:
-        return 1.0
-    auto = 0
-    for (o, ln, tn, fn) in members:
-        nm = fn or ''
-        low = nm.lower()
-        if low.startswith('_pad') or low.startswith('pad') or low.startswith('unk') or \
-           low.startswith('field_') or 'vftable' in low or not nm:
-            auto += 1
-        elif _AUTO_SUFFIX.search(nm):
-            auto += 1
-    return float(auto) / len(members)
-
-
 def _is_stub(dt, members):
     return dt.getLength() <= 1 or len(members) == 0
 
@@ -222,17 +198,6 @@ def _has_dup_fieldnames(members):
     singleLevel). A clean struct never repeats a field name."""
     names = [fn for (_o, _l, _t, fn) in members if fn]
     return len(names) != len(set(names))
-
-
-_PLACEHOLDER_TYPES = frozenset((
-    'undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
-    'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t',
-    'undefined1', 'undefined2', 'undefined4', 'undefined8'))
-
-
-def _placeholder_typename(tn):
-    t = (tn or '').lower()
-    return t in _PLACEHOLDER_TYPES or t.startswith('undefined') or t.startswith('char[')
 
 
 def _gen_field_concrete(ftype_str):
@@ -260,7 +225,7 @@ def _has_fillable_fields(emembers, gen_members):
         if not _gen_field_concrete(ftype):
             continue
         e = by_off.get(foff)
-        if e is None or _placeholder_typename(e[1]) or (e[2] or '').endswith('_raw'):
+        if e is None or placeholder_typename(e[1]) or (e[2] or '').endswith('_raw'):
             return True
     return False
 
@@ -324,7 +289,7 @@ def classify(st, live):
     emembers = _existing_members(best)
     e_vftbl = _existing_vftable(best, emembers)
     g_vftbl = _gen_vftable(gen_members, ghas_vt)
-    auto = _auto_extract_score(emembers)
+    auto = auto_extract_score(emembers)
     vftable_loss = e_vftbl and not g_vftbl
     handcurated = auto < 0.5 and len(emembers) >= 3
 
