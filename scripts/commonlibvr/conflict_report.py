@@ -33,7 +33,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import (  # noqa: E402
     layout_diverges, auto_extract_score, _placeholder_typename as placeholder_typename,
-    has_overlapping_fields, find_component_drift)
+    has_overlapping_fields, find_component_drift, verify_handcurated as _verify_handcurated_pure)
 
 import ghidra.program.model.data as D
 
@@ -285,6 +285,31 @@ def scan_component_drift(dtm):
                 dt.getPathName(), c.getFieldName(), c.getOffset(), c.getLength(),
                 ct.getLength() if ct else -1, dt.getLength(), is_bf))
     return find_component_drift(components)
+
+
+def verify_handcurated(st, c, drift_struct_paths=None):
+    """Ghidra-side glue for layout_diff.verify_handcurated(): re-verify a struct
+    classify() marked HANDCURATED, since that label only means "looks hand-curated
+    by a naming heuristic" -- not "confirmed correct". See layout_diff.verify_handcurated
+    for the concrete BSMultiBoundNode counterexample this closes.
+
+    st: the generated struct tuple (as passed to classify()).
+    c: the dict classify() returned for st (must have status == 'HANDCURATED';
+       c['best'] is the existing Ghidra Structure).
+    drift_struct_paths: optional set of struct getPathName() strings known to have
+       component-slot drift (e.g. {d[0] for d in scan_component_drift(dtm)}) --
+       if st's existing struct's path is in this set, treated as SUSPECT_OTHER.
+
+    Returns (status, reason) same as layout_diff.verify_handcurated.
+    """
+    name, gsize, gcat, gfields, gbases, ghas_vt = st
+    gen_members = [(fld[0], fld[1], fld[2], fld[3]) for fld in gfields
+                   if not str(fld[1]).startswith('bf:')]
+    best = c['best']
+    existing_members = _existing_members(best)
+    has_drift = bool(drift_struct_paths) and best is not None and \
+        best.getPathName() in drift_struct_paths
+    return _verify_handcurated_pure(existing_members, gen_members, c['existing_size'], gsize, has_drift)
 
 
 def classify(st, live):

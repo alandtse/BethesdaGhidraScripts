@@ -283,3 +283,57 @@ def test_find_component_drift_reports_multiple_structs():
     ]
     drift = cr.find_component_drift(components)
     assert [d[0] for d in drift] == ['/types.h/A', '/types.h/C']
+
+
+def test_verify_handcurated_flags_stale_deficit():
+    # BSMultiBoundNode pattern: existing smaller than generated -- not deliberate
+    # richness, a stale deficit from a dependency (BSNiNode) growing out from
+    # under it.
+    status, reason = cr.verify_handcurated([], [], existing_size=312, gen_size=352)
+    assert status == 'SUSPECT_STALE'
+    assert '312' in reason and '352' in reason
+
+
+def test_verify_handcurated_flags_drift():
+    existing = [_e(0, 8, 'SomeType', 'field')]
+    gen = [_g('field', 'struct:RE::SomeType', 0, 8)]
+    status, reason = cr.verify_handcurated(existing, gen, existing_size=8, gen_size=8, has_drift=True)
+    assert status == 'SUSPECT_OTHER'
+    assert 'drift' in reason
+
+
+def test_verify_handcurated_confirms_richer_matching_struct():
+    # SE's real Character this session: 1304 existing vs 688 generated, with the
+    # generated Actor-embedding prefix matching exactly and real extra fields
+    # (Rotation/Position/etc) only in the tail beyond gen_size.
+    existing = [
+        _e(0, 688, 'Actor', '_base'),
+        _e(688, 12, 'NiPoint3', 'Rotation'),
+        _e(700, 12, 'NiPoint3', 'Position'),
+    ]
+    gen = [_g('_base', 'struct:RE::Actor', 0, 688)]
+    status, reason = cr.verify_handcurated(existing, gen, existing_size=712, gen_size=688)
+    assert status == 'VERIFIED_CORRECT'
+
+
+def test_verify_handcurated_tolerates_cosmetic_type_spelling():
+    existing = [_e(0, 8, 'TESForm *64', 'form')]
+    gen = [_g('form', 'ptr:struct:RE::TESForm', 0, 8)]
+    status, _ = cr.verify_handcurated(existing, gen, existing_size=8, gen_size=8)
+    assert status == 'VERIFIED_CORRECT'
+
+
+def test_verify_handcurated_flags_missing_generated_field():
+    existing = [_e(0, 4, 'uint', 'onlyField')]
+    gen = [_g('onlyField', 'u32', 0, 4), _g('missingField', 'u32', 4, 4)]
+    status, reason = cr.verify_handcurated(existing, gen, existing_size=8, gen_size=8)
+    assert status == 'SUSPECT_OTHER'
+    assert 'missingField' in reason
+
+
+def test_verify_handcurated_flags_type_mismatch_in_shared_range():
+    existing = [_e(0, 4, 'float', 'value')]
+    gen = [_g('value', 'ptr:struct:RE::TESForm', 0, 4)]
+    status, reason = cr.verify_handcurated(existing, gen, existing_size=4, gen_size=4)
+    assert status == 'SUSPECT_OTHER'
+    assert 'value' in reason

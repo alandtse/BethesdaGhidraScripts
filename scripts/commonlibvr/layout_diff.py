@@ -283,3 +283,80 @@ def layout_diverges(existing_members, gen_members):
         if _class_of(e_tn) != _class_of(g_tn):
             return True
     return False
+
+
+def verify_handcurated(existing_members, gen_members, existing_size, gen_size, has_drift=False):
+    """Judge whether a struct classified HANDCURATED (protected from auto-replace
+    because it "looks hand-curated") is actually verified-correct, or a latent bug
+    that classify()'s heuristic mistook for deliberate hand-curation.
+
+    `HANDCURATED` only means "few fields look machine-generated" -- it is NOT proof
+    of correctness. This session found a concrete counterexample: `BSMultiBoundNode`
+    was HANDCURATED all session (gen_size=352, existing_size=312, a genuine 40-byte
+    deficit from `BSNiNode` growing out from under it) -- not a deliberately-richer
+    hand-curated struct, just a stale one that happened to score low on the
+    machine-generated-name heuristic.
+
+    Three checks, in priority order:
+
+    1. SUSPECT_STALE -- existing_size < gen_size. Genuine hand-curation means "we
+       know MORE than the generic extractor" (a real base class embedded, real
+       extra fields discovered by RE) -- it should make the existing struct equal
+       or RICHER than generated, never smaller. A struct smaller than its own
+       generated reference is the exact BSMultiBoundNode pattern: stale content
+       from before some dependency was fixed, not intentional richness.
+
+    2. SUSPECT_OTHER (drift) -- has_drift=True, i.e. this struct (or a type it
+       embeds) shows up in a component-drift scan (see find_component_drift).
+       A struct with real component-slot corruption is definitively broken,
+       independent of its size relationship to the generated reference.
+
+    3. SUSPECT_OTHER (field mismatch) -- existing_size >= gen_size (the
+       "genuinely richer" case), so compare the SHARED byte range: every
+       generated field's exact offset must exist in the existing layout with a
+       compatible type-class and length (via `_class_of`, so cosmetic spelling
+       differences don't false-flag). Existing fields beyond `gen_size`, or
+       existing fields interleaved within the shared range that don't correspond
+       to a generated field, are fine (that IS the hand-curated content) -- but a
+       generated field with no matching slot, or a slot with a genuinely
+       different type/length where a generated field expects one, means even the
+       claimed-correct hand-curated content itself disagrees with the ground
+       truth, not just extends it.
+
+    Only if none of the above trip does the struct pass as VERIFIED_CORRECT.
+
+    existing_members: [(offset, length, typename, fieldname)]
+    gen_members:       [(fname, ftype_str, foffset, fsize)] (bitfield 'bf:' entries
+                        already excluded by the caller, matching classify()'s own
+                        gen_members convention -- NOT gen_members_with_bf)
+    existing_size, gen_size: total struct byte lengths
+    has_drift: bool, True if a component-drift scan flagged this struct or an
+               embedded type of its
+
+    Returns (status, reason) -- status one of 'VERIFIED_CORRECT', 'SUSPECT_STALE',
+    'SUSPECT_OTHER'; reason is a short human-readable string.
+    """
+    if existing_size < gen_size:
+        return ('SUSPECT_STALE',
+                'existing_size {} < gen_size {} (stale-deficit pattern)'.format(existing_size, gen_size))
+
+    if has_drift:
+        return ('SUSPECT_OTHER', 'component-slot drift detected on this struct or an embedded type')
+
+    by_off_e = {o: (ln, tn) for (o, ln, tn, _fn) in existing_members}
+    for (fname, ftype, foff, fsize) in gen_members:
+        e = by_off_e.get(foff)
+        if e is None:
+            return ('SUSPECT_OTHER',
+                    'generated field {!r} at offset {} has no matching existing slot'.format(fname, foff))
+        e_len, e_tn = e
+        if e_len != fsize:
+            return ('SUSPECT_OTHER',
+                    'generated field {!r} at offset {} size {} != existing size {}'.format(
+                        fname, foff, fsize, e_len))
+        if _class_of(e_tn) != _class_of(ftype):
+            return ('SUSPECT_OTHER',
+                    'generated field {!r} at offset {} type {!r} != existing type {!r}'.format(
+                        fname, foff, ftype, e_tn))
+
+    return ('VERIFIED_CORRECT', 'existing_size >= gen_size and shared byte range matches')
