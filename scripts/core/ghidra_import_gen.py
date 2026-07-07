@@ -653,13 +653,6 @@ def get_builtin(type_str):
 def _resolve_struct_name(name):
     """Look up a struct/class name in 'created', handling template instantiations."""
     if '<' in name:
-        alias = TEMPLATE_TYPE_MAP.get(name)
-        if alias:
-            return created.get(alias)
-        # Some template instantiations are emitted directly under their full name
-        hit = created.get(name)
-        if hit:
-            return hit
         # Strip only the OUTER namespace prefix (the part before the first '<') --
         # e.g. 'RE::BSTEventSink<RE::MenuOpenCloseEvent>' -> 'BSTEventSink<RE::MenuOpenCloseEvent>',
         # matching how Ghidra names the live template-instantiation type. A naive
@@ -667,8 +660,17 @@ def _resolve_struct_name(name):
         # argument and mangle the lookup, so the argument's own qualification is
         # left untouched -- only the prefix before '<' is split.
         lt = name.index('<')
-        prefix, rest = name[:lt], name[lt:]
-        return created.get(prefix.split('::')[-1] + rest)
+        stripped = name[:lt].split('::')[-1] + name[lt:]
+        # Try every candidate in order, falling through (not early-returning) on a
+        # miss -- TEMPLATE_TYPE_MAP can map a name to itself (a degenerate alias
+        # that resolves nowhere), which must NOT short-circuit past the other
+        # candidates.
+        for candidate in (TEMPLATE_TYPE_MAP.get(name), name, stripped):
+            if candidate:
+                hit = created.get(candidate)
+                if hit:
+                    return hit
+        return None
     return created.get(name) or created.get(name.split('::')[-1])
 
 _SIZED_ENUM_CACHE = {}

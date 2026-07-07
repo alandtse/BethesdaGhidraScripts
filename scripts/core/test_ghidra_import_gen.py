@@ -74,6 +74,18 @@ def test_resolve_struct_name_template_no_match_returns_none():
     assert resolve('RE::BSTEventSink<RE::SomeUnknownEvent>') is None
 
 
+def test_resolve_struct_name_degenerate_self_alias_falls_through():
+    # a real-world case: TEMPLATE_TYPE_MAP mapped this exact name to ITSELF (a
+    # no-op alias that resolves nowhere in 'created'). An early-return on any
+    # truthy alias would give up here even though the namespace-stripped bare
+    # name is registered and resolvable -- must fall through instead.
+    name = 'RE::BSTEventSink<RE::MenuOpenCloseEvent>'
+    created = {'BSTEventSink<RE::MenuOpenCloseEvent>': 'SINK_DT'}
+    template_map = {name: name}  # degenerate self-alias
+    resolve = _load_resolve_struct_name(created, template_map)
+    assert resolve(name) == 'SINK_DT'
+
+
 def _run():
     n = 0
     for name, fn in sorted(globals().items()):
