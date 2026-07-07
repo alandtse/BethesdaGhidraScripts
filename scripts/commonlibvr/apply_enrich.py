@@ -916,14 +916,23 @@ def run_thiscall():
     exec(compile(code, path, 'exec'), g)
 
 
-_PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
-if _PHASE == 'symbols':
-    run_symbols()
-elif _PHASE == 'sigconflict':
-    run_sigconflict()
-elif _PHASE == 'classes':
-    run_classes()
-elif _PHASE == 'thiscall':
-    run_thiscall()
-else:
-    run()
+if __name__ == '__main__':
+    # Guards against the exact incident this comment documents: a plain
+    # `import apply_enrich` (e.g. for introspection, to reuse resolve_type/
+    # make_padding/_fill_struct) sets __name__ to the module name, not
+    # '__main__' -- so it no longer auto-executes a live run() even if a
+    # stale CLVR_APPLY=go happens to be sitting in os.environ from an
+    # earlier call in the same session. Direct execution (GUI Script
+    # Manager, `exec(open(path).read())`) still sets __name__ == '__main__'
+    # and runs normally.
+    _PHASE = os.environ.get('CLVR_PHASE', 'types').lower()
+    if _PHASE == 'symbols':
+        run_symbols()
+    elif _PHASE == 'sigconflict':
+        run_sigconflict()
+    elif _PHASE == 'classes':
+        run_classes()
+    elif _PHASE == 'thiscall':
+        run_thiscall()
+    else:
+        run()
