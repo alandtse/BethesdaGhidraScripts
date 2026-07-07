@@ -68,6 +68,19 @@ def auto_extract_score(members):
 
 _KIND_PREFIXES = ('struct:', 'enum:', 'union:', 'class:', 'typedef:')
 
+# Ghidra renders a pointer field as '<bare-type-name> *<bits>' (e.g. 'TESForm *64'),
+# not a bare trailing '*' -- the generated side's own pointer marker is a 'ptr:'
+# prefix (e.g. 'ptr:struct:RE::TESForm'), never a trailing '*' either. Neither the
+# old bare-'*'-suffix check nor a kind-prefix strip recognized either spelling, so
+# every pointer-typed field (the overwhelming majority of real RE struct fields)
+# fell through to a raw string compare that could never match across the two
+# pipeline stages.
+_PTR_SUFFIX = re.compile(r'\*\s*\d*$')
+
+# Ghidra renders an array field as '<elemtype>[<count>]' (e.g. 'TESForm *64[2]'
+# for an array of pointers); the generated side spells it 'arr:<elemtype>:<count>'.
+_ARRAY_SUFFIX = re.compile(r'\[\d+\]$')
+
 
 def _class_of(tn):
     """Coarse type-class for a member typename, so cosmetic name/typedef spelling
@@ -87,17 +100,45 @@ def _class_of(tn):
     namespace spelling alone, so structs with already-correct live fields (e.g.
     ``DirectX::BoundingBox``, fully resolved to `Center`/`Extents: XMFLOAT3`) kept
     reclassifying DIVERGENT and getting endlessly, pointlessly re-applied by every
-    batch run with zero actual change."""
+    batch run with zero actual change.
+
+    Pointer fields get the same treatment: the generated side spells a pointer as
+    'ptr:<pointee>' while Ghidra spells it '<pointee> *<bits>' -- neither form was
+    recognized as "a pointer" by the old check (a bare trailing '*' with no bit
+    suffix), so e.g. generated 'ptr:struct:RE::TESForm' vs live 'TESForm *64'
+    normalized to 'tesform' vs 'tesform *64' and never matched, permanently
+    misclassifying almost every real struct with pointer fields (the vast
+    majority of them) as DIVERGENT despite already being correct.
+
+    Arrays get the same treatment recursively: the generated side spells
+    'arr:<elemtype>:<count>' while Ghidra spells '<elemtype>[<count>]' (e.g. an
+    array of pointers renders as '<pointee> *<bits>[<count>]') -- both forms are
+    stripped down to their element type and re-classified via a recursive call,
+    then re-prefixed with 'arr:', so e.g. generated 'arr:ptr:struct:RE::TESForm:2'
+    and live 'TESForm *64[2]' both normalize to 'arr:ptr'."""
     t = (tn or '').lower()
-    if t.endswith('*') or 'vtbl' in t or 'vftable' in t or t.startswith('function') or t.startswith('code *'):
+    if t.startswith('arr:'):
+        inner = re.sub(r':\d+$', '', t[len('arr:'):])
+        return 'arr:' + _class_of(inner)
+    m = _ARRAY_SUFFIX.search(t)
+    if m:
+        return 'arr:' + _class_of(t[:m.start()])
+    if t.startswith('ptr:') or _PTR_SUFFIX.search(t) or 'vtbl' in t or 'vftable' in t or t.startswith('function') or t.startswith('code *'):
         return 'ptr'
-    if t in ('undefined1', 'byte', 'sbyte', 'bool', 'char', 'uchar'):
+    # The generated side spells primitives with its own fixed-width names (i8/u8/
+    # i16/u16/i32/u32/f32/i64/u64/f64), never Ghidra's own vocabulary (short/int/
+    # float/...) -- these two conventions never overlapped, so e.g. generated 'i16'
+    # fell through every check below untouched while live 'short' correctly mapped
+    # to 'u16', permanently mismatching every primitive field on the generated
+    # pipeline's own spelling alone. Map both conventions into the same buckets.
+    if t in ('undefined1', 'byte', 'sbyte', 'bool', 'char', 'uchar', 'i8', 'u8'):
         return 'u8'
-    if t in ('undefined2', 'ushort', 'short', 'word'):
+    if t in ('undefined2', 'ushort', 'short', 'word', 'i16', 'u16'):
         return 'u16'
-    if t in ('undefined4', 'uint', 'int', 'dword', 'float'):
+    if t in ('undefined4', 'uint', 'int', 'dword', 'float', 'i32', 'u32', 'f32'):
         return 'u32'
-    if t in ('undefined8', 'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t', 'qword', 'double'):
+    if t in ('undefined8', 'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t', 'qword',
+             'double', 'i64', 'u64', 'f64'):
         return 'u64'
     for pfx in _KIND_PREFIXES:
         if t.startswith(pfx):

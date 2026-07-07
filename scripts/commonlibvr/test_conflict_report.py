@@ -161,3 +161,45 @@ def test_adjacent_zero_length_fields_not_flagged_as_overlapping():
     # by itself trigger the overlap detector.
     gen = [_g('x', 'u8', 3, 1), _g('a', 'u8', 3, 0)]
     assert not cr.has_overlapping_fields(gen)
+
+
+def test_pointer_field_does_not_diverge_from_bare_ghidra_pointer_spelling():
+    # Real bug: the generated side spells a pointer 'ptr:struct:RE::TESForm',
+    # Ghidra spells the SAME field 'TESForm *64' (bare pointee name + ' *' +
+    # pointer-width-in-bits) -- neither the old bare-trailing-'*' check nor the
+    # kind-prefix stripper recognized either spelling as "a pointer", so every
+    # pointer-typed field (the overwhelming majority of real RE struct fields)
+    # permanently tripped DIVERGENT despite already being correct.
+    existing = [_e(0, 8, 'TESForm *64', 'form')]
+    gen = [_g('form', 'ptr:struct:RE::TESForm', 0, 8)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_fixed_width_generated_primitive_does_not_diverge_from_ghidra_spelling():
+    # Real bug: the generated pipeline spells primitives with fixed-width names
+    # (i8/u8/i16/u16/i32/u32/f32/i64/u64/f64) that never appeared in the
+    # Ghidra-vocabulary collapse lists (short/ushort/int/float/...), so e.g.
+    # generated 'i16' fell through untouched while live 'short' correctly
+    # mapped to 'u16' -- permanently mismatching on the generated pipeline's
+    # own primitive spelling alone.
+    existing = [_e(0, 2, 'short', 'magickaOffset'), _e(4, 4, 'float', 'hourLastProcessed'),
+                _e(8, 8, 'ulonglong', 'unk100')]
+    gen = [_g('magickaOffset', 'i16', 0, 2), _g('hourLastProcessed', 'f32', 4, 4),
+           _g('unk100', 'u64', 8, 8)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_array_of_pointers_does_not_diverge_across_spelling_conventions():
+    # Real bug: the generated side spells an array 'arr:<elemtype>:<count>'
+    # (here 'arr:ptr:struct:RE::TESForm:2'), Ghidra spells the same field
+    # 'TESForm *64[2]' (pointer spelling with a trailing '[count]') -- neither
+    # form was recognized as "an array of pointers" so they never matched.
+    existing = [_e(0, 16, 'TESForm *64[2]', 'equippedObjects')]
+    gen = [_g('equippedObjects', 'arr:ptr:struct:RE::TESForm:2', 0, 16)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_array_of_plain_structs_does_not_diverge():
+    existing = [_e(0, 24, 'XMFLOAT3[2]', 'points')]
+    gen = [_g('points', 'arr:struct:DirectX::XMFLOAT3:2', 0, 24)]
+    assert not cr.layout_diverges(existing, gen)
