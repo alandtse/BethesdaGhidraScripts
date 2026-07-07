@@ -42,6 +42,18 @@ STAGING_CAT = '/CommonLibVR_staging'
 
 DRY_RUN = os.environ.get('CLVR_APPLY', 'dry').lower() != 'go'
 
+# Batching/coordination for a live apply run (see select_write_targets in apply_plan.py):
+#   CLVR_APPLY_EXCLUDE -- comma-separated struct names to always skip this run (e.g.
+#                         owned by concurrent manual clone-then-replace work).
+#   CLVR_APPLY_MAX     -- caps how many write-actioned (CREATE/FILL/REPLACE) structs
+#                         get applied in this call; 0 = unlimited. The plan/CSV/summary
+#                         always reflect the FULL, uncapped classification -- only the
+#                         actual write phase is capped. Safe to re-run repeatedly with
+#                         the same cap to drain a backlog (see select_write_targets doc).
+APPLY_EXCLUDE = set(
+    n.strip() for n in os.environ.get('CLVR_APPLY_EXCLUDE', '').split(',') if n.strip())
+APPLY_MAX = int(os.environ.get('CLVR_APPLY_MAX', '0') or 0)
+
 # Pure planning logic (no Ghidra deps) loaded by path so it works under MCP exec.
 import importlib.util as _ilu  # noqa: E402
 _ap_spec = _ilu.spec_from_file_location('clvr_apply_plan', os.path.join(SCRIPT_DIR, 'apply_plan.py'))
@@ -153,6 +165,25 @@ def run():
     if DRY_RUN:
         print('\nDRY_RUN: no changes written. Set env CLVR_APPLY=go to apply.')
         return counts
+
+    # ---- batching/exclude gate: decide which write-actioned structs actually get
+    # applied THIS call, without altering the full plan/summary computed above ----
+    write_allowed = apply_plan.select_write_targets(plan, APPLY_EXCLUDE, APPLY_MAX)
+    if APPLY_EXCLUDE or APPLY_MAX:
+        n_write_total = sum(1 for p in plan if p[2] in ('CREATE', 'FILL', 'REPLACE'))
+        print('\nBatch gate: {} write-actioned structs total, excluding {}, '
+              'applying {} this call (CLVR_APPLY_MAX={})'.format(
+                  n_write_total, sorted(APPLY_EXCLUDE) or '(none)',
+                  len(write_allowed), APPLY_MAX or 'unlimited'))
+
+    def classify(st, live, _real_classify=classify):
+        c = _real_classify(st, live)
+        name = st[0]
+        action = ACTION.get(c['status'], 'PROTECT')
+        if action in ('CREATE', 'FILL', 'REPLACE') and name not in write_allowed:
+            c = dict(c)
+            c['status'] = 'BATCH_SKIPPED'
+        return c
 
     # =========================== APPLY ===========================
     print('\n*** APPLYING (CLVR_APPLY=go) ***')

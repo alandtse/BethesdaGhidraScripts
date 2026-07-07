@@ -27,6 +27,37 @@ ACTION = {
 }
 
 
+def select_write_targets(plan, exclude_names=None, max_writes=0):
+    """Decide which write-actioned (CREATE/FILL/REPLACE) struct names should actually
+    be applied this run, given a full computed `plan` (list of tuples whose first
+    three elements are (name, status, action, ...) -- matches both apply_enrich.run's
+    `plan` rows and conflict_report's CSV row shape).
+
+    exclude_names : names to always skip this run (e.g. owned by concurrent manual
+                    work) -- reported with their true status, never written.
+    max_writes    : 0/None = unlimited; otherwise only the first N write-actioned,
+                    non-excluded names (in `plan`'s order) are selected, letting a
+                    caller re-run with the same cap repeatedly to drain a backlog in
+                    batches (already-applied structs classify as REUSE/MATCH on the
+                    next call and are no longer write-actioned, so this is naturally
+                    resumable without re-deriving progress).
+
+    Returns a set of names whose action should actually be applied this call.
+    """
+    excluded = set(exclude_names or ())
+    allowed = set()
+    for entry in plan:
+        name, _status, action = entry[0], entry[1], entry[2]
+        if action not in ('CREATE', 'FILL', 'REPLACE'):
+            continue
+        if name in excluded:
+            continue
+        if max_writes and len(allowed) >= max_writes:
+            continue
+        allowed.add(name)
+    return allowed
+
+
 def split_qualified(name):
     """Split a C++ qualified name on '::' at depth 0 only.
 

@@ -247,6 +247,51 @@ def test_class_namespace_plan_template_class_not_missplit():
     assert ns == ['BSTArray<RE::TESForm>'] and leaf == 'push_back' and ci == 0
 
 
+def _plan_row(name, action):
+    # (name, status, action, gen_size, existing_size, existing_category) --
+    # select_write_targets only reads the first 3 fields.
+    return (name, action, action, 0, 0, '/types.h')
+
+
+def test_select_write_targets_no_cap_no_exclude_selects_all_writes():
+    plan = [_plan_row('A', 'CREATE'), _plan_row('B', 'REUSE'), _plan_row('C', 'REPLACE')]
+    assert apply_plan.select_write_targets(plan) == {'A', 'C'}
+
+
+def test_select_write_targets_excludes_named_structs():
+    plan = [_plan_row('Actor', 'REPLACE'), _plan_row('B', 'FILL')]
+    allowed = apply_plan.select_write_targets(plan, exclude_names=['Actor'])
+    assert allowed == {'B'}
+
+
+def test_select_write_targets_excluded_name_never_counts_against_cap():
+    plan = [_plan_row('Actor', 'REPLACE'), _plan_row('B', 'FILL'), _plan_row('C', 'CREATE')]
+    allowed = apply_plan.select_write_targets(plan, exclude_names=['Actor'], max_writes=1)
+    assert allowed == {'B'}   # cap consumed by B, not by the excluded Actor
+
+
+def test_select_write_targets_cap_takes_first_n_in_plan_order():
+    plan = [_plan_row('A', 'CREATE'), _plan_row('B', 'FILL'), _plan_row('C', 'REPLACE')]
+    assert apply_plan.select_write_targets(plan, max_writes=2) == {'A', 'B'}
+
+
+def test_select_write_targets_zero_cap_means_unlimited():
+    plan = [_plan_row('A', 'CREATE'), _plan_row('B', 'FILL')]
+    assert apply_plan.select_write_targets(plan, max_writes=0) == {'A', 'B'}
+
+
+def test_select_write_targets_resumable_across_calls():
+    # Simulates re-running with the same cap after a batch already landed: structs
+    # applied in call 1 reclassify as REUSE (no longer write-actioned) in call 2, so
+    # the same cap makes forward progress on the remaining backlog automatically.
+    plan_call1 = [_plan_row('A', 'CREATE'), _plan_row('B', 'CREATE'), _plan_row('C', 'CREATE')]
+    call1 = apply_plan.select_write_targets(plan_call1, max_writes=2)
+    assert call1 == {'A', 'B'}
+    plan_call2 = [_plan_row('A', 'REUSE'), _plan_row('B', 'REUSE'), _plan_row('C', 'CREATE')]
+    call2 = apply_plan.select_write_targets(plan_call2, max_writes=2)
+    assert call2 == {'C'}
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())
