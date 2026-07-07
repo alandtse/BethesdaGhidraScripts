@@ -292,6 +292,43 @@ def test_select_write_targets_resumable_across_calls():
     assert call2 == {'C'}
 
 
+def _cat_row(name, action, category):
+    return (name, action, action, 0, 0, category)
+
+
+def test_select_write_targets_prioritize_category_drains_first_under_cap():
+    # A '/CommonLibSSE/std' noise entry sits BEFORE the '/types.h' entry in plan
+    # order -- without prioritization the cap would pick the noise entry first.
+    plan = [
+        _cat_row('_Conjunction<true, X>', 'FILL', '/CommonLibSSE/std'),
+        _cat_row('RealActorStruct', 'REPLACE', '/types.h'),
+    ]
+    allowed = apply_plan.select_write_targets(plan, max_writes=1, prioritize_category='/types.h')
+    assert allowed == {'RealActorStruct'}
+
+
+def test_select_write_targets_prioritize_category_preserves_order_within_group():
+    plan = [
+        _cat_row('A', 'CREATE', '/types.h'),
+        _cat_row('Noise1', 'FILL', '/CommonLibSSE/std'),
+        _cat_row('B', 'CREATE', '/types.h'),
+        _cat_row('Noise2', 'FILL', '/CommonLibSSE/std'),
+    ]
+    allowed = apply_plan.select_write_targets(plan, max_writes=3, prioritize_category='/types.h')
+    # both /types.h entries first (in original relative order), then one noise entry
+    assert allowed == {'A', 'B', 'Noise1'}
+
+
+def test_select_write_targets_no_prioritize_category_keeps_plain_plan_order():
+    # Default behavior (no prioritize_category) is unchanged from before this feature.
+    plan = [
+        _cat_row('Noise1', 'FILL', '/CommonLibSSE/std'),
+        _cat_row('A', 'CREATE', '/types.h'),
+    ]
+    allowed = apply_plan.select_write_targets(plan, max_writes=1)
+    assert allowed == {'Noise1'}
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

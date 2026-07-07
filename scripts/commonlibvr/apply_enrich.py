@@ -50,9 +50,17 @@ DRY_RUN = os.environ.get('CLVR_APPLY', 'dry').lower() != 'go'
 #                         always reflect the FULL, uncapped classification -- only the
 #                         actual write phase is capped. Safe to re-run repeatedly with
 #                         the same cap to drain a backlog (see select_write_targets doc).
+#   CLVR_APPLY_PRIORITIZE -- an existing_category (e.g. '/types.h') to drain first
+#                         within a capped batch, ahead of everything else. Default
+#                         '/types.h' since CommonLib's own std/fmt/REX namespaces
+#                         generate a large volume of low-RE-value template-instantiation
+#                         noise that would otherwise dilute a capped batch's budget away
+#                         from curated, genuinely useful RE progress. Set to '' to disable
+#                         (falls back to plain plan order, matching pre-existing behavior).
 APPLY_EXCLUDE = set(
     n.strip() for n in os.environ.get('CLVR_APPLY_EXCLUDE', '').split(',') if n.strip())
 APPLY_MAX = int(os.environ.get('CLVR_APPLY_MAX', '0') or 0)
+APPLY_PRIORITIZE = os.environ.get('CLVR_APPLY_PRIORITIZE', '/types.h')
 
 # Pure planning logic (no Ghidra deps) loaded by path so it works under MCP exec.
 import importlib.util as _ilu  # noqa: E402
@@ -168,7 +176,8 @@ def run():
 
     # ---- batching/exclude gate: decide which write-actioned structs actually get
     # applied THIS call, without altering the full plan/summary computed above ----
-    write_allowed = apply_plan.select_write_targets(plan, APPLY_EXCLUDE, APPLY_MAX)
+    write_allowed = apply_plan.select_write_targets(
+        plan, APPLY_EXCLUDE, APPLY_MAX, prioritize_category=APPLY_PRIORITIZE or None)
     if APPLY_EXCLUDE or APPLY_MAX:
         n_write_total = sum(1 for p in plan if p[2] in ('CREATE', 'FILL', 'REPLACE'))
         print('\nBatch gate: {} write-actioned structs total, excluding {}, '

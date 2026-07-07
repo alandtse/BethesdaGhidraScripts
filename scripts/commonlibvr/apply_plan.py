@@ -27,7 +27,7 @@ ACTION = {
 }
 
 
-def select_write_targets(plan, exclude_names=None, max_writes=0):
+def select_write_targets(plan, exclude_names=None, max_writes=0, prioritize_category=None):
     """Decide which write-actioned (CREATE/FILL/REPLACE) struct names should actually
     be applied this run, given a full computed `plan` (list of tuples whose first
     three elements are (name, status, action, ...) -- matches both apply_enrich.run's
@@ -36,25 +36,48 @@ def select_write_targets(plan, exclude_names=None, max_writes=0):
     exclude_names : names to always skip this run (e.g. owned by concurrent manual
                     work) -- reported with their true status, never written.
     max_writes    : 0/None = unlimited; otherwise only the first N write-actioned,
-                    non-excluded names (in `plan`'s order) are selected, letting a
-                    caller re-run with the same cap repeatedly to drain a backlog in
+                    non-excluded names (in `plan`'s order, or priority order if
+                    prioritize_category is set) are selected, letting a caller
+                    re-run with the same cap repeatedly to drain a backlog in
                     batches (already-applied structs classify as REUSE/MATCH on the
                     next call and are no longer write-actioned, so this is naturally
                     resumable without re-deriving progress).
+    prioritize_category : if given (e.g. '/types.h'), write-actioned entries whose
+                    existing_category (plan row index 5) equals this string are
+                    selected before any others, preserving relative order within
+                    each group. A capped batch would otherwise spend its budget
+                    proportional to `plan`'s natural order -- and CommonLib's own
+                    std/fmt/REX namespaces generate a huge volume of low-value,
+                    deeply-nested template-instantiation noise (SFINAE helpers,
+                    allocator/iterator internals) that can dominate a batch and
+                    starve genuinely curated RE-relevant /types.h progress. This
+                    lets curated work drain first; low-value library-internal
+                    noise still gets applied, just after.
 
     Returns a set of names whose action should actually be applied this call.
     """
     excluded = set(exclude_names or ())
-    allowed = set()
+    eligible = []
     for entry in plan:
         name, _status, action = entry[0], entry[1], entry[2]
         if action not in ('CREATE', 'FILL', 'REPLACE'):
             continue
         if name in excluded:
             continue
+        eligible.append(entry)
+
+    if prioritize_category:
+        cat_idx = 5
+        def _is_priority(e):
+            return len(e) > cat_idx and e[cat_idx] == prioritize_category
+        eligible = [e for e in eligible if _is_priority(e)] + \
+                   [e for e in eligible if not _is_priority(e)]
+
+    allowed = set()
+    for entry in eligible:
         if max_writes and len(allowed) >= max_writes:
-            continue
-        allowed.add(name)
+            break
+        allowed.add(entry[0])
     return allowed
 
 
