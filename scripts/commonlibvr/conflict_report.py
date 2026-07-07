@@ -32,7 +32,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import (  # noqa: E402
-    layout_diverges, auto_extract_score, _placeholder_typename as placeholder_typename)
+    layout_diverges, auto_extract_score, _placeholder_typename as placeholder_typename,
+    has_overlapping_fields)
 
 import ghidra.program.model.data as D
 
@@ -274,6 +275,28 @@ def classify(st, live):
     gen_members = [(fld[0], fld[1], fld[2], fld[3]) for fld in gfields
                    if not str(fld[1]).startswith('bf:')]
     gen_ns = _gen_namespace(gcat)
+
+    # A generated field list with overlapping offset ranges means the extractor
+    # flattened an anonymous C++ union (e.g. XMCOLOR's byte/uint views) into a
+    # single tuple list -- there is no valid flat struct layout that satisfies it,
+    # so no action (CREATE/FILL/REPLACE) can ever converge; every attempt "succeeds"
+    # while changing nothing, permanently burning batch budget. Exclude these from
+    # the eligible pool entirely rather than looping on them forever.
+    if has_overlapping_fields(gen_members):
+        cands0 = live.get(name)
+        best0 = None
+        if cands0:
+            cands0 = [d for d in cands0 if _ns_compatible(gen_ns, d.getCategoryPath().getPath())]
+            if cands0:
+                best0 = sorted(cands0, key=lambda d: (_trust(d.getCategoryPath().getPath()),
+                                                       d.getNumDefinedComponents()))[-1]
+        return {'status': 'UNION_FLATTENED', 'best': best0, 'gen_size': gsize,
+                'existing_size': best0.getLength() if best0 else None,
+                'existing_category': best0.getCategoryPath().getPath() if best0 else '',
+                'n_existing_members': len(_existing_members(best0)) if best0 else 0,
+                'has_bad': False, 'existing_vftable': False,
+                'gen_vftable': _gen_vftable(gen_members, ghas_vt), 'auto_score': None}
+
     cands = live.get(name)
     if cands:
         cands = [d for d in cands if _ns_compatible(gen_ns, d.getCategoryPath().getPath())]

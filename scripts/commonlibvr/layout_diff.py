@@ -66,13 +66,28 @@ def auto_extract_score(members):
     return float(auto) / len(members)
 
 
+_KIND_PREFIXES = ('struct:', 'enum:', 'union:', 'class:', 'typedef:')
+
+
 def _class_of(tn):
     """Coarse type-class for a member typename, so cosmetic name/typedef spelling
     differences don't trigger a false DIVERGENT. 'ptr'/'func ptr' collapse together
     (both are 8-byte pointer-shaped slots -- the common case for a vtable's function
     pointers, which are typed as bare function-pointer typedefs, not 'struct:X *').
     Primitives of the same byte width also collapse (uint32/int32 are interchangeable
-    at the ABI level and differ constantly between hand-RE and clang-generated layouts)."""
+    at the ABI level and differ constantly between hand-RE and clang-generated layouts).
+
+    A named struct/enum/union type is normalized to its bare leaf name (kind prefix
+    and C++ namespace qualification stripped) before falling through to the raw
+    string, so e.g. the generated side's 'struct:DirectX::XMFLOAT3' and the Ghidra
+    side's bare 'XMFLOAT3' -- the SAME type, just spelled differently by each
+    pipeline stage -- compare equal instead of permanently tripping DIVERGENT. This
+    is the fix for a real bug: any generated field whose type is a named
+    struct/enum (basically every non-primitive field) failed this comparison on
+    namespace spelling alone, so structs with already-correct live fields (e.g.
+    ``DirectX::BoundingBox``, fully resolved to `Center`/`Extents: XMFLOAT3`) kept
+    reclassifying DIVERGENT and getting endlessly, pointlessly re-applied by every
+    batch run with zero actual change."""
     t = (tn or '').lower()
     if t.endswith('*') or 'vtbl' in t or 'vftable' in t or t.startswith('function') or t.startswith('code *'):
         return 'ptr'
@@ -84,7 +99,41 @@ def _class_of(tn):
         return 'u32'
     if t in ('undefined8', 'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t', 'qword', 'double'):
         return 'u64'
+    for pfx in _KIND_PREFIXES:
+        if t.startswith(pfx):
+            t = t[len(pfx):]
+            break
+    t = re.sub(r':\d+$', '', t)  # enum bitfield-width suffix, e.g. 'bool_bits:4'
+    if '::' in t:
+        t = t.rsplit('::', 1)[-1]
     return t
+
+
+def has_overlapping_fields(gen_members):
+    """True if the generated field list itself has two fields occupying overlapping
+    byte ranges at different offsets-with-size (not just two zero-length fields
+    sharing an offset).
+
+    This detects an anonymous C++ union that the CommonLib type-extraction step
+    flattened into a single flat tuple list instead of modeling as a union -- e.g.
+    ``union { struct { BYTE b,g,r,a; }; UINT c; }`` (DirectX's XMCOLOR) becomes
+    ``[('b','u8',0,1), ('c','u32',0,4), ('g','u8',1,1), ...]``: 'b'@0..1 and
+    'c'@0..4 both claim offset 0, and 'g'@1..2 sits inside 'c'@0..4 too. There is
+    no valid non-overlapping flat layout that satisfies both views simultaneously,
+    so such a generated struct can never be correctly filled/replaced as an
+    ordinary struct -- every batch run would keep re-selecting and "successfully"
+    reapplying it with zero actual change, permanently wasting batch budget. Real
+    fix is proper union modeling in the generator; this is the cheap classify()-side
+    guard so these get excluded from the eligible pool instead of looping forever.
+
+    gen_members: [(fname, ftype, foffset, fsize)]
+    """
+    spans = sorted((foff, foff + fsize) for (_fname, _ftype, foff, fsize) in gen_members
+                   if fsize > 0)
+    for i in range(1, len(spans)):
+        if spans[i][0] < spans[i - 1][1]:
+            return True
+    return False
 
 
 def layout_diverges(existing_members, gen_members):

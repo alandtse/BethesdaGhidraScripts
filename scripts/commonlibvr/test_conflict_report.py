@@ -119,3 +119,45 @@ def test_placeholder_typename_recognizes_byte_arrays_like_char_arrays():
     assert cr._placeholder_typename('byte[688]')
     assert cr._placeholder_typename('char[192]')
     assert not cr._placeholder_typename('struct:RE::NiPoint3')
+
+
+def test_namespace_qualified_struct_type_does_not_diverge_from_bare_ghidra_name():
+    # Real bug: DirectX::BoundingBox's live fields are already fully resolved
+    # (Center/Extents: XMFLOAT3, bare name -- Ghidra doesn't namespace-qualify
+    # struct field types), but the generated side spells the same type
+    # 'struct:DirectX::XMFLOAT3'. Without normalization this compared unequal on
+    # every field, permanently tripping DIVERGENT despite an identical real layout.
+    existing = [_e(0, 12, 'XMFLOAT3', 'Center'), _e(12, 12, 'XMFLOAT3', 'Extents')]
+    gen = [_g('Center', 'struct:DirectX::XMFLOAT3', 0, 12),
+           _g('Extents', 'struct:DirectX::XMFLOAT3', 12, 12)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_deeply_qualified_enum_type_does_not_diverge():
+    existing = [_e(0, 4, 'BOOL_BITS', 'boolBits')]
+    gen = [_g('boolBits', 'enum:RE::Actor::BOOL_BITS:4', 0, 4)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_overlapping_generated_fields_detected_as_flattened_union():
+    # Real bug: DirectX::PackedVector::XMCOLOR is `union { struct { BYTE
+    # b,g,r,a; }; UINT c; }` in the real header, but the generator flattened it
+    # into a single flat tuple list with 'b'@0(1) and 'c'@0(4) both claiming
+    # offset 0 -- no valid non-overlapping struct layout satisfies this, so it
+    # must be detected and excluded rather than endlessly re-selected.
+    gen = [_g('b', 'u8', 0, 1), _g('c', 'u32', 0, 4), _g('g', 'u8', 1, 1),
+           _g('r', 'u8', 2, 1), _g('a', 'u8', 3, 0)]
+    assert cr.has_overlapping_fields(gen)
+
+
+def test_non_overlapping_generated_fields_not_flagged():
+    gen = [_g('x', 'u32', 0, 4), _g('y', 'u32', 4, 4)]
+    assert not cr.has_overlapping_fields(gen)
+
+
+def test_adjacent_zero_length_fields_not_flagged_as_overlapping():
+    # A trailing zero-size field (e.g. XMCOLOR's own 'a' at offset 3 size 0 in
+    # some extractions) shares an offset boundary but claims no bytes -- must not
+    # by itself trigger the overlap detector.
+    gen = [_g('x', 'u8', 3, 1), _g('a', 'u8', 3, 0)]
+    assert not cr.has_overlapping_fields(gen)
