@@ -29,6 +29,10 @@ globals IMPORT_PATH / CSV_PATH before exec, or the env vars CLVR_IMPORT / CLVR_C
 """
 import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from layout_diff import layout_diverges  # noqa: E402
 
 import ghidra.program.model.data as D
 
@@ -356,6 +360,12 @@ def classify(st, live):
         # route to the in-place FILL action. The fill is improve-only + comment-preserving,
         # so real existing fields and hand comments are never lost.
         status = 'STUB_FILL'
+    elif esize == gsize and layout_diverges(emembers, gen_members):
+        # Same total size, but the internal layout genuinely disagrees at some
+        # offset (not just a cosmetic name/typedef spelling difference) -- a size
+        # match is NOT proof of a content match. Route to DIVERGENT so this gets
+        # reviewed/reapplied instead of being silently protected forever.
+        status = 'DIVERGENT'
     elif esize == gsize:
         status = 'MATCH'
     elif _is_stub(best, emembers):
