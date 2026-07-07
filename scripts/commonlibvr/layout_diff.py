@@ -125,6 +125,22 @@ def _class_of(tn):
         return 'arr:' + _class_of(t[:m.start()])
     if t.startswith('ptr:') or _PTR_SUFFIX.search(t) or 'vtbl' in t or 'vftable' in t or t.startswith('function') or t.startswith('code *'):
         return 'ptr'
+    # Ghidra renders a bitfield-of-a-primitive as '<primitive>:<width>' (e.g.
+    # 'uint:28' for a real Windows-header `DWORD Flags : 28;`). The generated
+    # side's clang extraction of the SAME header field often only captures the
+    # flat DWORD (no bitfield decomposition), spelling it plain 'u32' with no
+    # colon suffix -- so 'uint:28' needs the SAME primitive-bucket mapping 'u32'
+    # gets, not just a bare suffix-strip to 'uint' (a string that matches
+    # nothing below, permanently mismatching against 'u32'). Recurse through the
+    # bare primitive name so it gets full normalization.
+    m_bf = re.match(r'^([a-z_][a-z0-9_]*):\d+$', t)
+    if m_bf and m_bf.group(1) in (
+            'undefined1', 'byte', 'sbyte', 'bool', 'char', 'uchar', 'i8', 'u8',
+            'undefined2', 'ushort', 'short', 'word', 'i16', 'u16',
+            'undefined4', 'uint', 'int', 'dword', 'float', 'i32', 'u32', 'f32',
+            'undefined8', 'ulong', 'long', 'ulonglong', 'longlong', 'uint64_t', 'qword',
+            'double', 'i64', 'u64', 'f64'):
+        return _class_of(m_bf.group(1))
     # The generated side spells primitives with its own fixed-width names (i8/u8/
     # i16/u16/i32/u32/f32/i64/u64/f64), never Ghidra's own vocabulary (short/int/
     # float/...) -- these two conventions never overlapped, so e.g. generated 'i16'

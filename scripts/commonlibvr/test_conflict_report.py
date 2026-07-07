@@ -337,3 +337,22 @@ def test_verify_handcurated_flags_type_mismatch_in_shared_range():
     status, reason = cr.verify_handcurated(existing, gen, existing_size=4, gen_size=4)
     assert status == 'SUSPECT_OTHER'
     assert 'value' in reason
+
+
+def test_class_of_bitfield_of_primitive_matches_generated_flat_primitive():
+    # Real Windows-header case: PROCESS_MITIGATION_ASLR_POLICY's `Flags` is a
+    # real bitfield in the existing (curated) struct ('uint:28'), but CommonLib's
+    # clang extraction only captured the flat DWORD ('u32', no bitfield
+    # decomposition). Ghidra's bitfield-of-primitive rendering must route
+    # through the same primitive bucket as a bare 'uint', not dead-end as a
+    # bare-stripped 'uint' that never matches 'u32'.
+    assert cr._class_of('uint:28') == cr._class_of('u32')
+    assert cr._class_of('int:5') == cr._class_of('i32')
+    assert cr._class_of('byte:3') == cr._class_of('u8')
+
+
+def test_verify_handcurated_tolerates_bitfield_of_primitive():
+    existing = [_e(0, 4, 'uint:28', 'Flags')]
+    gen = [_g('Flags', 'u32', 0, 4)]
+    status, _ = cr.verify_handcurated(existing, gen, existing_size=4, gen_size=4)
+    assert status == 'VERIFIED_CORRECT'
