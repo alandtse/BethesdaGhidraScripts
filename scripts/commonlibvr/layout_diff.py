@@ -177,6 +177,46 @@ def has_overlapping_fields(gen_members):
     return False
 
 
+def find_component_drift(components):
+    """Detect stale component slots: a field embedding another struct/type AS A
+    FIXED-SIZE COMPONENT whose *referenced type* has since been resized (by a
+    later replaceDataType()/fill on that type elsewhere), while this component's
+    own frozen slot length was never updated to match.
+
+    Ghidra's Structure model has two independent size concepts per component:
+    the component's frozen slot length (fixed when placed, never auto-updated)
+    and the referenced DataType's current actual length (which changes live as
+    that type gets resized elsewhere in the same DataTypeManager). Bulk-apply
+    batches legitimately resize widely-embedded types (e.g. correcting a stub to
+    its real CommonLib size); every OTHER struct that embeds that type as a
+    fixed component -- even one never itself touched, e.g. HANDCURATED/protected
+    -- is left with a stale, too-small (or too-large) slot. Ghidra's own decompiler/
+    UI surfaces this as "Field <name> does not fit in structure <container>" the
+    next time something touches the container.
+
+    components: iterable of (struct_path, field_name, offset, slot_length,
+                current_type_length, is_bitfield) tuples -- one per defined,
+                non-bitfield-eligible component across every Structure in a
+                DataTypeManager. Bitfield components are expected to share byte
+                ranges by design (multiple sub-byte fields packed into the same
+                bytes) and must be excluded by the caller or marked is_bitfield
+                so they're skipped here rather than false-flagged.
+
+    Returns a list of (struct_path, field_name, offset, slot_length,
+    current_type_length, struct_length) tuples for every genuine drift found,
+    in input order.
+    """
+    drift = []
+    for struct_path, field_name, offset, slot_length, current_type_length, struct_length, is_bitfield in components:
+        if is_bitfield:
+            continue
+        if current_type_length <= 0:
+            continue
+        if current_type_length != slot_length:
+            drift.append((struct_path, field_name, offset, slot_length, current_type_length, struct_length))
+    return drift
+
+
 def layout_diverges(existing_members, gen_members):
     """True if, DESPITE existing_size == generated_size, the two layouts disagree
     at some offset in a way that isn't just a cosmetic name/typedef difference.

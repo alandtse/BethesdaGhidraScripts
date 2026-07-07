@@ -233,3 +233,53 @@ def test_array_of_plain_structs_does_not_diverge():
     existing = [_e(0, 24, 'XMFLOAT3[2]', 'points')]
     gen = [_g('points', 'arr:struct:DirectX::XMFLOAT3:2', 0, 24)]
     assert not cr.layout_diverges(existing, gen)
+
+
+def test_find_component_drift_detects_stale_slot():
+    # Real incident this session: BSNiNode legitimately resized 296->336 via a
+    # bulk-apply fill; BSMultiBoundNode's _base component (embedding BSNiNode)
+    # kept its old frozen 296-byte slot, silently overflowing into the next
+    # field. Ghidra's own consistency check surfaces this as "Field _base does
+    # not fit in structure BSMultiBoundNode".
+    components = [
+        ('/types.h/BSMultiBoundNode', '_base', 0, 296, 336, 312, False),
+        ('/types.h/BSMultiBoundNode', 'multiBound', 296, 8, 8, 312, False),
+    ]
+    drift = cr.find_component_drift(components)
+    assert drift == [('/types.h/BSMultiBoundNode', '_base', 0, 296, 336, 312)]
+
+
+def test_find_component_drift_ignores_matching_slots():
+    components = [
+        ('/types.h/Fine', 'field', 0, 8, 8, 16, False),
+    ]
+    assert cr.find_component_drift(components) == []
+
+
+def test_find_component_drift_ignores_bitfields():
+    # Bitfield components legitimately share byte ranges/lengths by design --
+    # must not be flagged even if their reported lengths differ.
+    components = [
+        ('/types.h/_DCB', 'fParity', 8, 1, 4, 28, True),
+    ]
+    assert cr.find_component_drift(components) == []
+
+
+def test_find_component_drift_ignores_unresolved_type():
+    # current_type_length <= 0 means the component's type couldn't be resolved
+    # (e.g. a dangling/undefined reference) -- not a drift signal, skip it.
+    components = [
+        ('/types.h/Weird', 'field', 0, 4, -1, 8, False),
+        ('/types.h/Weird', 'field2', 4, 4, 0, 8, False),
+    ]
+    assert cr.find_component_drift(components) == []
+
+
+def test_find_component_drift_reports_multiple_structs():
+    components = [
+        ('/types.h/A', 'x', 0, 4, 8, 12, False),
+        ('/types.h/B', 'y', 0, 8, 8, 16, False),
+        ('/types.h/C', 'z', 0, 16, 12, 24, False),
+    ]
+    drift = cr.find_component_drift(components)
+    assert [d[0] for d in drift] == ['/types.h/A', '/types.h/C']

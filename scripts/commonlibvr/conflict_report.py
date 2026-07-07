@@ -33,7 +33,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import (  # noqa: E402
     layout_diverges, auto_extract_score, _placeholder_typename as placeholder_typename,
-    has_overlapping_fields)
+    has_overlapping_fields, find_component_drift)
 
 import ghidra.program.model.data as D
 
@@ -261,6 +261,30 @@ def build_live(dtm):
         if isinstance(dt, D.Structure):
             live.setdefault(dt.getName(), []).append(dt)
     return live
+
+
+def scan_component_drift(dtm):
+    """Walk every Structure in dtm and flag component-slot size drift (see
+    layout_diff.find_component_drift's docstring) -- proactive detection for the
+    "Field X does not fit in structure Y" corruption class that a bulk-apply
+    resizing a widely-embedded type can leave behind in OTHER, untouched structs.
+
+    Run this after any bulk-apply pass to catch the class of corruption before a
+    user notices a GUI error. Returns the same tuple list find_component_drift
+    does: (struct_path, field_name, offset, slot_length, current_type_length,
+    struct_length).
+    """
+    components = []
+    for dt in dtm.getAllDataTypes():
+        if not isinstance(dt, D.Structure):
+            continue
+        for c in dt.getDefinedComponents():
+            is_bf = c.isBitFieldComponent() if hasattr(c, 'isBitFieldComponent') else False
+            ct = c.getDataType()
+            components.append((
+                dt.getPathName(), c.getFieldName(), c.getOffset(), c.getLength(),
+                ct.getLength() if ct else -1, dt.getLength(), is_bf))
+    return find_component_drift(components)
 
 
 def classify(st, live):
