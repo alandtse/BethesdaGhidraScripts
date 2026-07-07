@@ -81,6 +81,36 @@ def test_size_disagreement_at_same_offset_diverges():
     assert cr.layout_diverges(existing, gen)
 
 
+def test_matching_bitfield_group_does_not_diverge():
+    # RE::ActorState::ActorState1 (real bug): the generator packs bit-offset/
+    # width entirely into the type string and zeroes the ordinary offset/size
+    # fields for every bitfield member, so all of them collide on offset 0 in
+    # the plain by-offset dict -- comparing correctly requires joining by name
+    # instead. Field names/content genuinely match here; must NOT diverge.
+    existing = [_e(0, 1, 'byte:1', 'movingBack'), _e(0, 1, 'byte:1', 'movingForward'),
+                _e(1, 1, 'byte:1', 'sprinting')]
+    gen = [_g('movingBack', 'bf:0:1', 0, 0), _g('movingForward', 'bf:1:1', 0, 0),
+           _g('sprinting', 'bf:8:1', 0, 0)]
+    assert not cr.layout_diverges(existing, gen)
+
+
+def test_bitfield_name_mismatch_diverges():
+    existing = [_e(0, 1, 'byte:1', 'movingBack'), _e(0, 1, 'byte:1', 'renamedBitfield')]
+    gen = [_g('movingBack', 'bf:0:1', 0, 0), _g('movingForward', 'bf:1:1', 0, 0)]
+    assert cr.layout_diverges(existing, gen)
+
+
+def test_bitfield_group_plus_normal_fields_does_not_diverge():
+    # A struct with both a bitfield group and ordinary fields -- the bitfield
+    # portion is compared by name-set, the rest still goes through the normal
+    # by-offset path.
+    existing = [_e(0, 1, 'byte:1', 'flagA'), _e(0, 1, 'byte:1', 'flagB'),
+                _e(4, 4, 'undefined4', 'normalField')]
+    gen = [_g('flagA', 'bf:0:1', 0, 0), _g('flagB', 'bf:1:1', 0, 0),
+           _g('normalField', 'u32', 4, 4)]
+    assert not cr.layout_diverges(existing, gen)
+
+
 def test_auto_extract_score_recognizes_raw_middle_tail_remainder_fields():
     # The real Character bug: a handful of genuinely-identified fields poked
     # into an otherwise-untyped struct, with the remainder split into named

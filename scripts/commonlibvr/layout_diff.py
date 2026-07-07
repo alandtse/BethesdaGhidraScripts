@@ -204,6 +204,30 @@ def layout_diverges(existing_members, gen_members):
     """
     if len(existing_members) != len(gen_members):
         return True
+
+    # Bitfield members: the generator packs bit-offset/width entirely into the
+    # type string ('bf:<bitoffset>:<width>') and zeroes the ordinary offset/size
+    # tuple fields, since a sub-byte field has no meaningful byte offset of its
+    # own -- every bitfield member in a struct therefore collides on the same
+    # offset key (0) when run through the by-offset dict below, so only the
+    # LAST one survives dict construction and every other bitfield member is
+    # silently discarded from the comparison. This permanently misclassified
+    # already-correct bitfield structs (e.g. RE::ActorState::ActorState1/2,
+    # whose live fields matched the generated ones name-for-name) as DIVERGENT.
+    # Compare bitfield members as a NAME SET instead of by offset -- name is the
+    # only reliable join key across the two sides' incompatible offset
+    # encodings, and the containing struct's own overall offset/size is already
+    # verified matching by the caller before this function runs.
+    gen_bf_names = {fname for (fname, ftype, _foff, _fsize) in gen_members if ftype.startswith('bf:')}
+    if gen_bf_names:
+        exist_bf_names = {fn for (_o, _ln, _tn, fn) in existing_members if fn in gen_bf_names}
+        if exist_bf_names != gen_bf_names:
+            return True
+        existing_members = [m for m in existing_members if m[3] not in gen_bf_names]
+        gen_members = [m for m in gen_members if not m[1].startswith('bf:')]
+        if len(existing_members) != len(gen_members):
+            return True
+
     by_off_e = {o: (ln, tn) for (o, ln, tn, _fn) in existing_members}
     by_off_g = {foff: (fsize, ftype) for (fname, ftype, foff, fsize) in gen_members}
     offsets = set(by_off_e) | set(by_off_g)
