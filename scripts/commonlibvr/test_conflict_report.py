@@ -356,3 +356,77 @@ def test_verify_handcurated_tolerates_bitfield_of_primitive():
     gen = [_g('Flags', 'u32', 0, 4)]
     status, _ = cr.verify_handcurated(existing, gen, existing_size=4, gen_size=4)
     assert status == 'VERIFIED_CORRECT'
+
+
+def _comp(name, offset, slot_length, current_type_length, is_bitfield=False):
+    return (name, offset, slot_length, current_type_length, is_bitfield)
+
+
+def test_plan_cascade_fix_simple_widen():
+    # NiNode pattern: _base's slot (296) is stale relative to NiAVObject's
+    # corrected current length (312); children must shift by the +16 delta.
+    components = [
+        _comp('_base', 0, 296, 312),
+        _comp('children', 296, 24, 24),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=320)
+    assert plan['simple'] is True
+    assert plan['drifted_field'] == '_base'
+    assert plan['offset'] == 0
+    assert plan['old_slot'] == 296
+    assert plan['new_slot'] == 312
+    assert plan['delta'] == 16
+    assert plan['new_struct_length'] == 336
+
+
+def test_plan_cascade_fix_simple_shrink():
+    # LocalMapCullingProcess pattern: a slot frozen at a bogus oversized value
+    # (197112) needs shrinking to the referenced type's real current length (312).
+    components = [
+        _comp('cullingProcess', 0, 197112, 312),
+        _comp('cullingJob', 197112, 104, 104),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=197488)
+    assert plan['simple'] is True
+    assert plan['delta'] == -196800
+    assert plan['new_struct_length'] == 688
+
+
+def test_plan_cascade_fix_no_drift_is_not_simple():
+    components = [
+        _comp('_base', 0, 64, 64),
+        _comp('field', 64, 8, 8),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=72)
+    assert plan['simple'] is False
+    assert 'no component drift' in plan['reason']
+
+
+def test_plan_cascade_fix_multiple_drifted_is_not_simple():
+    components = [
+        _comp('a', 0, 48, 64),
+        _comp('b', 48, 100, 120),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=148)
+    assert plan['simple'] is False
+    assert 'multiple' in plan['reason'].lower()
+
+
+def test_plan_cascade_fix_ignores_bitfields():
+    components = [
+        _comp('bf1', 0, 4, 8, is_bitfield=True),
+        _comp('real', 4, 48, 64),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=52)
+    assert plan['simple'] is True
+    assert plan['drifted_field'] == 'real'
+
+
+def test_plan_cascade_fix_ignores_unresolved_type():
+    components = [
+        _comp('a', 0, 8, -1),
+        _comp('b', 8, 48, 64),
+    ]
+    plan = cr.plan_cascade_fix(components, struct_length=56)
+    assert plan['simple'] is True
+    assert plan['drifted_field'] == 'b'

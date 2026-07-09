@@ -233,6 +233,56 @@ def find_component_drift(components):
     return drift
 
 
+def plan_cascade_fix(components, struct_length):
+    """Decide whether a single struct's component-slot drift (see
+    find_component_drift) is the SIMPLE, mechanically-fixable case: exactly one
+    non-bitfield component has a stale slot, and every other component can be
+    fixed up by shifting the ones after it by the same delta.
+
+    This is the pure decision logic behind a real, recurring fix pattern this
+    session: a widely-embedded base type (e.g. NiAVObject, IMenu, BSCullingProcess)
+    gets corrected to its true size, and every OTHER struct that embeds it as a
+    fixed-size component (even ones never themselves touched) is left with a
+    stale slot -- Ghidra surfaces this as "Field X does not fit in structure Y".
+    The mechanical fix is always the same shape: widen/shrink the one drifted
+    slot to match the referenced type's current length, and shift every field
+    after it by the resulting delta. This function only PLANS that fix; it does
+    not touch Ghidra (see apply_enrich.apply_cascade_fix for the mutation glue).
+
+    components: iterable of (field_name, offset, slot_length,
+                current_type_length, is_bitfield) tuples for every DEFINED
+                component of ONE struct, in offset order.
+    struct_length: the struct's own total length.
+
+    Returns a dict:
+      simple=True  -> {"simple": True, "drifted_field": name, "offset": int,
+                       "old_slot": int, "new_slot": int, "delta": int,
+                       "new_struct_length": int}
+      simple=False -> {"simple": False, "reason": "..."}
+    """
+    non_bf = [c for c in components if not c[4]]
+    drifted = [c for c in non_bf if c[3] > 0 and c[3] != c[2]]
+
+    if not drifted:
+        return {"simple": False, "reason": "no component drift found"}
+    if len(drifted) > 1:
+        return {"simple": False,
+                "reason": "multiple drifted components ({}), not a single-field cascade"
+                          .format(len(drifted))}
+
+    field_name, offset, old_slot, new_slot, _is_bf = drifted[0]
+    delta = new_slot - old_slot
+    return {
+        "simple": True,
+        "drifted_field": field_name,
+        "offset": offset,
+        "old_slot": old_slot,
+        "new_slot": new_slot,
+        "delta": delta,
+        "new_struct_length": struct_length + delta,
+    }
+
+
 def layout_diverges(existing_members, gen_members):
     """True if, DESPITE existing_size == generated_size, the two layouts disagree
     at some offset in a way that isn't just a cosmetic name/typedef difference.

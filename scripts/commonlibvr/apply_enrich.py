@@ -25,9 +25,13 @@ apply-plan CSV + summary. To actually apply, set env CLVR_APPLY=go.
   Apply:    set os.environ['CLVR_APPLY']='go' then exec     -> writes types
 """
 import os
+import sys
 
 from ghidra.program.model.data import (
     StructureDataType, CategoryPath, DataTypeConflictHandler)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from layout_diff import plan_cascade_fix  # noqa: E402
 
 IMPORT_PATH = os.environ.get(
     'CLVR_IMPORT',
@@ -380,6 +384,72 @@ def _fill_struct(s, size, gfields, resolve_type, make_padding, _U16, _U32, _U64,
             s.replaceAtOffset(foffset, use_dt, fsize, use_name, cmt or '')
         except Exception:
             pass
+
+
+def apply_cascade_fix(dtm, struct_name, category_path=NEW_CAT):
+    """Fix ONE named struct's component-slot drift (see
+    layout_diff.find_component_drift / plan_cascade_fix): a field embeds
+    another type as a fixed-size component whose CURRENT length no longer
+    matches the component's frozen slot length, because that referenced type
+    was legitimately resized elsewhere. Widens/shrinks the drifted slot and
+    shifts every subsequent field by the same delta.
+
+    Deliberately scoped to a single, explicitly-named struct per call -- this
+    does NOT scan the whole DataTypeManager or recurse into further cascades
+    it might create. A caller that wants to fix a chain of structs must call
+    this once per struct, explicitly, so the specific set of touched types is
+    always a deliberate, reviewable choice rather than an open-ended sweep.
+
+    Only handles the SIMPLE case (exactly one drifted component) -- see
+    plan_cascade_fix. Returns without mutating anything if the case isn't
+    simple, or if the struct doesn't exist / has no drift.
+
+    Returns a dict: {"struct": name, "fixed": bool, "old_size": int|None,
+    "new_size": int|None, "drifted_field": str|None, "reason": str|None}.
+    """
+    cat = CategoryPath(category_path)
+    existing = dtm.getDataType(cat, struct_name)
+    if existing is None:
+        return {"struct": struct_name, "fixed": False, "old_size": None,
+                "new_size": None, "drifted_field": None,
+                "reason": "no such struct in category {}".format(category_path)}
+
+    old_len = existing.getLength()
+    components = []
+    for c in existing.getDefinedComponents():
+        is_bf = c.isBitFieldComponent() if hasattr(c, 'isBitFieldComponent') else False
+        ct = c.getDataType()
+        components.append((c.getFieldName(), c.getOffset(), c.getLength(),
+                            ct.getLength() if ct else -1, is_bf))
+
+    plan = plan_cascade_fix(components, old_len)
+    if not plan["simple"]:
+        return {"struct": struct_name, "fixed": False, "old_size": old_len,
+                "new_size": None, "drifted_field": None, "reason": plan["reason"]}
+
+    delta = plan["delta"]
+    drifted_offset = plan["offset"]
+    new_len = plan["new_struct_length"]
+
+    # Snapshot every original component's (name, dtype, length, offset) before
+    # building the replacement -- getDefinedComponents() objects go stale once
+    # we start mutating a different Structure instance.
+    orig = [(c.getFieldName(), c.getDataType(), c.getLength(), c.getOffset())
+            for c in existing.getDefinedComponents()]
+
+    sdt = StructureDataType(CategoryPath(STAGING_CAT), struct_name, new_len)
+    for fname, fdt, flen, foff in orig:
+        new_off = foff if foff <= drifted_offset else foff + delta
+        new_flen = plan["new_slot"] if foff == drifted_offset else flen
+        sdt.replaceAtOffset(new_off, fdt, new_flen, fname, "")
+
+    staged = dtm.addDataType(sdt, DataTypeConflictHandler.REPLACE_HANDLER)
+    dtm.replaceDataType(existing, staged, True)
+
+    fresh = dtm.getDataType(cat, struct_name)
+    return {"struct": struct_name, "fixed": True, "old_size": old_len,
+            "new_size": fresh.getLength() if fresh else new_len,
+            "drifted_field": plan["drifted_field"], "reason": None}
 
 
 def _create_vtable_structs(gns, dtm, cat):
