@@ -43,6 +43,9 @@ CONFLICT_REPORT = os.path.join(SCRIPT_DIR, 'conflict_report.py')
 PLAN_CSV = os.environ.get('CLVR_PLAN', IMPORT_PATH + '.apply_plan.csv')
 NEW_CAT = '/types.h'
 STAGING_CAT = '/CommonLibVR_staging'
+# See the long comment in _stage_struct() / apply_cascade_fix() for why staged
+# replacements are named this way instead of the final target name directly.
+_STAGE_RENAME_SUFFIX = '__pending_rename__'
 
 DRY_RUN = os.environ.get('CLVR_APPLY', 'dry').lower() != 'go'
 
@@ -215,7 +218,24 @@ def run():
             return dtm.addDataType(StructureDataType(CategoryPath(cat), name, size), KEEP)
 
         def _stage_struct(name, size, _existing):
-            sdt = StructureDataType(CategoryPath(STAGING_CAT), name, size)
+            # Stage under a temporary distinct name, then rename back to `name`
+            # after replaceDataType() commits (see the Phase 3 swap loop below).
+            # Observed this session: staging a replacement under the EXACT SAME
+            # name as the type being replaced could make dtm.replaceDataType()
+            # report success -- correct new size visible for the rest of that
+            # same script run, currentProgram.isChanged() True -- but silently
+            # fail to persist: a genuinely separate, later eval_python call
+            # showed the struct reverted to its old definition, with no pending
+            # transaction, no available undo, and no .conflict duplicate
+            # anywhere in the DataTypeManager. Root cause not fully understood;
+            # reproduced concretely for BSCullingProcess (a 312->197112 byte
+            # resize) but NOT for most other same-session same-name replaces,
+            # so this isn't known to be universal -- staging under a temp name
+            # then renaming after the swap sidesteps it unconditionally, at the
+            # cost of one extra setName() call, and was verified reliable
+            # across 4 chained fixes (BSCullingProcess, LocalMapCullingProcess,
+            # LocalMapMenu, MapMenu) in the same session.
+            sdt = StructureDataType(CategoryPath(STAGING_CAT), name + _STAGE_RENAME_SUFFIX, size)
             return dtm.addDataType(sdt, DataTypeConflictHandler.REPLACE_HANDLER)
 
         def _register(st, dt):
@@ -307,8 +327,18 @@ def run():
         # the staged type into the existing type's category and removes existing.
         swapped = 0
         for name, (sdt, existing) in staging.items():
+            existing_cat = existing.getCategoryPath()
             try:
                 dtm.replaceDataType(existing, sdt, True)
+                # Re-fetch fresh rather than reusing `sdt` -- Ghidra's own
+                # object identity across a replaceDataType() swap isn't
+                # guaranteed stable, and the live post-swap type may be a
+                # different Java instance than the one we staged with.
+                live = dtm.getDataType(existing_cat, name + _STAGE_RENAME_SUFFIX)
+                if live is not None:
+                    live.setName(name)
+                else:
+                    print('post-swap rename target not found for {}'.format(name))
                 swapped += 1
             except Exception as e:
                 print('replace failed for {}: {}'.format(name, e))
@@ -437,7 +467,13 @@ def apply_cascade_fix(dtm, struct_name, category_path=NEW_CAT):
     orig = [(c.getFieldName(), c.getDataType(), c.getLength(), c.getOffset())
             for c in existing.getDefinedComponents()]
 
-    sdt = StructureDataType(CategoryPath(STAGING_CAT), struct_name, new_len)
+    # Stage under a temporary distinct name rather than `struct_name` directly,
+    # then rename back after the swap commits -- see the matching comment in
+    # _stage_struct() in run() above for why. Same-name staging was observed
+    # to silently fail to persist for at least one large struct this session
+    # (BSCullingProcess) despite reporting success within the same call.
+    temp_name = struct_name + _STAGE_RENAME_SUFFIX
+    sdt = StructureDataType(CategoryPath(STAGING_CAT), temp_name, new_len)
     for fname, fdt, flen, foff in orig:
         new_off = foff if foff <= drifted_offset else foff + delta
         new_flen = plan["new_slot"] if foff == drifted_offset else flen
@@ -445,6 +481,12 @@ def apply_cascade_fix(dtm, struct_name, category_path=NEW_CAT):
 
     staged = dtm.addDataType(sdt, DataTypeConflictHandler.REPLACE_HANDLER)
     dtm.replaceDataType(existing, staged, True)
+
+    # Re-fetch fresh rather than reusing `staged` -- object identity across
+    # the swap isn't guaranteed stable.
+    live = dtm.getDataType(cat, temp_name)
+    if live is not None:
+        live.setName(struct_name)
 
     fresh = dtm.getDataType(cat, struct_name)
     return {"struct": struct_name, "fixed": True, "old_size": old_len,
