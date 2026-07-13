@@ -621,6 +621,30 @@ CONFLICT = DataTypeConflictHandler.REPLACE_HANDLER
 
 created = {}  # full_name -> DataType
 
+
+def _find_existing_elsewhere(name, category):
+    """A same-named data type already living in a DIFFERENT category (a prior
+    /types.h import, a PDB-derived type, a Demangler/auto_structs stub, ...).
+
+    This is a cheap, name-only guard against the specific failure this generator
+    is prone to: re-running it against an already-enriched program re-creates a
+    second, competing copy of a basic/common type (BSFixedString, TESForm, ...)
+    under THIS run's category instead of reusing the one that's already there.
+    It intentionally does NOT attempt conflict_report.classify()'s full
+    MATCH/STUB_FILL/EXTENDS/DIVERGENT analysis (size comparison, member-fill,
+    trust ordering) -- that richer, size-aware reconciliation belongs to the
+    apply_enrich.py conflict-aware apply layer. Here we only need "does *some*
+    type with this name already exist anywhere" to avoid the blind duplicate.
+    Returns the first match (Ghidra's own findDataTypes ordering) or None.
+    """
+    import java.util.ArrayList as _ArrayList
+    results = _ArrayList()
+    dtm.findDataTypes(name, results)
+    for dt in results:
+        if str(dt.getCategoryPath()) != category:
+            return dt
+    return None
+
 _VOID  = VoidDataType()
 _BYTE  = ByteDataType()
 _PTR   = PointerDataType()
@@ -1037,21 +1061,27 @@ def run():
 
 def _import_types():
     monitor.setMessage('Creating enums...')
+    enums_reused = 0
     for en in ENUMS:
         name, size, category, values = en
-        e = EnumDataType(CategoryPath(category), name, size)
-        for vname, vval in values:
-            try:
-                e.add(vname, vval)
-            except Exception:
-                e.add(vname + '_', vval)
-        dt = dtm.addDataType(e, CONFLICT)
+        existing = _find_existing_elsewhere(name, category)
+        if existing is not None and existing.getLength() == size:
+            dt = existing
+            enums_reused += 1
+        else:
+            e = EnumDataType(CategoryPath(category), name, size)
+            for vname, vval in values:
+                try:
+                    e.add(vname, vval)
+                except Exception:
+                    e.add(vname + '_', vval)
+            dt = dtm.addDataType(e, CONFLICT)
         created[name] = dt
         created[category + '/' + name] = dt
         ns = '::'.join(category.strip('/').split('/')[1:])
         if ns:
             created[ns + '::' + name] = dt
-    print('Created {} enums'.format(len(ENUMS)))
+    print('Created {} enums ({} reused existing)'.format(len(ENUMS) - enums_reused, enums_reused))
 
     monitor.setMessage('Creating vtable structs...')
     # Slot offsets are emitted at 8-byte (x64) stride by the generator.
@@ -1089,21 +1119,43 @@ def _import_types():
     print('Created {} vtable structs'.format(len(VTABLES)))
 
     monitor.setMessage('Creating struct shells...')
+    shells_reused = 0
+    reused_names = set()
     for st in STRUCTS:
         name, size, category, fields, bases, has_vtable = st
-        s = StructureDataType(CategoryPath(category), name, size)
-        dt = dtm.addDataType(s, CONFLICT)
+        existing = _find_existing_elsewhere(name, category)
+        if existing is not None and existing.getLength() == size:
+            # Same name, same size, living somewhere else already (a prior
+            # /types.h import, a PDB type, a Demangler/auto_structs stub): reuse
+            # it instead of creating a second, competing shell under this run's
+            # category. A size MISMATCH is left to fall through to the normal
+            # create path -- that's a real layout question for the conflict-aware
+            # apply_enrich.py pass to resolve (STUB_UPGRADE/EXTENDS/DIVERGENT),
+            # not something this cheap name-only guard should silently paper over.
+            dt = existing
+            shells_reused += 1
+            reused_names.add(name)
+        else:
+            s = StructureDataType(CategoryPath(category), name, size)
+            dt = dtm.addDataType(s, CONFLICT)
         created[name] = dt
         created[category + '/' + name] = dt
         ns = '::'.join(category.strip('/').split('/')[1:])
         if ns:
             created[ns + '::' + name] = dt
-    print('Created {} struct shells'.format(len(STRUCTS)))
+    print('Created {} struct shells ({} reused existing)'.format(
+        len(STRUCTS) - shells_reused, shells_reused))
 
     monitor.setMessage('Filling struct fields...')
     filled = 0
     for st in STRUCTS:
         name, size, category, fields, bases, has_vtable = st
+        if name in reused_names:
+            # Reused an existing type as-is (see "Creating struct shells" above) --
+            # matching conflict_report.classify()'s MATCH policy of "register, no
+            # write", so this generator never overwrites a type it didn't create
+            # with its own (less-informed) field guesses.
+            continue
         s = dtm.getDataType(CategoryPath(category), name)
         if not s:
             continue
