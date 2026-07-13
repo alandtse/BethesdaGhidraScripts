@@ -31,13 +31,10 @@ sub-stage's own env (CLVR_PROP_SEED, CLVR_DISCOVER_PER_CLASS, ...) passes throug
 """
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 APPLY = os.environ.get('CLVR_CYCLE', 'dry').lower() == 'go'
 MAX_CYCLES = int(os.environ.get('CLVR_CYCLE_MAX', '5') or 5)
 MIN_GAIN = int(os.environ.get('CLVR_CYCLE_MIN_GAIN', '5') or 5)

@@ -22,13 +22,10 @@ SIG_DELTA path, tested, for when that lands.
 import csv
 import json
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 OUT_CSV = os.environ.get('CLVR_WRITEBACK_CSV', IMPORT_PATH + '.writeback.csv')
 
 import importlib.util as _ilu  # noqa: E402

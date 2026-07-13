@@ -21,13 +21,10 @@ import collections
 import csv
 import glob
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 STATE_JSON = os.environ.get('CLVR_DISCOVER_STATE', IMPORT_PATH + '.discover_state.json')
 REVIEW_CSV = os.environ.get('CLVR_DISCOVER_REVIEW_CSV', IMPORT_PATH + '.review_queue.csv')
 OUT_CSV = IMPORT_PATH + '.review_triaged.csv'

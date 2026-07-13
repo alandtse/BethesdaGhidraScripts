@@ -35,13 +35,10 @@ CLVR_PROP_SEED ('class' = only class-namespace functions seed the worklist
 """
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 APPLY = os.environ.get('CLVR_PROP', 'dry').lower() == 'go'
 MAX_ROUNDS = int(os.environ.get('CLVR_PROP_MAX_ROUNDS', '6') or 6)
 TIMEOUT = int(os.environ.get('CLVR_PROP_TIMEOUT', '30') or 30)

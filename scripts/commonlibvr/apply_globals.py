@@ -23,13 +23,10 @@ this confidence when decision_type is blank: high|medium|none, default none).
 """
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 IN_CSV = os.environ.get('CLVR_GLOBALS_CSV', IMPORT_PATH + '.globals_queue.csv')
 DIRTY_FILE = os.environ.get('CLVR_DISCOVER_DIRTY', IMPORT_PATH + '.discover_dirty.txt')
 APPLY = os.environ.get('CLVR_GLOBALS_APPLY', 'dry').lower() == 'go'

@@ -22,13 +22,12 @@ running it as an async eval (sync:false) and poll, rather than an unbounded sync
 """
 import csv
 import os
+import sys
 import importlib.util as _ilu
 
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR', r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+
 OUT_CSV = IMPORT_PATH + '.vt_sig_audit.csv'
 DECOMPILE = os.environ.get('VT_AUDIT_DECOMPILE', 'on').lower() != 'off'
 MAX_DECOMP = int(os.environ.get('VT_AUDIT_MAX', '2000'))

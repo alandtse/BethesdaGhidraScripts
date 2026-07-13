@@ -33,13 +33,11 @@ Dry-run by default; CLVR_SEED=go to apply. Decision logic is in seed_plan.py
 """
 import json
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+
 APPLY = os.environ.get('CLVR_SEED', 'dry').lower() == 'go'
 
 import importlib.util as _ilu  # noqa: E402

@@ -19,13 +19,10 @@ CLVR_CTOR_MAX_CLASSES (0=all), CLVR_CTOR_TIMEOUT (decompile seconds, default 45)
 """
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 OUT_CSV = os.environ.get('CLVR_CTOR_CSV', IMPORT_PATH + '.ctor_fields.csv')
 MAX_CLASSES = int(os.environ.get('CLVR_CTOR_MAX_CLASSES', '0') or 0)
 TIMEOUT = int(os.environ.get('CLVR_CTOR_TIMEOUT', '45') or 45)

@@ -25,13 +25,10 @@ pass), CLVR_GLOBALS_CSV (output), CLVR_GLOBALS_MAX_FUNCS (cap functions decompil
 """
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 OUT_CSV = os.environ.get('CLVR_GLOBALS_CSV', IMPORT_PATH + '.globals_queue.csv')
 MAX_FUNCS = int(os.environ.get('CLVR_GLOBALS_MAX_FUNCS', '0') or 0)
 # Scan scope (CLVR_GLOBALS_SCOPE):

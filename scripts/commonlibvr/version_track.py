@@ -21,13 +21,10 @@ CommonLibImport_CLVR_VR.py SYMBOLS (it already carries s/a/v for all runtimes).
 import csv
 import json
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 AUDIT_CSV = os.environ.get('VT_AUDIT_CSV', IMPORT_PATH + '.vt_audit.csv')
 APPLY = os.environ.get('VT_APPLY', 'dry').lower() == 'go'
 

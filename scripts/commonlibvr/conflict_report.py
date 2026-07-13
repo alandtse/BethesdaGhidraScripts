@@ -37,9 +37,8 @@ from layout_diff import (  # noqa: E402
 
 import ghidra.program.model.data as D
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
+from clvr_config import IMPORT_PATH  # noqa: E402
+
 CSV_PATH = os.environ.get('CLVR_CSV', IMPORT_PATH + '.conflicts.csv')
 
 

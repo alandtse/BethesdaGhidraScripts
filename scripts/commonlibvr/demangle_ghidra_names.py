@@ -22,7 +22,11 @@ is slow (rescans functions) -- merges run in batched transactions. Run per progr
 import csv
 import glob
 import os
+import sys
 import re
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH  # noqa: E402
 
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
@@ -30,9 +34,9 @@ MEMBERS_CSV = os.environ.get(
 # Generated CommonLib import (parse_commonlib_types output): its type references carry the
 # proper qualified names (struct:RE::A::B, enum:RE::A::B) for NESTED class/enum types --
 # the names template-only harvesting misses. Used to converge `Parent__Nested` -> `Parent::Nested`.
-IMPORT_PY = os.environ.get(
-    'CLVR_IMPORT_PY',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
+# CLVR_IMPORT_PY is kept as a distinct override (defaulting to the shared IMPORT_PATH) for
+# backward compatibility with anyone already setting it specifically for this script.
+IMPORT_PY = os.environ.get('CLVR_IMPORT_PY', IMPORT_PATH)
 RE_DIR = os.environ.get('CLVR_RE_DIR', r'E:\Documents\source\repos\CommonLibVR\include\RE')
 APPLY = os.environ.get('CLVR_DEMANGLE', 'dry').lower() == 'go'
 BATCH = int(os.environ.get('CLVR_DEMANGLE_BATCH', '40') or 40)

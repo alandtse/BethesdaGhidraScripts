@@ -17,12 +17,11 @@ CLVR_MEMBER_IMPORT=go to apply. Run per program.
 import collections
 import csv
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR', r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\commonlib_typed_members.csv')

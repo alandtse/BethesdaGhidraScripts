@@ -32,16 +32,11 @@ from ghidra.program.model.data import (
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import plan_cascade_fix  # noqa: E402
+from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT  # noqa: E402
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
 CONFLICT_REPORT = os.path.join(SCRIPT_DIR, 'conflict_report.py')
 PLAN_CSV = os.environ.get('CLVR_PLAN', IMPORT_PATH + '.apply_plan.csv')
-NEW_CAT = '/types.h'
+NEW_CAT = TYPES_CAT
 STAGING_CAT = '/CommonLibVR_staging'
 # See the long comment in _stage_struct() / apply_cascade_fix() for why staged
 # replacements are named this way instead of the final target name directly.

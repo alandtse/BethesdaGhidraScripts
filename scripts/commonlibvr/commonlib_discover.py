@@ -28,13 +28,11 @@ import collections
 import csv
 import json
 import os
+import sys
 
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+
 OUT_CSV = os.environ.get('CLVR_DISCOVER_CSV', IMPORT_PATH + '.discovered_fields.csv')
 # Per class, how many `this`-methods/vfuncs to mine. 0 = ALL (default): a class
 # reveals its field layout through its own methods, so walk them all. Set a positive
