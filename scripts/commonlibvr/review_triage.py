@@ -49,10 +49,6 @@ gu = _load('clvr_ghidra_util', 'clvr_ghidra_util.py')
 
 import json  # noqa: E402
 
-# pointer-sized guesses that could anchor (create a new typed edge); 4-byte scalars
-# (uint/int) resolve in place and unlock nothing.
-_PTRISH = {'void *', 'ulonglong', 'longlong', 'pointer', 'uint64', 'int64'}
-
 
 def run():
     cp = currentProgram  # noqa: F821
@@ -95,7 +91,7 @@ def run():
                 'class': row['class'], 'offset': row['offset'],
                 'current_name': cur, 'size_only_guess': guess,
                 'votes': int(row.get('votes', 0) or 0),
-                'is_pointer': ('*' in guess) or (guess in _PTRISH),
+                'is_pointer': tp.is_pointerish_guess(guess),
                 'crossver_answer': best or '',
             })
             if best:

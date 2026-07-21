@@ -17,6 +17,20 @@ driver supplies the live state, queue, and per-class unknown counts.
 """
 import collections
 
+# pointer-sized guesses that could anchor (create a new typed edge); 4-byte scalars
+# (uint/int) resolve in place and unlock nothing. Extracted from review_triage.py's
+# run() (DRY refactor): was an inline check with no name and no test coverage, despite
+# feeding directly into triage()'s own pointer-breaks-ties ranking below.
+_PTRISH = frozenset({'void *', 'ulonglong', 'longlong', 'pointer', 'uint64', 'int64'})
+
+
+def is_pointerish_guess(size_only_guess):
+    """True if a discovery-cycle size-only type guess (a bare type NAME string, e.g.
+    'void *' or 'uint64') looks pointer-shaped -- either it literally spells a pointer
+    (`'*' in guess`) or it's one of the pointer-sized scalar names _PTRISH lists that
+    the size-only inference can't otherwise tell apart from a real pointer."""
+    return ('*' in size_only_guess) or (size_only_guess in _PTRISH)
+
 
 def build_dependents(state_classes):
     """Invert the refs graph: type name -> set of class names that dereference it.

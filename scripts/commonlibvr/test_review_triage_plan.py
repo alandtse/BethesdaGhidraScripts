@@ -60,6 +60,26 @@ def test_pointer_breaks_tie_within_same_class():
     assert ranked[0]['unlock_score'] == ranked[1]['unlock_score']
 
 
+def test_is_pointerish_guess_matches_literal_pointer_spelling():
+    assert tp.is_pointerish_guess('void *')
+    assert tp.is_pointerish_guess('NiAVObject *')
+
+
+def test_is_pointerish_guess_matches_pointer_sized_scalar_names():
+    assert tp.is_pointerish_guess('ulonglong')
+    assert tp.is_pointerish_guess('longlong')
+    assert tp.is_pointerish_guess('pointer')
+    assert tp.is_pointerish_guess('uint64')
+    assert tp.is_pointerish_guess('int64')
+
+
+def test_is_pointerish_guess_false_for_narrow_scalars():
+    assert not tp.is_pointerish_guess('uint')
+    assert not tp.is_pointerish_guess('int')
+    assert not tp.is_pointerish_guess('bool')
+    assert not tp.is_pointerish_guess('')
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())
