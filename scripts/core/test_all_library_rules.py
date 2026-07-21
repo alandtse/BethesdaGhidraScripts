@@ -11,9 +11,16 @@ import sys
 CORE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.dirname(CORE_DIR)
 sys.path.insert(0, CORE_DIR)
-from rules.base import LibraryRules  # noqa: E402
+from rules.base import LibraryRules, LibraryRulesFormat  # noqa: E402
 
 LIBRARIES = ['commonlibsse', 'commonlibvr', 'commonlibf4', 'commonlibnvse', 'commonlibsf']
+
+# Phase 4: libraries with a real per-library id-file parser/address-library
+# loader to delegate to (see each library_rules.py's docstring). commonlibvr
+# is deliberately excluded -- its ids come pre-resolved from the sibling
+# vr_address_tools repo's generated import, not from an address-library
+# reader in this repo, so there is nothing existing to delegate to yet.
+FORMAT_LIBRARIES = ['commonlibsse', 'commonlibf4', 'commonlibnvse', 'commonlibsf']
 
 
 def _load_rules_module(lib_name):
@@ -46,6 +53,13 @@ def test_every_library_rules_name_matches_its_directory():
 def test_every_library_rules_env_prefix_is_unique():
     prefixes = [_load_rules_module(lib).RULES.env_prefix for lib in LIBRARIES]
     assert len(prefixes) == len(set(prefixes)), 'env_prefix collision: %s' % prefixes
+
+
+def test_format_libraries_satisfy_libraryrulesformat_protocol():
+    for lib in FORMAT_LIBRARIES:
+        mod = _load_rules_module(lib)
+        assert isinstance(mod.RULES, LibraryRulesFormat), \
+            '%s.RULES does not satisfy LibraryRulesFormat' % lib
 
 
 if __name__ == '__main__':

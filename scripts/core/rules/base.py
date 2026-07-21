@@ -43,22 +43,38 @@ class LibraryRules(Protocol):
 
 @runtime_checkable
 class LibraryRulesFormat(LibraryRules, Protocol):
-    """The Phase 4 contract (separate, later effort -- see the module docstring):
-    LibraryRules plus the grammar/format methods that require real per-game
-    algorithmic work (ID-file parsing, address-library binary reading). No current
-    rules module implements this yet; `isinstance(x, LibraryRulesFormat)` is the
-    intended way to check whether a given library's Phase-4 work has landed."""
+    """The Phase 4 contract: LibraryRules plus the grammar/format methods for
+    per-game ID-file parsing and address-library reading. `isinstance(x,
+    LibraryRulesFormat)` is the intended way to check whether a given library's
+    Phase-4 work has landed.
 
-    def parse_id_file(self, text: str):
+    Phase 4 found that every implementing library already HAD its own working
+    parser/loader (reloc_parser.py's collect_relocations, ids_parser.py's
+    collect_all, address_library.py's AddressLibrary.load_bin, addresses.py's
+    collect_all for FNV's header-only scheme) -- these methods are thin
+    delegates to that pre-existing code, not new algorithms. Because the real
+    per-game entry points take different shapes (a header directory + an
+    address-library object for SE/F4/SF; an xNVSE root + a refs overlay dir for
+    FNV, which has no address-library binary at all), `runtime_checkable`
+    Protocol isinstance checks only require the METHOD NAMES to exist -- Python
+    does not check call signatures -- so each library's implementation keeps
+    its own natural parameter list rather than being forced into one artificial
+    shape. See each library's `library_rules.py` docstring for its actual
+    signature and what it delegates to."""
+
+    def parse_id_file(self, *args, **kwargs):
         """Parse this game's ID-file grammar (e.g. SE's dual-ID RELOCATION_ID(se,ae)
         macro + #ifdef SKYRIM_SUPPORT_AE sections, vs F4's single-ID REL::ID registry,
-        vs SF's versionlib) into a uniform id-map shape."""
+        vs SF's versionlib, vs FNV's hardcoded-VA xNVSE headers) into that library's
+        own symbol-list shape -- see the implementing class for its exact signature
+        and return shape."""
         ...
 
     def load_address_library(self, path: str):
         """Read this game's address-library binary format (meh321 compressed V1/V2
-        delta-encoded for SE, flat count+(id,offset) for F4, versionlib for SF) into a
-        uniform {id: offset} shape."""
+        delta-encoded for SE, flat count+(id,offset) for F4, flat uint32[id] array for
+        SF) into a uniform {id: offset} shape. FNV has no such format (no versionlib/
+        REL::ID); its implementation documents that rather than faking one."""
         ...
 
     def format_relocation(self, ids: dict) -> str:
