@@ -38,6 +38,9 @@ from pathlib import Path
 REPO_DIR    = Path(__file__).resolve().parent.parent.parent
 GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from engine.demangle import demangle_class  # noqa: E402
+
 DEFAULT_MAX_SLOTS = 1000
 
 _SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_<>$~?@-]")
@@ -55,22 +58,6 @@ def sanitize_component(part):
 
 def split_namespaced(full):
     return [sanitize_component(p) for p in full.split("::")]
-
-
-def demangle_class(mangled):
-    """Minimal MSVC class TypeDescriptor demangler."""
-    if mangled.startswith((".?AV", ".?AU", ".?AW")):
-        rest = mangled[4:]
-    else:
-        return mangled
-    if rest.endswith("@@"):
-        rest = rest[:-2]
-    parts = [p for p in rest.split("@") if p]
-    if not parts:
-        return "UnknownClass"
-    if any("?$" in p for p in parts):
-        return rest.replace("@", "::").replace("?$", "T_").replace("?", "_")
-    return "::".join(reversed(parts))
 
 
 # ---------------------------------------------------------------------------

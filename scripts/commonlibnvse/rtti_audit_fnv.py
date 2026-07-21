@@ -30,7 +30,11 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_DIR   = SCRIPT_DIR.parent.parent
 REFS_DIR   = SCRIPT_DIR / 'refs'
+
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.demangle import demangle_class  # noqa: E402
 EXE_PATH   = Path(r'D:\FNV Project\FalloutNewVegas\FalloutNV.exe')
 
 
@@ -69,27 +73,6 @@ def find_section(sects, name):
         if s['name'] == name:
             return s
     return None
-
-
-def demangle_class(mangled):
-    """``.?AVClassName@@`` -> ``ClassName``.
-
-    Strips the leading ``.?A[VU]`` (V=class, U=struct) and trailing
-    ``@@`` namespace terminator.  Doesn't handle nested classes or
-    templates -- returns the simplified base name.
-    """
-    if not mangled.startswith('.?A'):
-        return mangled
-    body = mangled[3:]  # drop .?A
-    if body and body[0] in 'VUW':
-        body = body[1:]
-    if body.endswith('@@'):
-        body = body[:-2]
-    # Handle nested ``X@Y@@`` -> ``Y::X``
-    parts = body.split('@')
-    parts = [p for p in parts if p]
-    parts.reverse()
-    return '::'.join(parts) if parts else body
 
 
 def scan_rtti_x86(image_base, sects, data):

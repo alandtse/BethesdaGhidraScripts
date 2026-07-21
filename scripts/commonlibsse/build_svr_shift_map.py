@@ -48,6 +48,9 @@ from pathlib import Path
 REPO_DIR    = Path(__file__).resolve().parent.parent.parent
 GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
 
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.demangle import demangle_class  # noqa: E402
+
 PROJECT_DIR  = "C:/GhidraProjects"
 PROJECT_NAME = "Combined"
 AE_PATH      = "/Skyrim/SkyrimAE_1_6_1170.exe"
@@ -91,23 +94,6 @@ def normalize_name(full_name):
     parts = full_name.split("::")
     parts[-1] = _VA_SUFFIX_RE.sub("", parts[-1])
     return "::".join(parts)
-
-
-def demangle_class(mangled):
-    """Minimal MSVC class TypeDescriptor demangler -- same logic as
-    scripts/commonlibsf/find_all_vtables_rtti.py."""
-    if mangled.startswith((".?AV", ".?AU", ".?AW")):
-        rest = mangled[4:]
-    else:
-        return mangled
-    if rest.endswith("@@"):
-        rest = rest[:-2]
-    parts = [p for p in rest.split("@") if p]
-    if not parts:
-        return "UnknownClass"
-    if any("?$" in p for p in parts):
-        return rest.replace("@", "::").replace("?$", "T_").replace("?", "_")
-    return "::".join(reversed(parts))
 
 
 def rva_to_file(sects, rva):

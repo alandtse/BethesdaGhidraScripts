@@ -49,6 +49,9 @@ from pathlib import Path
 REPO_DIR    = Path(__file__).resolve().parent.parent.parent
 GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
 
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.demangle import demangle_class  # noqa: E402
+
 SF_EXE        = Path(r"C:/Games/Starfield 1.16.236/Starfield.exe")
 EXISTING_VTBL = REPO_DIR / "scripts" / "commonlibsf" / "refs" / "sf116_commonlib_names.csv"
 OUT_VTBL_CSV  = REPO_DIR / "scripts" / "commonlibsf" / "refs" / "sf116_rtti_vtables.csv"
@@ -92,40 +95,6 @@ def find_section(sects, name):
         if s["name"] == name:
             return s
     return None
-
-
-def demangle_class(mangled: str) -> str:
-    """Quick MSVC class-type-descriptor demangler.
-
-    Handles non-template names directly.  For templates (.?AV?$Foo@...),
-    we fall back to a lightweight recursive parser that handles the
-    common cases.
-    """
-    if mangled.startswith(".?AV"):
-        rest = mangled[4:]
-    elif mangled.startswith(".?AU"):
-        rest = mangled[4:]
-    elif mangled.startswith(".?AW"):  # enum class
-        rest = mangled[4:]
-    else:
-        return mangled
-    # rest should end with "@@"
-    if rest.endswith("@@"):
-        rest = rest[:-2]
-    # Split by '@', reverse for namespace order
-    parts = rest.split("@")
-    # Filter empty parts (which can happen for trailing @)
-    parts = [p for p in parts if p]
-    if not parts:
-        return "UnknownClass"
-    # Names like 'BSTArray@?$@VFoo' become awkward; for non-template we just reverse.
-    # Templates have '?$' inside parts which our naive split breaks.  Detect
-    # and fall back to leaving the raw mangled body as a sanitized blob.
-    if any("?$" in p for p in parts):
-        # Template: keep raw mangled body, sanitized
-        flat = rest.replace("@", "::").replace("?$", "T_").replace("?", "_")
-        return flat
-    return "::".join(reversed(parts))
 
 
 def rva_to_file(sects, rva):
