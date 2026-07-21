@@ -60,6 +60,22 @@ def test_build_expected_stable_on_duplicate_src():
     assert out[5] == (50, 'func')   # first wins, not overwritten
 
 
+def test_classify_destination_vr():
+    assert vt_plan.classify_destination('SkyrimVR.exe') == ('v', 'SE->VR')
+
+
+def test_classify_destination_ae_by_1170():
+    assert vt_plan.classify_destination('SkyrimSE_1_6_1170.exe') == ('a', 'SE->AE')
+
+
+def test_classify_destination_ae_by_name():
+    assert vt_plan.classify_destination('SkyrimAE.exe') == ('a', 'SE->AE')
+
+
+def test_classify_destination_unmapped_runtime_is_none():
+    assert vt_plan.classify_destination('SkyrimSE.exe') is None
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

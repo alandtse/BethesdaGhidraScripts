@@ -11,6 +11,18 @@ Kept separate from the Ghidra driver so the decision logic is unit-testable.
 """
 
 
+def classify_destination(dest_program_name):
+    """Classify a VT session's destination program by name -> (dst_key, label), or
+    None if it isn't a runtime we map. Extracted from version_track.py's run() loop
+    (DRY refactor): was an inline if/elif/continue with no name and no test coverage.
+    """
+    if 'VR' in dest_program_name:
+        return 'v', 'SE->VR'
+    if '1170' in dest_program_name or 'AE' in dest_program_name:
+        return 'a', 'SE->AE'
+    return None
+
+
 def plan_vt(expected, existing_accepted):
     """Classify each id-derived cross-version pair against existing accepted VT.
 

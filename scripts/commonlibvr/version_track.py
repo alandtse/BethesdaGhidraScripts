@@ -123,14 +123,10 @@ def run():
     audit_rows = []
     for sess in sessions:
         sname = sess.getDestinationProgram().getName()
-        # choose the runtime offset for the destination program
-        if 'VR' in sname:
-            dst_key = 'v'
-        elif '1170' in sname or 'AE' in sname:
-            dst_key = 'a'
-        else:
+        classified = vt_plan.classify_destination(sname)
+        if classified is None:
             continue   # not a runtime we map
-        label = 'SE->' + ('VR' if dst_key == 'v' else 'AE')
+        dst_key, label = classified
         process_session(sess, symbols, 's', dst_key, label, audit_rows)
 
     with open(AUDIT_CSV, 'w') as fh:
