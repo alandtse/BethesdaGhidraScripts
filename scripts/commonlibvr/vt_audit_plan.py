@@ -56,6 +56,24 @@ def _compatible(a, b):
     return _COMPAT.get(frozenset((a, b)), False)
 
 
+def categorize_type(name, is_pointer, is_struct_or_union):
+    """Classify a type into one of the profile's *_cat buckets: 'void' 'int' 'ptr'
+    'float' 'struct'. Takes primitives (name, plus the two isinstance checks the
+    Ghidra driver already has to make) rather than a live DataType, so the ABI-class
+    decision stays Ghidra-free and testable. Extracted from vt_signature_audit.py's
+    _cat() (DRY refactor): was inline in the driver with no test coverage."""
+    n = (name or 'void').lower()
+    if n == 'void':
+        return 'void'
+    if is_pointer:
+        return 'ptr'
+    if is_struct_or_union:
+        return 'struct'
+    if 'float' in n or 'double' in n:
+        return 'float'
+    return 'int'   # integers, enums, undefinedN (register-width return/arg)
+
+
 def audit_match(src, dst):
     """Return (verdict, reasons). 'SUSPECT' only on a STRONG signal that compares the
     actual CODE -- a >SIZE_RATIO body-size blowup, or the dst decompile leaking incoming-

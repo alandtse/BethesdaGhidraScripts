@@ -47,17 +47,8 @@ ds = _load('clvr_decompile_score', 'decompile_score.py')
 def _cat(dt):
     from ghidra.program.model.data import Pointer, Structure, Union
     if dt is None:
-        return 'void'
-    n = dt.getName().lower()
-    if n == 'void':
-        return 'void'
-    if isinstance(dt, Pointer):
-        return 'ptr'
-    if isinstance(dt, (Structure, Union)):
-        return 'struct'
-    if 'float' in n or 'double' in n:
-        return 'float'
-    return 'int'   # integers, enums, undefinedN (register-width return/arg)
+        return ap.categorize_type(None, False, False)
+    return ap.categorize_type(dt.getName(), isinstance(dt, Pointer), isinstance(dt, (Structure, Union)))
 
 
 def _decomp_iface(prog):

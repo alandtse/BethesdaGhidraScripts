@@ -87,3 +87,34 @@ def test_unapplied_side_still_flags_size_and_leak():
     dst = _p(params=0, ret='void', cats=[], size=600, inparams=4, has_sig=False)
     v, r = ap.audit_match(src, dst)
     assert v == 'SUSPECT' and any('size' in x for x in r) and any('incoming-reg' in x for x in r)
+
+
+def test_categorize_type_none_is_void():
+    assert ap.categorize_type(None, False, False) == 'void'
+
+
+def test_categorize_type_void_name():
+    assert ap.categorize_type('void', False, False) == 'void'
+
+
+def test_categorize_type_pointer():
+    assert ap.categorize_type('NiAVObject *', True, False) == 'ptr'
+
+
+def test_categorize_type_struct_or_union():
+    assert ap.categorize_type('NiPoint3', False, True) == 'struct'
+
+
+def test_categorize_type_float_and_double():
+    assert ap.categorize_type('float', False, False) == 'float'
+    assert ap.categorize_type('double', False, False) == 'float'
+
+
+def test_categorize_type_defaults_to_int():
+    assert ap.categorize_type('uint', False, False) == 'int'
+    assert ap.categorize_type('undefined4', False, False) == 'int'
+
+
+def test_categorize_type_pointer_wins_over_struct():
+    # a struct pointer is still 'ptr' -- pointer check runs before the struct check
+    assert ap.categorize_type('NiPoint3 *', True, True) == 'ptr'
