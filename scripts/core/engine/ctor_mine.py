@@ -1,36 +1,66 @@
 """Ghidra driver: constructor-mining field recovery (READ-ONLY).
-Technique adapted from alandtse's CommonLibVR fork.
 
 A class constructor assigns each member from a typed, named parameter
-(``this->Object_18 = a_object``, ``a_object:TESBoundObject*``), so one
-decompile yields a field's NAME and TYPE together -- far more reliable
-than size-only dataflow guesses.
+(`this->Object_18 = a_object`, `a_object:TESBoundObject*`), so one decompile yields a
+field's NAME and TYPE together -- far more reliable than size-only dataflow guesses
+(which mis-typed Crime+0x58 as a faction; the ctor showed 0x18 is the TESBoundObject
+`object` and 0x58 a 4-byte scalar).
 
-For each CommonLib/PDB struct with unknown fields (``unk*``/``pad*``/
-``undefined*``) this finds its constructor (param-0 is the class, name
-looks like a ctor), decompiles it, and reads ``this->field@offset =
-a_param`` assignments out of the pcode.  Proposals -- (class, offset,
-type, name) -- are written to a CSV, unknown-slot fillers first.
+Superset merge of two independently-forked drivers (core/ctor_mine.py and
+commonlibvr/ctor_mine.py) that used two DIFFERENT, complementary ways to find
+candidate constructors:
 
-NON-DESTRUCTIVE: only decompiles + writes a CSV; never modifies the
-program.  Knobs (env):
-  BGS_CTOR_CSV          output path (default: <repo>/scripts/core/refs/ctor_fields_<prog>.csv)
-  BGS_CTOR_CATEGORY     only mine structs whose category path contains this
-                        substring (default: empty = all structs)
-  BGS_CTOR_MAX_CLASSES  cap classes mined (0 = all)
-  BGS_CTOR_TIMEOUT      decompile seconds per function (default 45)
+  - NAME HEURISTIC (plans.ctor_plan.is_ctor): works when functions already carry a
+    ctor-shaped name (`Class_ctor`, `Class::Class`) -- true for CommonLibVR targets
+    that have already been through a naming pass.
+  - STRUCTURAL (vtable store to `this+0`): a ctor writes its class's vtable to offset
+    0 regardless of what the function is currently named -- necessary for binaries
+    (e.g. Starfield/FNV) whose functions aren't ctor-named yet, where the name
+    heuristic finds nothing.
+
+Both run; candidates are UNIONED per class so either signal can surface constructors
+the other misses. For each candidate this also extracts embedded-object information
+(`CALL ctor_of_T(this+off, ...)` -- the member at `this+off` is constructed by T's
+own constructor, so field@off has type T; off==0 is a base-class subobject) in
+addition to direct `this->field = a_param` assignments, since a constructor may
+initialize some members via sub-constructor calls rather than typed-parameter
+assignment (particularly common on targets CommonLib hasn't typed yet).
+
+For each struct with unknown fields (`unk*`/`pad*`/`undefined*`) this finds
+candidate constructors, decompiles them, and reads assignments + embedded-object
+calls out of the pcode. Proposals -- (class, offset, type, name) -- are written to a
+CSV, unknown-slot fillers first.
+
+NON-DESTRUCTIVE: only decompiles + writes a CSV; never modifies the program.
+
+Env (both fork's original namespaces are honored; CTOR_* checked first, falling back
+to the per-fork prefix so neither caller's existing invocation habits break):
+  CTOR_CSV / BGS_CTOR_CSV / CLVR_CTOR_CSV                 output path
+  CTOR_CATEGORY / BGS_CTOR_CATEGORY / CLVR_CTOR_CATEGORY  only mine structs whose
+      category path contains this substring (default: empty = all structs -- a
+      caller that wants the old commonlibvr default of '/types.h' should set this
+      explicitly; see commonlibvr/ctor_mine.py, now a thin wrapper)
+  CTOR_MAX_CLASSES / BGS_CTOR_MAX_CLASSES / CLVR_CTOR_MAX_CLASSES  cap classes mined
+  CTOR_TIMEOUT / BGS_CTOR_TIMEOUT / CLVR_CTOR_TIMEOUT      decompile seconds/function
 """
 import csv
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ctor_plan as cp_plan  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from plans import ctor_plan as cp_plan  # noqa: E402
 
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CATEGORY = os.environ.get('BGS_CTOR_CATEGORY', '')
-MAX_CLASSES = int(os.environ.get('BGS_CTOR_MAX_CLASSES', '0') or 0)
-TIMEOUT = int(os.environ.get('BGS_CTOR_TIMEOUT', '45') or 45)
+
+def _env(key, default=''):
+    return (os.environ.get('CTOR_' + key)
+            or os.environ.get('BGS_CTOR_' + key)
+            or os.environ.get('CLVR_CTOR_' + key)
+            or default)
+
+
+CATEGORY = _env('CATEGORY', '')
+MAX_CLASSES = int(_env('MAX_CLASSES', '0') or 0)
+TIMEOUT = int(_env('TIMEOUT', '45') or 45)
 
 
 def _high_name(vn):
@@ -39,8 +69,8 @@ def _high_name(vn):
 
 
 def _addr_off(vn, this_name, pc, depth=0):
-    """Back-trace varnode ``vn`` to ``this + k``; return k or None.  Matches
-    ``this`` by param NAME (Ghidra hands out distinct HighVariable objects
+    """Back-trace varnode `vn` to `this + k`; return k or None. Matches
+    `this` by param NAME (Ghidra hands out distinct HighVariable objects
     for param-0 body instances, so identity comparison fails)."""
     if vn is None or depth > 7:
         return None
@@ -53,7 +83,7 @@ def _addr_off(vn, this_name, pc, depth=0):
     if oc in (pc.COPY, pc.CAST, pc.INDIRECT) and ins:
         return _addr_off(ins[0], this_name, pc, depth + 1)
     # PTRADD is pointer arithmetic base + index*elem_size: the BYTE offset is
-    # ins[1] (index) * ins[2] (element size), NOT the raw index.  Using the
+    # ins[1] (index) * ins[2] (element size), NOT the raw index. Using the
     # raw index yields offset/8 for 8-byte pointer fields (a pointer field
     # reported at +0x9 instead of +0x48).
     if oc == pc.PTRADD and len(ins) >= 3 and ins[1].isConstant() and ins[2].isConstant():
@@ -69,7 +99,7 @@ def _addr_off(vn, this_name, pc, depth=0):
 
 
 def _val_param(vn, param_names, pc, depth=0):
-    """If ``vn`` (through copy/cast/phi) is one of the parameters by name,
+    """If `vn` (through copy/cast/phi) is one of the parameters by name,
     return its name; else None."""
     if vn is None or depth > 5:
         return None
@@ -88,7 +118,7 @@ def _val_param(vn, param_names, pc, depth=0):
 
 
 def _ctor_assignments(hf, this_name):
-    """{offset: (typename, param_name)} for ``this->field@off = a_param``."""
+    """{offset: (typename, param_name)} for `this->field@off = a_param`."""
     from ghidra.program.model.pcode import PcodeOp
     lsm = hf.getLocalSymbolMap()
     param_type = {}
@@ -115,12 +145,10 @@ def _ctor_assignments(hf, this_name):
 
 
 def _embedded_objects(hf, this_name, vtmap, fm, callee_class):
-    """{offset: class_name} for ``CALL ctor_of_T(this+off, ...)`` -- the
-    object at ``this+off`` is constructed by T's constructor, so field@off
-    has type T.  This is the SF-appropriate signal: constructors there
-    initialise members by calling sub-constructors rather than assigning
-    typed parameters (which CommonLib hasn't typed yet).  off==0 is the
-    base-class subobject (inheritance); off!=0 is an embedded member."""
+    """{offset: class_name} for `CALL ctor_of_T(this+off, ...)` -- the
+    object at `this+off` is constructed by T's constructor, so field@off
+    has type T. off==0 is the base-class subobject (inheritance); off!=0
+    is an embedded member."""
     from ghidra.program.model.pcode import PcodeOp
     out = {}
     it = hf.getPcodeOps()
@@ -167,8 +195,8 @@ def _vtable_class_map(prog):
 
 
 def _const_addr_off(vn, depth=0):
-    """Resolve a varnode to a constant RAM address offset (the ``&VTABLE``
-    target) through copy/cast/ptrsub.  None if not a constant address."""
+    """Resolve a varnode to a constant RAM address offset (the `&VTABLE`
+    target) through copy/cast/ptrsub. None if not a constant address."""
     from ghidra.program.model.pcode import PcodeOp
     if vn is None or depth > 6:
         return None
@@ -189,10 +217,10 @@ def _const_addr_off(vn, depth=0):
 
 
 def _constructed_class(hf, this_name, vtmap):
-    """If the function stores a known vtable address to ``this+0``, return
-    the class name (from vtmap).  Identifies a constructor STRUCTURALLY --
+    """If the function stores a known vtable address to `this+0`, return
+    the class name (from vtmap). Identifies a constructor STRUCTURALLY --
     a ctor writes its class vtable to offset 0 -- so it works regardless of
-    whether the function carries a constructor-shaped NAME (ours don't)."""
+    whether the function carries a constructor-shaped NAME."""
     from ghidra.program.model.pcode import PcodeOp
     it = hf.getPcodeOps()
     while it.hasNext():
@@ -216,8 +244,8 @@ def run():
     dtm = prog.getDataTypeManager()
     fm = prog.getFunctionManager()
 
-    out_csv = os.environ.get('BGS_CTOR_CSV') or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), 'refs',
+    out_csv = _env('CSV') or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'refs',
         'ctor_fields_%s.csv' % prog.getName().replace('.', '_'))
 
     unk_by_class = {}
@@ -230,25 +258,34 @@ def run():
         if offs:
             unk_by_class[dt.getName()] = offs
 
-    # Candidate constructors are found STRUCTURALLY, not by name: a ctor
-    # references (and stores to this+0) its class's vtable.  Our binaries
-    # don't carry constructor-shaped function names, so the name heuristic
-    # (cp_plan.is_ctor) finds nothing -- the vtable cross-reference does.
+    # Strategy 1 (structural): a ctor references (and stores to this+0) its class's
+    # vtable -- works even when functions carry no ctor-shaped name.
     rm = prog.getReferenceManager()
     af = prog.getAddressFactory().getDefaultAddressSpace()
     vtmap = _vtable_class_map(prog)
     target_vt = {off: c for off, c in vtmap.items() if c in unk_by_class}
 
-    cand_funcs = set()
-    for off in target_vt:
+    cand_by_class = {}
+    for off, cls in target_vt.items():
         addr = af.getAddress(off)
         for ref in rm.getReferencesTo(addr):
             f = fm.getFunctionContaining(ref.getFromAddress())
             if f is not None:
-                cand_funcs.add(f)
-    cand_list = list(cand_funcs)
+                cand_by_class.setdefault(cls, set()).add(f)
+
+    # Strategy 2 (name heuristic): param-0 type matches the class AND the function's
+    # current name looks ctor-shaped -- works once a naming pass has run.
+    for f in fm.getFunctions(True):
+        ps = f.getParameters()
+        if not ps:
+            continue
+        cls = ps[0].getDataType().getName().rstrip('64').rstrip(' *')
+        if cls in unk_by_class and cp_plan.is_ctor(f.getName(), cls):
+            cand_by_class.setdefault(cls, set()).add(f)
+
+    targets = list(cand_by_class.items())
     if MAX_CLASSES:
-        cand_list = cand_list[:MAX_CLASSES * 6]
+        targets = targets[:MAX_CLASSES]
 
     decomp = DecompInterface()
     decomp.openProgram(prog)
@@ -277,37 +314,35 @@ def run():
 
     rows = []
     named = typed_unk = n_embed = 0
-    best_by_class = {}                      # cls -> (score, assignments, embedded)
-    print('ctor-mine: %d unk-bearing structs, %d unk-class vtables, '
-          '%d functions reference a target vtable'
-          % (len(unk_by_class), len(target_vt), len(cand_list)))
-    for f in cand_list:
-        try:
-            r = decomp.decompileFunction(f, TIMEOUT, monitor)  # noqa: F821
-            if not (r and r.decompileCompleted()):
+    classes_done = 0
+    print('ctor-mine: %d unk-bearing structs, %d have a candidate constructor '
+          '(structural vtable match + ctor-shaped name, unioned)'
+          % (len(unk_by_class), len(cand_by_class)))
+    for cls, funcs in targets:
+        classes_done += 1
+        best = None   # (score, asg, emb)
+        for f in list(funcs)[:6]:
+            try:
+                r = decomp.decompileFunction(f, TIMEOUT, monitor)  # noqa: F821
+                if not (r and r.decompileCompleted()):
+                    continue
+                hf = r.getHighFunction()
+                lsm = hf.getLocalSymbolMap()
+                if lsm.getNumParams() < 1:
+                    continue
+                this_name = lsm.getParamSymbol(0).getName()
+                asg = _ctor_assignments(hf, this_name)
+                emb = _embedded_objects(hf, this_name, vtmap, fm, callee_class)
+                if not asg and not emb:      # destructors / no usable info
+                    continue
+                score = len(asg) + len(emb)
+                if best is None or score > best[0]:
+                    best = (score, asg, emb)
+            except Exception:
                 continue
-            hf = r.getHighFunction()
-            lsm = hf.getLocalSymbolMap()
-            if lsm.getNumParams() < 1:
-                continue
-            this_name = lsm.getParamSymbol(0).getName()
-            cls = _constructed_class(hf, this_name, vtmap)
-            if cls is None or cls not in unk_by_class:
-                continue
-            asg = _ctor_assignments(hf, this_name)
-            emb = _embedded_objects(hf, this_name, vtmap, fm, callee_class)
-            if not asg and not emb:         # destructors / no usable info
-                continue
-            score = len(asg) + len(emb)
-            prev = best_by_class.get(cls)
-            if prev is None or score > prev[0]:
-                best_by_class[cls] = (score, asg, emb)
-        except Exception:
+        if best is None:
             continue
-    decomp.dispose()
-    decomp2.dispose()
-
-    for cls, (_n, asg, emb) in best_by_class.items():
+        _n, asg, emb = best
         unk = unk_by_class.get(cls, set())
         for off, (tn, pname) in sorted(asg.items()):
             label = cp_plan.field_label(pname) or ''
@@ -328,11 +363,13 @@ def run():
             n_embed += 1
             if is_unk:
                 typed_unk += 1
-    classes_done = len(best_by_class)
+    decomp.dispose()
+    decomp2.dispose()
 
     rows.sort(key=lambda r: (r[4] != 'unknown', r[0], int(r[1], 16)))
-    if not os.path.isdir(os.path.dirname(out_csv)):
-        os.makedirs(os.path.dirname(out_csv))
+    out_dir = os.path.dirname(out_csv)
+    if out_dir and not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
     with open(out_csv, 'w', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(['class', 'offset', 'type', 'name', 'slot_state'])

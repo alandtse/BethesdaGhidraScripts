@@ -1,51 +1,20 @@
-"""Unit tests for the pure enrichment planners (ctor_plan, globals_plan,
-string_anchor_match).  No Ghidra required -- run with::
+"""Unit tests for the pure enrichment planners (globals_plan, string_anchor_match).
+No Ghidra required -- run with::
 
     python scripts/core/test_enrichment_plans.py
     # or: pytest scripts/core/test_enrichment_plans.py
+
+ctor_plan's tests moved to plans/test_ctor_plan.py as part of the DRY refactor's
+Phase 3 (ctor_plan.py itself turned out identical between core and commonlibvr, so
+it was merged into core/plans/ctor_plan.py rather than staying duplicated here).
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import ctor_plan
 import globals_plan
 import string_anchor_match as sam
-
-
-# --------------------------------------------------------------------------
-# ctor_plan
-# --------------------------------------------------------------------------
-def test_is_ctor():
-    assert ctor_plan.is_ctor('TESObjectWEAP::TESObjectWEAP', 'TESObjectWEAP')
-    assert ctor_plan.is_ctor('Crime_ctor', 'Crime')
-    assert ctor_plan.is_ctor('RE::Actor::constructor', 'Actor')
-    # negatives
-    assert not ctor_plan.is_ctor('DoActor', 'Actor')          # 'ctor' substring only
-    assert not ctor_plan.is_ctor('TESObjectWEAP::GetName', 'TESObjectWEAP')
-    assert not ctor_plan.is_ctor('', 'Actor')
-
-
-def test_field_label():
-    assert ctor_plan.field_label('a_object') == 'object'
-    assert ctor_plan.field_label('p_count') == 'count'
-    assert ctor_plan.field_label('param_3') is None or \
-        ctor_plan.field_label('param_3') == '3'   # param_ prefix stripped -> '3' digit
-    # noise names drop
-    assert ctor_plan.field_label('this') is None
-    assert ctor_plan.field_label('a_') is None
-    assert ctor_plan.field_label('') is None
-    assert ctor_plan.field_label(None) is None
-    # real name survives
-    assert ctor_plan.field_label('a_interval') == 'interval'
-
-
-def test_best_ctor():
-    assert ctor_plan.best_ctor([('a', 0), ('b', 5), ('c', 3)]) == 'b'
-    assert ctor_plan.best_ctor([('a', 2), ('b', 2)]) == 'a'        # tie -> first
-    assert ctor_plan.best_ctor([('a', 0), ('b', 0)]) is None       # none assign
-    assert ctor_plan.best_ctor([]) is None
 
 
 # --------------------------------------------------------------------------
