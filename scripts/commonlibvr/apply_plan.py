@@ -319,3 +319,66 @@ def should_upgrade_signature(source_type_name):
     other auto-inferred source) is safe to upgrade.
     """
     return source_type_name not in ('USER_DEFINED', 'IMPORTED')
+
+
+# The three functions below were extracted from demangle_ghidra_names.py (same DRY
+# refactor pattern as the four above): the rename/merge DECISION only ever needed
+# type NAMES (strings), never the live Ghidra DataType objects themselves, so it's
+# pure and testable; demangle_ghidra_names.py's run() becomes a thin wrapper mapping
+# the returned names back onto the real dt objects.
+
+def mangle_type_name(proper):
+    """CommonLib's proper C++ spelling -> the mangled Ghidra type name the import
+    creates for it: drop `RE::`, then replace each of `<>,:* &` with `_`
+    (`NiPointer<NiAVObject>` -> `NiPointer_NiAVObject_`)."""
+    out = proper.replace('RE::', '')
+    for ch in '<>,:* &':
+        out = out.replace(ch, '_')
+    return out
+
+
+def build_mangle_map(propers):
+    """{mangled_name: proper_name} for every name in `propers` whose mangled form
+    differs from itself (i.e. actually needed mangling). Ambiguous collisions --
+    two different proper names mangling to the same string -- are dropped rather
+    than guessed: the first one seen wins, matching a set's undefined iteration
+    order, so an ambiguous mangle is deliberately excluded from the map entirely
+    rather than resolved arbitrarily."""
+    mmap = {}
+    ambiguous = set()
+    for proper in propers:
+        m = mangle_type_name(proper)
+        if m == proper:
+            continue
+        if m in mmap and mmap[m] != proper:
+            ambiguous.add(m)
+            continue
+        if m not in ambiguous:
+            mmap[m] = proper
+    for m in ambiguous:
+        mmap.pop(m, None)
+    return mmap
+
+
+def plan_demangle(mmap, existing_names):
+    """Decide a rename or merge for every name in `existing_names` (an iterable of
+    plain type-name strings) that matches a key in `mmap` ({mangled: proper}).
+
+    Returns (renames, merges): `renames` is a list of (name, proper) pairs where the
+    proper spelling doesn't already exist as another type -- a pure relabel.
+    `merges` is a list of (name, proper) pairs where the proper spelling ALREADY
+    exists as a distinct type -- the mangled duplicate should be merged into it
+    (via replaceDataType) rather than renamed, so references converge onto the one
+    canonical type instead of colliding two names.
+    """
+    names = set(existing_names)
+    renames, merges = [], []
+    for name in sorted(names):
+        proper = mmap.get(name)
+        if not proper or proper == name:
+            continue
+        if proper in names and proper != name:
+            merges.append((name, proper))
+        else:
+            renames.append((name, proper))
+    return renames, merges

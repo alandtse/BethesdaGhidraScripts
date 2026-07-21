@@ -27,6 +27,7 @@ import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH  # noqa: E402
+import apply_plan  # noqa: E402
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'core'))
 from engine.tx import transaction  # noqa: E402
 
@@ -51,15 +52,6 @@ _WRAPS = ('NiPointer', 'NiTSmartPointer', 'BSTSmartPointer', 'GPtr', 'BSTAutoPoi
           'BSTSet', 'BSTTuple', 'BSTSingletonSDM', 'BSTStaticArray', 'BSTObjectArrayBase',
           'NiTObjectArray', 'BSTHashMap2', 'BSTBTreeNode')
 _WRAP_RE = re.compile(r'\b(' + '|'.join(_WRAPS) + r')<')
-
-
-def mangle(proper):
-    """The import's mangling: drop RE::, then `<>,:* &` -> `_` (so a CommonLib proper
-    spelling maps to the Ghidra type name the import created for it)."""
-    out = proper.replace('RE::', '')
-    for ch in '<>,:* &':
-        out = out.replace(ch, '_')
-    return out
 
 
 def _scan_headers(re_dir):
@@ -129,33 +121,17 @@ def run():
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
 
-    # mangled Ghidra name -> proper CommonLib spelling
-    mmap = {}
-    for proper in _proper_names():
-        m = mangle(proper)
-        if m != proper:
-            mmap_key = m
-            mmap_val = proper
-            mmap_prev = mmap_key in mmap and mmap_val != mmap[mmap_key]
-            if not mmap_prev:                          # ignore ambiguous mangle collisions
-                mmap[mmap_key] = mmap_val
+    # mangled Ghidra name -> proper CommonLib spelling (pure logic in apply_plan)
+    mmap = apply_plan.build_mangle_map(_proper_names())
 
     types_by_name = {}
     for dt in dtm.getAllDataTypes():
         if 'types.h' in str(dt.getCategoryPath()):
             types_by_name.setdefault(dt.getName(), dt)
 
-    renames = []        # (dt, proper)
-    merges = []         # (dt, keeper)
-    for name, dt in list(types_by_name.items()):
-        proper = mmap.get(name)
-        if not proper or proper == name:
-            continue
-        keeper = types_by_name.get(proper)
-        if keeper is not None and keeper is not dt:
-            merges.append((dt, keeper))                # proper already exists -> merge
-        else:
-            renames.append((dt, proper))
+    name_renames, name_merges = apply_plan.plan_demangle(mmap, types_by_name.keys())
+    renames = [(types_by_name[n], proper) for n, proper in name_renames]           # (dt, proper)
+    merges = [(types_by_name[n], types_by_name[proper]) for n, proper in name_merges]  # (dt, keeper)
 
     print('demangle names (%s): %d mangled types matched -> %d rename, %d merge'
           % (cp.getName(), len(renames) + len(merges), len(renames), len(merges)))

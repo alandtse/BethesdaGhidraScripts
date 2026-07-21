@@ -423,6 +423,64 @@ def test_should_upgrade_signature_allows_auto_inferred_sources():
     assert apply_plan.should_upgrade_signature('ANALYSIS')
 
 
+# The tests below cover pure logic extracted from demangle_ghidra_names.py (same DRY
+# refactor pattern) -- previously embedded inline, coupled to live Ghidra DataType
+# objects only via .getName(), and untested.
+
+def test_mangle_type_name_strips_re_namespace_and_template_punctuation():
+    assert apply_plan.mangle_type_name('NiPointer<NiAVObject>') == 'NiPointer_NiAVObject_'
+
+
+def test_mangle_type_name_strips_re_prefix():
+    assert apply_plan.mangle_type_name('RE::TESObjectWEAP::Data') == 'TESObjectWEAP__Data'
+
+
+def test_mangle_type_name_no_special_chars_is_unchanged():
+    assert apply_plan.mangle_type_name('TESForm') == 'TESForm'
+
+
+def test_build_mangle_map_maps_mangled_to_proper():
+    mmap = apply_plan.build_mangle_map({'NiPointer<NiAVObject>', 'TESForm'})
+    assert mmap == {'NiPointer_NiAVObject_': 'NiPointer<NiAVObject>'}
+
+
+def test_build_mangle_map_drops_ambiguous_collisions():
+    # two different proper spellings that happen to mangle to the same string ->
+    # neither should be guessed; the whole key is dropped.
+    proper_a = 'Foo<Bar>'
+    proper_b = 'Foo,Bar,'   # mangles to the same 'Foo_Bar_' as proper_a
+    assert apply_plan.mangle_type_name(proper_a) == apply_plan.mangle_type_name(proper_b)
+    mmap = apply_plan.build_mangle_map({proper_a, proper_b})
+    assert 'Foo_Bar_' not in mmap
+
+
+def test_plan_demangle_renames_when_proper_name_absent():
+    mmap = {'NiPointer_NiAVObject_': 'NiPointer<NiAVObject>'}
+    renames, merges = apply_plan.plan_demangle(mmap, ['NiPointer_NiAVObject_', 'TESForm'])
+    assert renames == [('NiPointer_NiAVObject_', 'NiPointer<NiAVObject>')]
+    assert merges == []
+
+
+def test_plan_demangle_merges_when_proper_name_already_exists():
+    mmap = {'NiPointer_NiAVObject_': 'NiPointer<NiAVObject>'}
+    renames, merges = apply_plan.plan_demangle(
+        mmap, ['NiPointer_NiAVObject_', 'NiPointer<NiAVObject>'])
+    assert renames == []
+    assert merges == [('NiPointer_NiAVObject_', 'NiPointer<NiAVObject>')]
+
+
+def test_plan_demangle_ignores_names_not_in_map():
+    renames, merges = apply_plan.plan_demangle({}, ['TESForm', 'Actor'])
+    assert renames == [] and merges == []
+
+
+def test_plan_demangle_ignores_self_mapped_names():
+    # a name that mangles to itself (mmap wouldn't include it, but defensively check
+    # plan_demangle also skips a no-op mapping if one were present)
+    renames, merges = apply_plan.plan_demangle({'TESForm': 'TESForm'}, ['TESForm'])
+    assert renames == [] and merges == []
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

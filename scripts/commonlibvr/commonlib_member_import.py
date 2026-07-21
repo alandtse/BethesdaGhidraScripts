@@ -42,6 +42,7 @@ def _load(mod, fn):
 
 gu = _load('clvr_ghidra_util', 'clvr_ghidra_util.py')
 pl = _load('clvr_populate_plan', 'populate_plan.py')
+apply_plan = _load('clvr_apply_plan_for_member_import', 'apply_plan.py')
 
 _PRIM = {'float': 'float', 'double': 'double', 'bool': 'bool', 'char': 'char',
          'std::uint8_t': 'uchar', 'std::int8_t': 'sbyte', 'std::uint16_t': 'ushort',
@@ -51,11 +52,10 @@ _PRIM = {'float': 'float', 'double': 'double', 'bool': 'bool', 'char': 'char',
 
 
 def _mangle(name):
-    """CommonLib C++ spelling -> the `_`-mangled name the import uses for templates."""
-    out = name.replace('RE::', '')
-    for ch in '<>,:* &':
-        out = out.replace(ch, '_')
-    return out
+    """CommonLib C++ spelling -> the `_`-mangled name the import uses for templates.
+    Same logic as demangle_ghidra_names.py's mangle() -- both now delegate to
+    apply_plan.mangle_type_name so the algorithm lives in exactly one place."""
+    return apply_plan.mangle_type_name(name)
 
 
 def _resolve(dtm, by_name, cpp):
