@@ -37,4 +37,10 @@ _CORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, _CORE_DIR)
 _spec = _ilu.spec_from_file_location('clvr_ctor_mine_driver', os.path.join(_CORE_DIR, 'engine', 'ctor_mine.py'))
 _mod = _ilu.module_from_spec(_spec)
+# exec_module() runs the loaded module in its OWN fresh namespace -- Ghidra's
+# eval_python injects currentProgram/monitor into THIS script's globals, not into a
+# dynamically-loaded module's, so they must be forwarded explicitly or the shared
+# driver's bare `currentProgram`/`monitor` references raise NameError.
+_mod.currentProgram = currentProgram  # noqa: F821
+_mod.monitor = monitor  # noqa: F821
 _spec.loader.exec_module(_mod)   # runs the shared driver's run() fresh, every call
