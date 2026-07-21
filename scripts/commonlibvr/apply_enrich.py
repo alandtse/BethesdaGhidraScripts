@@ -59,9 +59,20 @@ DRY_RUN = os.environ.get('CLVR_APPLY', 'dry').lower() != 'go'
 #                         noise that would otherwise dilute a capped batch's budget away
 #                         from curated, genuinely useful RE progress. Set to '' to disable
 #                         (falls back to plain plan order, matching pre-existing behavior).
+#   CLVR_APPLY_ONLY    -- comma-separated struct names: spot-fix just these against
+#                         CommonLib, ignoring every other write-actioned struct in the
+#                         (still fully computed) plan. The parse step stays
+#                         whole-translation-unit -- a class's layout can genuinely
+#                         depend on everything it transitively includes, so parsing
+#                         "just one header" would risk a wrong size/offset -- but the
+#                         classify/apply machinery here already works one struct at a
+#                         time, so correcting a single struct against the already-parsed
+#                         CommonLib definition needs nothing more than this filter.
 APPLY_EXCLUDE = set(
     n.strip() for n in os.environ.get('CLVR_APPLY_EXCLUDE', '').split(',') if n.strip())
 APPLY_MAX = int(os.environ.get('CLVR_APPLY_MAX', '0') or 0)
+APPLY_ONLY = set(
+    n.strip() for n in os.environ.get('CLVR_APPLY_ONLY', '').split(',') if n.strip()) or None
 APPLY_PRIORITIZE = os.environ.get('CLVR_APPLY_PRIORITIZE', '/types.h')
 
 # Pure planning logic (no Ghidra deps) loaded by path so it works under MCP exec.
@@ -179,13 +190,27 @@ def run():
     # ---- batching/exclude gate: decide which write-actioned structs actually get
     # applied THIS call, without altering the full plan/summary computed above ----
     write_allowed = apply_plan.select_write_targets(
-        plan, APPLY_EXCLUDE, APPLY_MAX, prioritize_category=APPLY_PRIORITIZE or None)
-    if APPLY_EXCLUDE or APPLY_MAX:
+        plan, APPLY_EXCLUDE, APPLY_MAX, prioritize_category=APPLY_PRIORITIZE or None,
+        only_names=APPLY_ONLY)
+    if APPLY_EXCLUDE or APPLY_MAX or APPLY_ONLY:
         n_write_total = sum(1 for p in plan if p[2] in ('CREATE', 'FILL', 'REPLACE'))
-        print('\nBatch gate: {} write-actioned structs total, excluding {}, '
+        print('\nBatch gate: {} write-actioned structs total, excluding {}, only {}, '
               'applying {} this call (CLVR_APPLY_MAX={})'.format(
                   n_write_total, sorted(APPLY_EXCLUDE) or '(none)',
+                  sorted(APPLY_ONLY) if APPLY_ONLY else '(all)',
                   len(write_allowed), APPLY_MAX or 'unlimited'))
+        if APPLY_ONLY:
+            unmatched = APPLY_ONLY - {p[0] for p in plan}
+            if unmatched:
+                print('  WARNING: CLVR_APPLY_ONLY names not found in the generated '
+                      'plan at all (typo, or not in CommonLib\'s parsed set): {}'
+                      .format(sorted(unmatched)))
+            not_writable = (APPLY_ONLY & {p[0] for p in plan}) - write_allowed
+            if not_writable:
+                statuses = {p[0]: p[1] for p in plan}
+                print('  NOTE: requested but not write-actioned (already REUSE/PROTECT '
+                      'etc, nothing to apply): {}'
+                      .format({n: statuses[n] for n in sorted(not_writable)}))
 
     def classify(st, live, _real_classify=classify):
         c = _real_classify(st, live)
@@ -572,9 +597,20 @@ def run_symbols():
       - apply CommonLib signatures ONLY to functions that have none,
       - then the generated (already enrich-safe) vtable virtual-function naming +
         fallback symbol passes.
+
+    CLVR_SYMBOLS_ONLY -- comma-separated symbol names (matches SYMBOLS[i]['n'], i.e.
+    the CommonLib name being applied, not whatever the function is currently named in
+    Ghidra): spot-fix just these functions'/labels' name+signature against CommonLib
+    instead of sweeping every symbol. Unlike the struct pass this loop previously had
+    NO targeting knob at all -- every call applied everything. Skips
+    _import_vtable_names()/_import_fallback_symbols() (the generated bulk vtable/
+    fallback passes) when set, since those are inherently whole-vtable operations,
+    not single-symbol ones.
     """
     from ghidra.program.model.symbol import SourceType
     from ghidra.app.cmd.disassemble import DisassembleCommand
+    SYMBOLS_ONLY = set(
+        n.strip() for n in os.environ.get('CLVR_SYMBOLS_ONLY', '').split(',') if n.strip()) or None
     gns = _load_generated_ns()
     dtm = gns['dtm']
     created = gns['created']
@@ -615,10 +651,21 @@ def run_symbols():
             return 'REL::ID(%d)' % ai
         return None
 
+    if SYMBOLS_ONLY:
+        matched_names = {s['n'] for s in SYMBOLS} & SYMBOLS_ONLY
+        unmatched = SYMBOLS_ONLY - matched_names
+        print('CLVR_SYMBOLS_ONLY: {} of {} requested names found in SYMBOLS'
+              .format(len(matched_names), len(SYMBOLS_ONLY)))
+        if unmatched:
+            print('  WARNING: not found in CommonLib\'s generated SYMBOLS at all '
+                  '(typo, or not a labeled/named symbol): {}'.format(sorted(unmatched)))
+
     tx = cp.startTransaction('CommonLibVR symbol/vtable enrich')
     labeled = named = made = sigd = 0
     try:
         for s in SYMBOLS:
+            if SYMBOLS_ONLY is not None and s['n'] not in SYMBOLS_ONLY:
+                continue
             off = s.get(vkey)
             if not off:
                 continue
@@ -658,8 +705,12 @@ def run_symbols():
                     except Exception:
                         pass
         print('Symbols: labeled %d, named %d, created %d, signatures %d' % (labeled, named, made, sigd))
-        gns['_import_vtable_names']()       # enrich-safe: names vfuncs at vtable slots
-        gns['_import_fallback_symbols']()   # enrich-safe: FUN_/sub_ only
+        if not SYMBOLS_ONLY:
+            gns['_import_vtable_names']()       # enrich-safe: names vfuncs at vtable slots
+            gns['_import_fallback_symbols']()   # enrich-safe: FUN_/sub_ only
+        else:
+            print('CLVR_SYMBOLS_ONLY set: skipping the bulk vtable-name + fallback-symbol '
+                  'passes (whole-vtable operations, not single-symbol spot-fixes).')
     finally:
         cp.endTransaction(tx, True)
     print('Symbol/vtable enrich complete.')

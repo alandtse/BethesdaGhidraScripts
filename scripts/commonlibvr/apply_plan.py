@@ -27,7 +27,8 @@ ACTION = {
 }
 
 
-def select_write_targets(plan, exclude_names=None, max_writes=0, prioritize_category=None):
+def select_write_targets(plan, exclude_names=None, max_writes=0, prioritize_category=None,
+                          only_names=None):
     """Decide which write-actioned (CREATE/FILL/REPLACE) struct names should actually
     be applied this run, given a full computed `plan` (list of tuples whose first
     three elements are (name, status, action, ...) -- matches both apply_enrich.run's
@@ -53,16 +54,30 @@ def select_write_targets(plan, exclude_names=None, max_writes=0, prioritize_cate
                     starve genuinely curated RE-relevant /types.h progress. This
                     lets curated work drain first; low-value library-internal
                     noise still gets applied, just after.
+    only_names    : if given, an INCLUDE filter -- restrict eligibility to just these
+                    names (still subject to exclude_names/max_writes/prioritize_category
+                    on top). The parse step (parse_commonlib_types.py) has to stay
+                    whole-translation-unit for correctness (a class's layout can depend
+                    on everything it transitively includes), but the classify/apply
+                    machinery itself already operates on one already-parsed struct at a
+                    time -- so a single-name (or small set) spot-fix needs nothing more
+                    than restricting the plan's already-full `STRUCTS` classification
+                    down to the name(s) a person actually wants corrected right now,
+                    instead of writing everything write-actioned. Unmatched names are
+                    silently a no-op here (the caller decides whether to warn).
 
     Returns a set of names whose action should actually be applied this call.
     """
     excluded = set(exclude_names or ())
+    only = set(only_names) if only_names else None
     eligible = []
     for entry in plan:
         name, _status, action = entry[0], entry[1], entry[2]
         if action not in ('CREATE', 'FILL', 'REPLACE'):
             continue
         if name in excluded:
+            continue
+        if only is not None and name not in only:
             continue
         eligible.append(entry)
 

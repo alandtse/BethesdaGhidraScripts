@@ -329,6 +329,35 @@ def test_select_write_targets_no_prioritize_category_keeps_plain_plan_order():
     assert allowed == {'Noise1'}
 
 
+def test_select_write_targets_only_names_restricts_to_named_structs():
+    # single-struct spot-fix: apply just the one name asked for, ignore the rest of
+    # the (fully computed) plan even though they're also write-actioned.
+    plan = [_plan_row('A', 'CREATE'), _plan_row('B', 'REPLACE'), _plan_row('C', 'FILL')]
+    allowed = apply_plan.select_write_targets(plan, only_names=['B'])
+    assert allowed == {'B'}
+
+
+def test_select_write_targets_only_names_unmatched_name_is_noop():
+    plan = [_plan_row('A', 'CREATE')]
+    allowed = apply_plan.select_write_targets(plan, only_names=['NotInPlan'])
+    assert allowed == set()
+
+
+def test_select_write_targets_only_names_combines_with_exclude():
+    # exclude_names still wins even if the same name is also requested via only_names.
+    plan = [_plan_row('A', 'CREATE'), _plan_row('B', 'REPLACE')]
+    allowed = apply_plan.select_write_targets(plan, exclude_names=['A'], only_names=['A', 'B'])
+    assert allowed == {'B'}
+
+
+def test_select_write_targets_only_names_reuse_or_protect_never_selected():
+    # only_names can't force a non-write action (REUSE/PROTECT) to be applied --
+    # it's still a filter over write-ACTIONED entries only, not a status override.
+    plan = [_plan_row('A', 'REUSE'), _plan_row('B', 'PROTECT')]
+    allowed = apply_plan.select_write_targets(plan, only_names=['A', 'B'])
+    assert allowed == set()
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())
