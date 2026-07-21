@@ -8,7 +8,7 @@ signatures pointed at `/SkyrimSE.pdb/*` twins; PDB struct fields point at `*.con
 `dtm.replaceDataType(dup, keeper)` merges a duplicate away AND rewires every reference
 to the keeper -- so they finally resolve to the canonical populated type.
 
-Three SAFE passes (only unambiguous same-size merges; size-conflicts are flagged, never
+Four SAFE passes (only unambiguous same-size merges; size-conflicts are flagged, never
 auto-merged -- the in-memory `Memory::Allocate` size is ground truth, not CommonLib or
 the PDB blindly):
   -1. Any type shadowing a real Ghidra builtin primitive (e.g. a PDB-imported `bool`
@@ -18,6 +18,21 @@ the PDB blindly):
      same-category, same-name type). Same size only.
   B. `/SkyrimSE.pdb/X` -> the UNIQUE same-size `/types.h/X` (skip if 0 or >1 /types.h
      candidates -- ambiguous leaf like nested RUNTIME_DATA/Data/Entry).
+  C. Named aliases (KNOWN_ALIASES below, or CLVR_DEDUP_ALIASES env override): two
+     ENTIRELY DIFFERENT names for the same class that passes A/B can never find, since
+     both key on same-name matching (a `.conflict` suffix, or a shared leaf across
+     categories). A stale hand-named struct from an earlier RE pass sitting alongside
+     the real CommonLib-matching name is invisible to that logic -- it takes a person
+     (or a fact recorded here from a prior manual fix) to say "these are the same
+     type." Confirmed case: SkyrimVR.exe carried a stale, PDB-derived `MenuManager`
+     struct (456B, missing VR's 8-byte tail) that 7 functions -- including the exact
+     function in a real recurring crash chain -- were still typed against, instead of
+     the correct, already-CommonLib-matching `UI` struct (464B on VR). Same size-gate
+     as passes A/B: a size disagreement refuses, never auto-merges.
+
+     Set CLVR_DEDUP_ALIAS_ONLY=1 to run ONLY this pass (skip the builtin-shadow purge,
+     .conflict purge, and full struct sweep of A/B) -- for spot-fixing one just-found
+     alias pair quickly, without paying for a full-database dedup run.
 
 NON-DESTRUCTIVE intent: only merges types proven duplicate (same size); never changes a
 layout. Dry-run by default (counts + a <import>.dedup_conflicts.csv of size-disagreeing
@@ -33,6 +48,31 @@ from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 APPLY = os.environ.get('CLVR_DEDUP', 'dry').lower() == 'go'
 BATCH = int(os.environ.get('CLVR_DEDUP_BATCH', '40') or 40)
 CONFLICT_CSV = IMPORT_PATH + '.dedup_conflicts.csv'
+ALIAS_ONLY = os.environ.get('CLVR_DEDUP_ALIAS_ONLY', '').lower() in ('1', 'true', 'go')
+
+# Curated record of stale-name -> canonical-name pairs found by manual RE, one class at
+# a time (see Pass C in the module docstring for why these can't be found
+# algorithmically). Add an entry here whenever a same-class differently-named
+# duplicate turns up again after a fresh PDB/CommonLib re-import, so the fix is
+# reproducible instead of a one-off Ghidra API call. CLVR_DEDUP_ALIASES can add more
+# pairs at invocation time without editing this file, e.g. for a first-time spot-fix
+# before promoting it here: "Old1=New1,Old2=New2".
+KNOWN_ALIASES = {
+    'MenuManager': 'UI',
+}
+
+
+def _load_aliases():
+    aliases = dict(KNOWN_ALIASES)
+    extra = os.environ.get('CLVR_DEDUP_ALIASES', '')
+    for pair in extra.split(','):
+        pair = pair.strip()
+        if not pair:
+            continue
+        old, _, canon = pair.partition('=')
+        if old and canon:
+            aliases[old.strip()] = canon.strip()
+    return aliases
 
 import importlib.util as _ilu  # noqa: E402
 _dspec = _ilu.spec_from_file_location('clvr_dedup_plan', os.path.join(SCRIPT_DIR, 'dedup_plan.py'))
@@ -216,10 +256,77 @@ def purge_conflicts(cp, dtm, apply, mon):
     return (rewired, removed, skipped)
 
 
+def merge_named_aliases(cp, dtm, apply, mon, aliases):
+    """Pass C: merge each explicit (stale_name -> canonical_name) pair in `aliases`.
+    Looks both up by exact name anywhere in the data type manager (any category) --
+    unlike passes A/B there's no algorithmic same-name grouping here, the pairing IS
+    the input. Same safety gate as the other passes: refuse on a size disagreement."""
+    from java.util import ArrayList
+
+    def _find_one(name):
+        dts = ArrayList()
+        dtm.findDataTypes(name, dts)
+        # prefer an exact-name, non-pointer/array composite if multiple paths share
+        # the leaf name (e.g. a nested category); first hit is fine for a curated,
+        # human-verified alias pair.
+        for d in dts:
+            if d.getName() == name:
+                return d
+        return None
+
+    planned = []   # (old_dt, canon_dt)
+    conflicts = []
+    missing = []
+    for old_name, canon_name in aliases.items():
+        old_dt = _find_one(old_name)
+        canon_dt = _find_one(canon_name)
+        if old_dt is None or canon_dt is None or old_dt is canon_dt:
+            if old_dt is not None and canon_dt is None:
+                missing.append((old_name, canon_name))
+            continue
+        should, reason = dp.plan_alias_merge(old_name, canon_name, old_dt.getLength(), canon_dt.getLength())
+        if should:
+            planned.append((old_dt, canon_dt))
+        else:
+            conflicts.append((old_name, canon_name, old_dt.getLength(), canon_dt.getLength(), reason))
+
+    print('merge_named_aliases (%s): %d pairs queued, %d size-conflicts, %d canonical-missing'
+          % (cp.getName(), len(planned), len(conflicts), len(missing)))
+    for old_dt, canon_dt in planned:
+        print('   merge %s -> %s' % (old_dt.getPathName(), canon_dt.getPathName()))
+    for old_name, canon_name, os_, cs, reason in conflicts:
+        print('   SKIP %s (0x%X) -> %s (0x%X): %s' % (old_name, os_, canon_name, cs, reason))
+    for old_name, canon_name in missing:
+        print('   SKIP %s -> %s: canonical name not found in this program' % (old_name, canon_name))
+
+    if not apply:
+        print('  DRY-RUN: set CLVR_DEDUP=go to apply.')
+        return (len(planned), 0, len(conflicts))
+
+    done = err = 0
+    tx = cp.startTransaction('dedup: merge named aliases')
+    try:
+        for old_dt, canon_dt in planned:
+            try:
+                dtm.replaceDataType(old_dt, canon_dt, True)
+                done += 1
+            except Exception:
+                err += 1
+    finally:
+        cp.endTransaction(tx, True)
+    print('merge_named_aliases APPLIED (%s): merged=%d errors=%d' % (cp.getName(), done, err))
+    return (len(planned), done, err)
+
+
 def run():
     from ghidra.program.model.data import Structure
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
+
+    if ALIAS_ONLY:
+        # Fast spot-fix path: just the named-alias pass, skip the full-database sweep.
+        merge_named_aliases(cp, dtm, APPLY, monitor, _load_aliases())  # noqa: F821
+        return
 
     # Pass -1: merge any shadow of a real Ghidra builtin primitive (bool, char, ...)
     # into the builtin, so it can never be orphaned by a later manual delete.
@@ -228,6 +335,10 @@ def run():
     # Pass 0: collapse every .conflict copy onto its canonical twin (all datatype
     # kinds, incl. the cyclic vtable/funcdef plumbing the struct passes miss).
     purge_conflicts(cp, dtm, APPLY, monitor)  # noqa: F821
+
+    # Pass C: named aliases -- two different names for the same class, found by a
+    # person (or recorded from a prior manual fix), not by same-name matching.
+    merge_named_aliases(cp, dtm, APPLY, monitor, _load_aliases())  # noqa: F821
 
     structs = [d for d in dtm.getAllDataTypes() if isinstance(d, Structure)]
 

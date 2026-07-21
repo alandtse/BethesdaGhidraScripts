@@ -41,6 +41,27 @@ def _rank(v):
     return (1 if is_conf else 0, 0 if is_th else 1, -int(v.get('ndefined', 0)))
 
 
+def plan_alias_merge(old_name, canonical_name, old_size, canonical_size):
+    """Decide whether a NAMED-ALIAS pair (e.g. a stale hand-named 'MenuManager'
+    struct discovered to be the same class as the canonical CommonLib-matching 'UI'
+    struct) is safe to merge.
+
+    Unlike plan_merge, the two sides here are NOT found by algorithmic same-name
+    matching (`.conflict` suffix, PDB-vs-types.h same leaf) -- they're two entirely
+    different names for the same class, identified by a person (or recorded from a
+    prior manual fix) and passed in explicitly. The safety rule is identical to
+    plan_merge though: only merge when both sides agree on size (the in-memory
+    `Memory::Allocate` size is ground truth); a size mismatch is a real layout
+    question, never auto-merged.
+
+    Returns (should_merge, reason): reason is 'same-size' or 'size-conflict'."""
+    if old_size is None or canonical_size is None or old_size < 0 or canonical_size < 0:
+        return (False, 'missing-size')
+    if old_size != canonical_size:
+        return (False, 'size-conflict')
+    return (True, 'same-size')
+
+
 def plan_merge(variants):
     """Decide how to dedup one name-group. `variants` is a list of dicts with keys
     'key' (unique id), 'name', 'category', 'size', 'ndefined'.

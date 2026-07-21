@@ -57,6 +57,22 @@ def test_size_conflict_refuses():
     assert conflict and keeper is None and merges == [] and reason == 'size-conflict'
 
 
+def test_alias_merge_same_size():
+    # e.g. a stale hand-named 'MenuManager' (456B) discovered to be the same class
+    # as the canonical, CommonLib-matching 'UI' (456B on SE/AE, no VR tail).
+    assert dp.plan_alias_merge('MenuManager', 'UI', 456, 456) == (True, 'same-size')
+
+
+def test_alias_merge_size_conflict_refuses():
+    # VR's 'UI' carries an extra 8-byte tail the stale 'MenuManager' twin lacks --
+    # never auto-merge across a real size disagreement.
+    assert dp.plan_alias_merge('MenuManager', 'UI', 456, 464) == (False, 'size-conflict')
+
+
+def test_alias_merge_missing_size():
+    assert dp.plan_alias_merge('MenuManager', 'UI', None, 464) == (False, 'missing-size')
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())
