@@ -40,24 +40,9 @@ GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine.demangle import demangle_class  # noqa: E402
+from engine.sanitize import sanitize_component, split_namespaced  # noqa: E402,F401
 
 DEFAULT_MAX_SLOTS = 1000
-
-_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_<>$~?@-]")
-
-
-def sanitize_component(part):
-    part = part.strip()
-    if not part:
-        return "_"
-    cleaned = _SAFE_COMPONENT_RE.sub("_", part)
-    if cleaned and cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return cleaned or "_"
-
-
-def split_namespaced(full):
-    return [sanitize_component(p) for p in full.split("::")]
 
 
 # ---------------------------------------------------------------------------

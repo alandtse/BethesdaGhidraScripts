@@ -16,7 +16,8 @@ Args (set via globals before running this script via eval_python):
   DRY_RUN = False
   OUT_CSV = path to write (RVA|name|sim|sig) pairs
 """
-import re
+import os
+import sys
 from ghidra.features.bsim.query import BSimClientFactory, GenSignatures
 from ghidra.features.bsim.query.protocol import QueryNearest
 from ghidra.program.model.symbol import SourceType
@@ -28,10 +29,11 @@ MIN_SIGNIFICANCE = 25.0
 DRY_RUN = True
 OUT_CSV = r"C:\GhidraProjects\scripts\fnv_bsim_matches.csv"
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core"))
+from engine.sanitize import sanitize_qualified  # noqa: E402
 
 NOISE_PREFIXES = ("FUN_", "thunk_FUN_", "sub_", "LAB_")
 NOISE_SUBSTRINGS = ("_dynamic_initializer_for_", "_lambda_", "API-MS-")
-_SAFE_RE = re.compile(r"[^A-Za-z0-9_<>$~?@:.-]")
 
 
 def is_noise(name):
@@ -48,15 +50,6 @@ def is_overwritable(current_name):
     return any(current_name.startswith(p) for p in NOISE_PREFIXES)
 
 
-def sanitize(name):
-    out = []
-    for p in name.split("::"):
-        p = p.strip()
-        p = _SAFE_RE.sub("_", p)
-        if p and p[0].isdigit():
-            p = "_" + p
-        out.append(p or "_")
-    return "::".join(out)
 
 
 def main():
@@ -143,7 +136,7 @@ def main():
                 continue
 
             src_name, sim_score, sig_score = best
-            new_name = sanitize(src_name)
+            new_name = sanitize_qualified(src_name)
             matches_log.append((local_addr.getOffset(), local_func.getName(),
                                  new_name, sim_score, sig_score))
             if not DRY_RUN:

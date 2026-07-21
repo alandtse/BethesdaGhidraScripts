@@ -20,21 +20,8 @@ from pathlib import Path
 REPO_DIR    = Path(__file__).resolve().parent.parent.parent
 GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
 
-_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_<>$~?@-]")
-
-
-def sanitize_component(part: str) -> str:
-    part = part.strip()
-    if not part:
-        return "_"
-    cleaned = _SAFE_COMPONENT_RE.sub("_", part)
-    if cleaned and cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return cleaned or "_"
-
-
-def split_namespaced(full: str):
-    return [sanitize_component(p) for p in full.split("::")]
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.sanitize import sanitize_component, split_namespaced  # noqa: E402,F401
 
 
 def main():

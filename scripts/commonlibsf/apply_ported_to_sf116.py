@@ -32,29 +32,8 @@ PROGRAM_NAME = "Starfield.exe"
 _DEFAULT_CSV = REPO_DIR / "scripts" / "commonlibsf" / "refs" / "sf116_ported_names.csv"
 CSV_PATH     = Path(sys.argv[1]) if len(sys.argv) > 1 else _DEFAULT_CSV
 
-# Ghidra symbol name policy:
-#   * '::' is the namespace separator -- we want to honor that.
-#   * Each name component should match [A-Za-z0-9_<>$~?@-]+ to be safe.
-#     Spaces, backticks, commas, parens, single-quotes all cause issues.
-#   * Replace problematic chars with '_'.
-_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_<>$~?@-]")
-
-
-def sanitize_component(part: str) -> str:
-    """Make one path component safe for Ghidra's symbol parser."""
-    part = part.strip()
-    if not part:
-        return "_"
-    cleaned = _SAFE_COMPONENT_RE.sub("_", part)
-    if cleaned and cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return cleaned or "_"
-
-
-def split_namespaced(full: str) -> list[str]:
-    """Split a C++-style name on '::' boundaries, sanitizing each part."""
-    parts = full.split("::")
-    return [sanitize_component(p) for p in parts]
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.sanitize import sanitize_component, split_namespaced  # noqa: E402,F401
 
 
 def main():

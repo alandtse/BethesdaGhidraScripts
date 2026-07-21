@@ -19,8 +19,11 @@ Args (positional):
 Only renames functions whose current name starts with FUN_ or thunk_FUN_.
 Preserves hand-named work.
 """
-import re
+import os
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core"))
+from engine.sanitize import sanitize_qualified  # noqa: E402
 
 # Args
 args = list(getScriptArgs())
@@ -58,21 +61,6 @@ def is_overwritable(current_name):
     if not current_name:
         return True
     return current_name.startswith("FUN_") or current_name.startswith("thunk_FUN_") or current_name.startswith("sub_")
-
-
-_SAFE_RE = re.compile(r"[^A-Za-z0-9_<>$~?@:.-]")
-
-
-def sanitize_name(name):
-    parts = name.split("::")
-    out = []
-    for p in parts:
-        p = p.strip()
-        p = _SAFE_RE.sub("_", p)
-        if p and p[0].isdigit():
-            p = "_" + p
-        out.append(p or "_")
-    return "::".join(out)
 
 
 def main():
@@ -188,7 +176,7 @@ def main():
                 continue
 
             src_exe, src_name, sim_score, sig_score = best
-            new_name = sanitize_name(src_name)
+            new_name = sanitize_qualified(src_name)
             if DRY_RUN:
                 n_renamed += 1
                 if len(sample_renames) < 20:

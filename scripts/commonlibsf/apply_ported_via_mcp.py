@@ -26,22 +26,8 @@ PROGRAM  = "Starfield.exe"
 CSV_PATH = r"C:/Development/Tools/BethesdaGhidraScripts/scripts/commonlibsf/refs/sf116_ported_names.csv"
 BATCH    = 80
 
-# Same sanitiser as the pyghidra path: Ghidra rejects names with spaces,
-# backticks, commas, parens, single quotes.  Replace with '_'.
-_SAFE_RE = re.compile(r"[^A-Za-z0-9_<>$~?@:.-]")
-
-
-def sanitize_full_name(name: str) -> str:
-    """Sanitize a fully-qualified name; keep '::' separators intact."""
-    parts = name.split("::")
-    cleaned = []
-    for p in parts:
-        p = p.strip()
-        p = _SAFE_RE.sub("_", p)
-        if p and p[0].isdigit():
-            p = "_" + p
-        cleaned.append(p or "_")
-    return "::".join(cleaned)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core"))
+from engine.sanitize import sanitize_qualified  # noqa: E402
 
 
 # ---------------------------------------------------------------------
@@ -127,7 +113,7 @@ def main():
                 va = int(row["target_va"], 16)
             except (KeyError, ValueError):
                 continue
-            name = sanitize_full_name(row["name"])
+            name = sanitize_qualified(row["name"])
             rows.append((va, name))
     print(f"Loaded {len(rows)} ported entries")
 

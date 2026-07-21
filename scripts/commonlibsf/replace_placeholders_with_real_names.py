@@ -29,24 +29,12 @@ PROGRAM_PATH = "/Starfield/Starfield 1.16.236"
 
 SF17_SLOTS = REPO_DIR / "scripts" / "commonlibsf" / "refs" / "sf17_vtable_slot_names.csv"
 
-_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_<>$~?@-]")
 _FUNC_N_RE         = re.compile(r"^Func\d+$")
 _LEAF_FUNC_N_RE    = re.compile(r"^Func(\d+)$")
 _CLASS_FUNC_RE     = re.compile(r"(.+)::Func(\d+)$")
 
-
-def sanitize_component(part):
-    part = part.strip()
-    if not part:
-        return "_"
-    cleaned = _SAFE_COMPONENT_RE.sub("_", part)
-    if cleaned and cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return cleaned or "_"
-
-
-def split_namespaced(full):
-    return [sanitize_component(p) for p in full.split("::")]
+sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
+from engine.sanitize import sanitize_component, split_namespaced  # noqa: E402,F401
 
 
 def main():
