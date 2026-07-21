@@ -27,6 +27,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 IN_CSV = os.environ.get('CLVR_GLOBALS_CSV', IMPORT_PATH + '.globals_queue.csv')
 DIRTY_FILE = os.environ.get('CLVR_DISCOVER_DIRTY', IMPORT_PATH + '.discover_dirty.txt')
 APPLY = os.environ.get('CLVR_GLOBALS_APPLY', 'dry').lower() == 'go'
@@ -95,8 +97,7 @@ def run():
     skips = {}
     dirty_classes = set()
     samples = []
-    tx = cp.startTransaction('apply global types') if APPLY else None
-    try:
+    with transaction(cp, 'apply global types', APPLY):
         for row in rows:
             chosen, is_explicit = _accept(row)
             if not chosen:
@@ -158,9 +159,6 @@ def run():
             if len(samples) < 20:
                 samples.append('%s 0x%X -> %s%s' % ('type' if APPLY else 'would-type',
                                addr.getOffset(), dt.getName(), '' if APPLY else ''))
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)   # always commit; never poison the group
 
     # write the feedback dirty file so the next discovery pass re-mines the classes that
     # use the now-typed globals (where the new field RE will surface).

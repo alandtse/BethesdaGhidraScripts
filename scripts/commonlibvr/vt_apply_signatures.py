@@ -31,6 +31,10 @@ Run inside Ghidra (GhidrAssistMCP eval) with the helper globals available:
 """
 import csv
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 import java.util.ArrayList as AL
 from ghidra.program.model.listing import Function, ParameterImpl, ReturnParameterImpl
@@ -129,40 +133,40 @@ def run(start=0, end=0, dry=True):
         snap_ret = df.getReturnType()
         snap_explicit = [ParameterImpl(p.getName(), p.getDataType(), dp) for p in _explicit(df)]
         snap_src = df.getSignatureSource()
-        tx = dp.startTransaction('apply sig ' + row['dst_name'])
         result = None
-        try:
-            # a fresh ReturnParameterImpl per call -- a Variable cannot be reused across
-            # updateFunction calls (the second call silently misbehaves otherwise).
-            rret = ddtm.resolve(ret_dt, _KEEP)
-            df.updateFunction(conv, ReturnParameterImpl(rret, dp),
-                              _build(explicit, ddtm, dp, False), _UT, True, SourceType.IMPORTED)
-            got = len(_explicit(df))
-            coerced = False
-            if got < want:  # storage allocator dropped a pointer -> retry coercing to void*
+        with transaction(dp, 'apply sig ' + row['dst_name']):
+            try:
+                # a fresh ReturnParameterImpl per call -- a Variable cannot be reused
+                # across updateFunction calls (the second call silently misbehaves
+                # otherwise).
+                rret = ddtm.resolve(ret_dt, _KEEP)
                 df.updateFunction(conv, ReturnParameterImpl(rret, dp),
-                                  _build(explicit, ddtm, dp, True), _UT, True, SourceType.IMPORTED)
+                                  _build(explicit, ddtm, dp, False), _UT, True, SourceType.IMPORTED)
                 got = len(_explicit(df))
-                coerced = True
-            if got < want:  # still short -> restore, never degrade
-                snap_params = AL()
-                for p in snap_explicit:
-                    snap_params.add(p)
-                df.updateFunction(snap_conv, ReturnParameterImpl(snap_ret, dp),
-                                  snap_params, _UT, True, snap_src)
-                result = 'RESTORE want=%d got=%d' % (want, got)
-                tally['restored'] += 1
-            else:
-                result = 'OK want=%d got=%d%s%s' % (
-                    want, got, ' drop' if dropped else '', ' coerce' if coerced else '')
-                tally['ok'] += 1
-                if dropped:
-                    tally['sanitized'] += 1
-                if coerced:
-                    tally['coerced'] += 1
-        except Exception as e:
-            result = 'ERR ' + str(e)
-            tally['err'] += 1
-        dp.endTransaction(tx, True)
+                coerced = False
+                if got < want:  # storage allocator dropped a pointer -> retry coercing to void*
+                    df.updateFunction(conv, ReturnParameterImpl(rret, dp),
+                                      _build(explicit, ddtm, dp, True), _UT, True, SourceType.IMPORTED)
+                    got = len(_explicit(df))
+                    coerced = True
+                if got < want:  # still short -> restore, never degrade
+                    snap_params = AL()
+                    for p in snap_explicit:
+                        snap_params.add(p)
+                    df.updateFunction(snap_conv, ReturnParameterImpl(snap_ret, dp),
+                                      snap_params, _UT, True, snap_src)
+                    result = 'RESTORE want=%d got=%d' % (want, got)
+                    tally['restored'] += 1
+                else:
+                    result = 'OK want=%d got=%d%s%s' % (
+                        want, got, ' drop' if dropped else '', ' coerce' if coerced else '')
+                    tally['ok'] += 1
+                    if dropped:
+                        tally['sanitized'] += 1
+                    if coerced:
+                        tally['coerced'] += 1
+            except Exception as e:
+                result = 'ERR ' + str(e)
+                tally['err'] += 1
         log.append('%s :: %s' % (row['dst_name'], result))
     return {'range': (start, end), 'tally': tally, 'log': log}

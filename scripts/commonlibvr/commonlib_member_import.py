@@ -21,6 +21,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
@@ -113,8 +115,7 @@ def run():
     changed = set()
     skips = collections.Counter()
     samples = []
-    tx = cp.startTransaction('commonlib member import') if APPLY else None
-    try:
+    with transaction(cp, 'commonlib member import', APPLY):
         for r in rows:
             cls, cpp = r['class'], r['cpp_type']
             off = int(r['offset'], 16)
@@ -183,9 +184,6 @@ def run():
                 samples.append('%s +0x%X %s -> %s %s%s'
                                % (cls, off, tn, new_name, dt.getName(),
                                   ' [MERGE]' if is_merge else ''))
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)
 
     if changed and APPLY:
         try:

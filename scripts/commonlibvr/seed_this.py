@@ -37,6 +37,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 APPLY = os.environ.get('CLVR_SEED', 'dry').lower() == 'go'
 
@@ -87,8 +89,7 @@ def run():
     # Apply runs inside ONE transaction that ALWAYS commits (a nested commit=False
     # would poison the MCP's outer transaction and discard everything). Dry-run
     # opens no transaction and mutates nothing.
-    tx = cp.startTransaction('thiscall-seed') if APPLY else None
-    try:
+    with transaction(cp, 'thiscall-seed', APPLY):
         for f in fm.getFunctions(True):
             parent = f.getParentNamespace()
             if parent is gns or parent.getSymbol() is None:
@@ -191,9 +192,6 @@ def run():
                 errors += 1
             if len(sample) < 15 and kind in ('convert', 'thiscall', 'fallback'):
                 sample.append('%s::%s  [%s]' % (cls, leaf, tag))
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)   # always commit the group; never poison it
 
     print('thiscall-set (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN (no changes made)'))
     if APPLY:

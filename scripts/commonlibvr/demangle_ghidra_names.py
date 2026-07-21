@@ -27,6 +27,8 @@ import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 MEMBERS_CSV = os.environ.get(
     'CLVR_TYPED_MEMBERS_CSV',
@@ -167,28 +169,22 @@ def run():
         return
 
     done_r = err = 0
-    tx = cp.startTransaction('demangle rename')
-    try:
+    with transaction(cp, 'demangle rename'):
         for dt, proper in renames:
             try:
                 dt.setName(proper)
                 done_r += 1
             except Exception:
                 err += 1
-    finally:
-        cp.endTransaction(tx, True)
     done_m = 0
     for i in range(0, len(merges), BATCH):
-        tx = cp.startTransaction('demangle merge %d' % (i // BATCH))
-        try:
+        with transaction(cp, 'demangle merge %d' % (i // BATCH)):
             for dt, keeper in merges[i:i + BATCH]:
                 try:
                     dtm.replaceDataType(dt, keeper, False)
                     done_m += 1
                 except Exception:
                     err += 1
-        finally:
-            cp.endTransaction(tx, True)
     print('  APPLIED: %d renamed, %d merged, %d errors' % (done_r, done_m, err))
 
 

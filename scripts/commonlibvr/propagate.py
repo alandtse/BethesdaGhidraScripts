@@ -39,6 +39,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 APPLY = os.environ.get('CLVR_PROP', 'dry').lower() == 'go'
 MAX_ROUNDS = int(os.environ.get('CLVR_PROP_MAX_ROUNDS', '6') or 6)
 TIMEOUT = int(os.environ.get('CLVR_PROP_TIMEOUT', '30') or 30)
@@ -131,11 +133,7 @@ def run():
         return res
 
     worklist = list(dict.fromkeys(seed))   # de-dup, preserve order
-    # Apply opens ONE transaction, always committed (a nested commit=False would
-    # poison the MCP's outer transaction and discard the whole run). Dry-run opens
-    # none and mutates nothing.
-    tx = cp.startTransaction('type-propagate') if APPLY else None
-    try:
+    with transaction(cp, 'type-propagate', APPLY):
         while worklist and rounds_done < MAX_ROUNDS:
             rounds_done += 1
             nxt = set()
@@ -170,9 +168,6 @@ def run():
                 break                            # dry-run is a single pass (no fixpoint)
             # only revisit neighbours that haven't hit the apply cap
             worklist = [e for e in nxt if applied_count.get(e, 0) < APPLY_CAP]
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)          # always commit; never poison
 
     # write the proposal CSV (high-value, reviewable -- every row is a concrete
     # named-type gain over a generic slot)

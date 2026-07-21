@@ -45,6 +45,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 APPLY = os.environ.get('CLVR_DEDUP', 'dry').lower() == 'go'
 BATCH = int(os.environ.get('CLVR_DEDUP_BATCH', '40') or 40)
 CONFLICT_CSV = IMPORT_PATH + '.dedup_conflicts.csv'
@@ -165,16 +167,13 @@ def purge_builtin_shadows(cp, dtm, apply, mon):
         return (len(merges), 0, len(conflicts))
 
     done = err = 0
-    tx = cp.startTransaction('dedup: purge builtin shadows')
-    try:
+    with transaction(cp, 'dedup: purge builtin shadows'):
         for m, k in merges:
             try:
                 dtm.replaceDataType(m, k, True)
                 done += 1
             except Exception:
                 err += 1
-    finally:
-        cp.endTransaction(tx, True)
     print('purge_builtin_shadows APPLIED (%s): merged=%d errors=%d' % (cp.getName(), done, err))
     return (len(merges), done, err)
 
@@ -227,8 +226,7 @@ def purge_conflicts(cp, dtm, apply, mon):
         return (len(confs), 0, 0)
 
     rewired = removed = skipped = 0
-    tx = cp.startTransaction('dedup: purge .conflict')
-    try:
+    with transaction(cp, 'dedup: purge .conflict'):
         for d in _all_conflicts(dtm):
             if not _ext(d):
                 continue
@@ -249,8 +247,6 @@ def purge_conflicts(cp, dtm, apply, mon):
                 removed += 1
             except Exception:
                 skipped += 1
-    finally:
-        cp.endTransaction(tx, True)
     print('purge_conflicts APPLIED (%s): rewired=%d removed=%d skipped=%d remaining=%d'
           % (cp.getName(), rewired, removed, skipped, len(_all_conflicts(dtm))))
     return (rewired, removed, skipped)
@@ -304,16 +300,13 @@ def merge_named_aliases(cp, dtm, apply, mon, aliases):
         return (len(planned), 0, len(conflicts))
 
     done = err = 0
-    tx = cp.startTransaction('dedup: merge named aliases')
-    try:
+    with transaction(cp, 'dedup: merge named aliases'):
         for old_dt, canon_dt in planned:
             try:
                 dtm.replaceDataType(old_dt, canon_dt, True)
                 done += 1
             except Exception:
                 err += 1
-    finally:
-        cp.endTransaction(tx, True)
     print('merge_named_aliases APPLIED (%s): merged=%d errors=%d' % (cp.getName(), done, err))
     return (len(planned), done, err)
 
@@ -412,16 +405,13 @@ def run():
     done = err = 0
     for i in range(0, len(uniq), BATCH):
         batch = uniq[i:i + BATCH]
-        tx = cp.startTransaction('dedup batch %d' % (i // BATCH))
-        try:
+        with transaction(cp, 'dedup batch %d' % (i // BATCH)):
             for m, k in batch:
                 try:
                     dtm.replaceDataType(m, k, False)
                     done += 1
                 except Exception:
                     err += 1
-        finally:
-            cp.endTransaction(tx, True)
         if (i // BATCH) % 5 == 0:
             monitor.setMessage('dedup %d/%d merged' % (done, len(uniq)))  # noqa: F821
             print('  ... %d/%d merged' % (done, len(uniq)))

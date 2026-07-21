@@ -24,6 +24,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 REVIEW_CSV = os.environ.get('CLVR_DISCOVER_REVIEW_CSV', IMPORT_PATH + '.review_queue.csv')
 APPLY = os.environ.get('CLVR_REVIEW_APPLY', 'dry').lower() == 'go'
@@ -67,8 +69,7 @@ def run():
 
     applied = unresolved = skipped = 0
     samples = []
-    tx = cp.startTransaction('apply review decisions') if APPLY else None
-    try:
+    with transaction(cp, 'apply review decisions', APPLY):
         for cls, off, dec in decisions:
             dt = gu.resolve_type(dtm, by_name, dec)
             if dt is None:
@@ -132,9 +133,6 @@ def run():
             if len(samples) < 25:
                 samples.append('%s %s +0x%X %s -> %s'
                                % ('apply' if APPLY else 'would', cls, off, comp.getFieldName(), dec))
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)   # always commit; never poison the group
 
     print('apply-review (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN'))
     print('  decisions=%d  %s=%d  unresolved=%d  skipped=%d'

@@ -34,7 +34,11 @@ typed anchor lets the next discovery pass resolve one level deeper.
 """
 import os
 import re
+import sys
 from collections import Counter
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
+from engine.tx import transaction  # noqa: E402
 
 APPLY = os.environ.get('CLVR_RENAME', 'dry').lower() == 'go'
 ENTRY_WINDOW = 0x80  # a timer-zone ref must sit within this many bytes of the function entry
@@ -147,8 +151,7 @@ def run():
         ambiguous.add('|'.join(sorted(by_func[ep][1])))
 
     applied = errors = 0
-    tx = cp.startTransaction('string-anchored rename') if APPLY else None
-    try:
+    with transaction(cp, 'string-anchored rename', APPLY):
         for ep, name in sorted(plan):
             f = by_func[ep][0]
             parts = name.split('::')
@@ -159,9 +162,6 @@ def run():
                     applied += 1
                 except Exception:
                     errors += 1
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)
 
     print('string-anchored rename (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN'))
     print('  %s=%d  errors=%d  ambiguous-skipped=%d'

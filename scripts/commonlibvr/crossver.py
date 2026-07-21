@@ -27,6 +27,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 MODE = os.environ.get('CLVR_XVER', 'export').lower()
 APPLY = os.environ.get('CLVR_XVER_APPLY', 'dry').lower() == 'go'
 RESOLVED_CSV = IMPORT_PATH + '.resolved_fields.csv'
@@ -107,8 +109,7 @@ def apply():
 
     applied = skipped = conflicts = 0
     samples = []
-    tx = cp.startTransaction('cross-version propagate') if APPLY else None
-    try:
+    with transaction(cp, 'cross-version propagate', APPLY):
         for (cls, off), typenames in merged.items():
             struct = struct_by_class.get(cls)
             if struct is None:
@@ -172,9 +173,6 @@ def apply():
             if len(samples) < 20:
                 samples.append('%s +0x%X(cl 0x%X) %s -> %s%s'
                                % (cls, toff, off, cur, best, ' [CONFLICT]' if conflict else ''))
-    finally:
-        if tx is not None:
-            cp.endTransaction(tx, True)
 
     print('xver apply (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN'))
     print('  %s=%d  skipped=%d  type-conflicts=%d'

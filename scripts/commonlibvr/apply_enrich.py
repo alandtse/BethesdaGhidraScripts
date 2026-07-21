@@ -33,6 +33,8 @@ from ghidra.program.model.data import (
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import plan_cascade_fix  # noqa: E402
 from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 CONFLICT_REPORT = os.path.join(SCRIPT_DIR, 'conflict_report.py')
 PLAN_CSV = os.environ.get('CLVR_PLAN', IMPORT_PATH + '.apply_plan.csv')
@@ -223,8 +225,7 @@ def run():
 
     # =========================== APPLY ===========================
     print('\n*** APPLYING (CLVR_APPLY=go) ***')
-    tx = dtm.startTransaction('CommonLibVR enrich apply')
-    try:
+    with transaction(dtm, 'CommonLibVR enrich apply'):
         # Phase 1: register created[] target for every struct + enum + vtable.
         # REUSE/PROTECT -> existing dt; CREATE -> shell in /types.h; REPLACE ->
         # staging shell (filled later, then swapped via replaceDataType).
@@ -363,8 +364,6 @@ def run():
             except Exception as e:
                 print('replace failed for {}: {}'.format(name, e))
         print('Replaced {} existing types via replaceDataType'.format(swapped))
-    finally:
-        dtm.endTransaction(tx, True)
     print('Type enrich-apply complete. (symbols/vtable-names are a separate pass)')
 
     # Always collapse any .conflict copies this (or a prior) run produced onto their
@@ -660,9 +659,8 @@ def run_symbols():
             print('  WARNING: not found in CommonLib\'s generated SYMBOLS at all '
                   '(typo, or not a labeled/named symbol): {}'.format(sorted(unmatched)))
 
-    tx = cp.startTransaction('CommonLibVR symbol/vtable enrich')
     labeled = named = made = sigd = 0
-    try:
+    with transaction(cp, 'CommonLibVR symbol/vtable enrich'):
         for s in SYMBOLS:
             if SYMBOLS_ONLY is not None and s['n'] not in SYMBOLS_ONLY:
                 continue
@@ -711,8 +709,6 @@ def run_symbols():
         else:
             print('CLVR_SYMBOLS_ONLY set: skipping the bulk vtable-name + fallback-symbol '
                   'passes (whole-vtable operations, not single-symbol spot-fixes).')
-    finally:
-        cp.endTransaction(tx, True)
     print('Symbol/vtable enrich complete.')
 
 
@@ -801,8 +797,7 @@ def run_sigconflict():
 
     rows = []
     evaluated = wins_cand = wins_exist = conflicts = 0
-    tx = cp.startTransaction('CommonLibVR signature conflict resolution')
-    try:
+    with transaction(cp, 'CommonLibVR signature conflict resolution'):
         for s in SYMBOLS:
             if s.get('t') != 'func':
                 continue
@@ -853,8 +848,6 @@ def run_sigconflict():
                          'applied' if (winner == 'candidate' and apply_go) else 'kept-existing'))
             if cap and conflicts >= cap:
                 break
-    finally:
-        cp.endTransaction(tx, True)
         decomp.dispose()
 
     with open(out_csv, 'w') as fh:
@@ -930,9 +923,8 @@ def run_classes():
         return parent
 
     reparented = classes_seen = errors = 0
-    tx = cp.startTransaction('CommonLibVR class population')
     sample = []
-    try:
+    with transaction(cp, 'CommonLibVR class population'):
         # B: reparent flat Class::Method functions
         from ghidra.util.exception import DuplicateNameException
         for f in fm.getFunctions(True):
@@ -1040,8 +1032,6 @@ def run_classes():
                     errors += 1
             else:
                 rewired += 1
-    finally:
-        cp.endTransaction(tx, True)
 
     print('Classes: %s. flat-method functions=%d, reparented=%d, ns->class=%d, '
           'vftable rewired=%d, errors=%d'

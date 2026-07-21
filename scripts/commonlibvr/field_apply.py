@@ -13,10 +13,14 @@ committed transaction (never commit=False -- the MCP nests it).
 """
 import collections
 import os
+import sys
 
 SCRIPT_DIR = os.environ.get(
     'CLVR_SCRIPT_DIR',
     r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
+
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 
 import importlib.util as _ilu  # noqa: E402
 
@@ -53,8 +57,7 @@ def apply_fields(cp, dtm, struct_by_class, dt_by_typename, aggregated, tag, do_a
     changed = set()
     if not do_apply:
         return applied, skips, changed, samples
-    txid = cp.startTransaction(tag + ' apply fields')
-    try:
+    with transaction(cp, tag + ' apply fields'):
         for (cls, off), info in aggregated.items():
             struct = struct_by_class.get(cls)
             dt = dt_by_typename.get(info['type'])
@@ -102,6 +105,4 @@ def apply_fields(cp, dtm, struct_by_class, dt_by_typename, aggregated, tag, do_a
                                    % (cls, off, cur_name, new_name, info['type']))
             except Exception:
                 skips['replace-error'] += 1
-    finally:
-        cp.endTransaction(txid, True)          # always commit; never poison the group
     return applied, skips, changed, samples

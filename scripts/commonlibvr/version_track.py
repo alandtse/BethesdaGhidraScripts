@@ -25,6 +25,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
+from engine.tx import transaction  # noqa: E402
 AUDIT_CSV = os.environ.get('VT_AUDIT_CSV', IMPORT_PATH + '.vt_audit.csv')
 APPLY = os.environ.get('VT_APPLY', 'dry').lower() == 'go'
 
@@ -83,8 +85,7 @@ def process_session(sess, symbols, src_key, dst_key, label, audit_rows):
     seeded = seed_fail = 0
     if APPLY and plan['seed']:
         ms = sess.getManualMatchSet()
-        txid = sess.startTransaction('CLVR VT seed ' + label)
-        try:
+        with transaction(sess, 'CLVR VT seed ' + label):
             for src, dst, kind in plan['seed']:
                 try:
                     info = VTMatchInfo(ms)
@@ -101,8 +102,6 @@ def process_session(sess, symbols, src_key, dst_key, label, audit_rows):
                     seeded += 1
                 except Exception:
                     seed_fail += 1
-        finally:
-            sess.endTransaction(txid, True)
 
     for src, dst, got, kind in plan['conflict']:
         audit_rows.append((
