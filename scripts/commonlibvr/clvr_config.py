@@ -1,31 +1,8 @@
-"""Shared config defaults for the CommonLibVR ("ng") Ghidra-script pipeline.
+"""Backward-compat re-export shim.
 
-Every script in this package reads the same generated-import path and the
-same script directory, each overridable per-invocation via the same env
-vars. Previously each script redefined these identically (copy-pasted
-env-var-default boilerplate); this module is the single source of truth so a
-future rename/move of the canonical import file or this directory is one
-edit instead of N.
-
-Usage (matches the sys.path pattern already used to import sibling modules
-like layout_diff):
-
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT
+The real implementation moved to library_rules.py (Phase 2 of the DRY refactor --
+CommonLibVRRules is the reference LibraryRules implementation). Kept as a thin shim,
+not deleted, so this package's ~19 existing `from clvr_config import ...` call sites
+don't need to change. New code should import from library_rules.py directly.
 """
-import os
-
-# The generated CommonLibImport_CLVR_<RUNTIME>.py this pipeline applies.
-# Override per-invocation (e.g. to target SE/AE instead of VR) via CLVR_IMPORT.
-IMPORT_PATH = os.environ.get(
-    'CLVR_IMPORT',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\ghidrascripts\CommonLibImport_CLVR_VR.py')
-
-# This package's own directory (scripts/commonlibvr). Override via CLVR_SCRIPT_DIR.
-SCRIPT_DIR = os.environ.get(
-    'CLVR_SCRIPT_DIR',
-    r'E:\Documents\source\repos\BethesdaGhidraScripts\scripts\commonlibvr')
-
-# Project convention: manual RE / generated CommonLib types live in /types.h
-# (see ~/.claude/skyrim-re.md's "Ghidra naming & structs" section).
-TYPES_CAT = '/types.h'
+from library_rules import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT  # noqa: F401
