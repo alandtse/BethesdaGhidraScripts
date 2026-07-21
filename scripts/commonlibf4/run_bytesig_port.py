@@ -43,6 +43,7 @@ sys.path.insert(0, str(_PROJECT_DIR / "scripts" / "core"))
 import ast
 from bytesig_port import load_pe_text, build_prefix_index, port_symbols  # noqa: E402
 from steamless     import ensure_unpacked                                # noqa: E402
+from plans.pdb_publics import load_bytesig_publics                       # noqa: E402
 
 
 _JSON_LOADS_RE = re.compile(r"^_json(?:_sym)?\.loads\((.+)\)$")
@@ -227,40 +228,11 @@ def _load_f4_221_pdb_names() -> dict[str, int]:
     Source: ``Fallout4_1_11_221_for_debug.pdb`` dumped via
     ``llvm-pdbutil pretty --externals`` and checked into refs/.
     Filtered to function-shaped C++ qualified names (drops RTTI_*,
-    vftable, lambdas, std:: noise, raw ``?``-mangled leftovers).
+    vftable, lambdas, std:: noise, raw ``?``-mangled leftovers). Shared
+    with both bytesig_port_combined.py sisters via
+    core/plans/pdb_publics.py.
     """
-    if not _F4_221_PDB_PUBLICS.is_file():
-        return {}
-    line_re = re.compile(
-        r"^\s*public\s+\[0x([0-9A-Fa-f]+)\]\s+(\S.*?)\s*$")
-    bad_substr = ("RTTI_", "::`vftable'", "::`RTTI",
-                  "type_info::", "`typeinfo for", "anonymous namespace",
-                  "`vector-deleting-destructor", "<lambda_")
-    name_rx = re.compile(r"^[A-Za-z_][\w:]*$")
-    out: dict[str, int] = {}
-    with open(_F4_221_PDB_PUBLICS, "r", encoding="utf-8", errors="replace") as f:
-        for ln in f:
-            m = line_re.match(ln)
-            if not m:
-                continue
-            try:
-                rva = int(m.group(1), 16)
-            except ValueError:
-                continue
-            if rva == 0:
-                continue
-            raw = m.group(2)
-            if any(b in raw for b in bad_substr):
-                continue
-            # Strip args ``Foo::Bar(args)`` -> ``Foo::Bar``.  Walks back to the
-            # matching '(' so templated names with embedded parens survive.
-            qname = raw.split("(", 1)[0].strip()
-            if not qname or "<" in qname or ">" in qname:
-                continue
-            if not name_rx.match(qname):
-                continue
-            out.setdefault(qname, rva)
-    return out
+    return load_bytesig_publics(str(_F4_221_PDB_PUBLICS))
 
 
 def run(targets: list[str]) -> None:

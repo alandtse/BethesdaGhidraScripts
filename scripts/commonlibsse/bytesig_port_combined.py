@@ -33,6 +33,7 @@ PDB_PUBLICS  = REPO_DIR / "scripts" / "commonlibsse" / "refs" / "skyrimse_pdb_pu
 
 sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
 from bytesig_port import build_prefix_index, port_symbols  # noqa: E402
+from plans.pdb_publics import load_bytesig_publics  # noqa: E402
 
 
 # Version → (CommonLibImport filename, [path-substring hints used to find
@@ -84,37 +85,10 @@ def _read_se_pdb_publics() -> dict[str, int]:
 
     Same filtering shape as the F4 sister: drop RTTI_*, vftable,
     typeinfo, lambdas, anonymous namespaces; require a sane qualified
-    C++ name; strip args at first '('.
+    C++ name; strip args at first '('. Shared with the F4 sister and
+    run_bytesig_port.py via core/plans/pdb_publics.py.
     """
-    if not PDB_PUBLICS.is_file():
-        return {}
-    line_re = re.compile(r"^\s*public\s+\[0x([0-9A-Fa-f]+)\]\s+(\S.*?)\s*$")
-    bad_substr = ("RTTI_", "::`vftable'", "::`RTTI",
-                  "type_info::", "`typeinfo for", "anonymous namespace",
-                  "`vector-deleting-destructor", "<lambda_")
-    name_rx = re.compile(r"^[A-Za-z_][\w:]*$")
-    out: dict[str, int] = {}
-    with open(PDB_PUBLICS, "r", encoding="utf-8", errors="replace") as f:
-        for ln in f:
-            m = line_re.match(ln)
-            if not m:
-                continue
-            try:
-                rva = int(m.group(1), 16)
-            except ValueError:
-                continue
-            if rva == 0:
-                continue
-            raw = m.group(2)
-            if any(b in raw for b in bad_substr):
-                continue
-            qname = raw.split("(", 1)[0].strip()
-            if not qname or "<" in qname or ">" in qname:
-                continue
-            if not name_rx.match(qname):
-                continue
-            out.setdefault(qname, rva)
-    return out
+    return load_bytesig_publics(str(PDB_PUBLICS))
 
 
 def _find_program(root, hints: list[str], exact_path: str | None = None):

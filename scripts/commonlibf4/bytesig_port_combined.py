@@ -39,6 +39,7 @@ PDB_PUBLICS  = REPO_DIR / "scripts" / "commonlibf4" / "refs" / "f4_221_pdb_publi
 
 sys.path.insert(0, str(REPO_DIR / "scripts" / "core"))
 from bytesig_port import build_prefix_index, port_symbols  # noqa: E402
+from plans.pdb_publics import load_bytesig_publics  # noqa: E402
 
 
 # Version → (CommonLibImport filename, [path-substring hints used to find
@@ -89,36 +90,9 @@ def _read_symbols_from_script(version: str) -> dict[str, int]:
 
 
 def _read_f4_221_pdb_publics() -> dict[str, int]:
-    """{name: rva} from the 1.11.221 debug PDB publics dump."""
-    if not PDB_PUBLICS.is_file():
-        return {}
-    line_re = re.compile(r"^\s*public\s+\[0x([0-9A-Fa-f]+)\]\s+(\S.*?)\s*$")
-    bad_substr = ("RTTI_", "::`vftable'", "::`RTTI",
-                  "type_info::", "`typeinfo for", "anonymous namespace",
-                  "`vector-deleting-destructor", "<lambda_")
-    name_rx = re.compile(r"^[A-Za-z_][\w:]*$")
-    out: dict[str, int] = {}
-    with open(PDB_PUBLICS, "r", encoding="utf-8", errors="replace") as f:
-        for ln in f:
-            m = line_re.match(ln)
-            if not m:
-                continue
-            try:
-                rva = int(m.group(1), 16)
-            except ValueError:
-                continue
-            if rva == 0:
-                continue
-            raw = m.group(2)
-            if any(b in raw for b in bad_substr):
-                continue
-            qname = raw.split("(", 1)[0].strip()
-            if not qname or "<" in qname or ">" in qname:
-                continue
-            if not name_rx.match(qname):
-                continue
-            out.setdefault(qname, rva)
-    return out
+    """{name: rva} from the 1.11.221 debug PDB publics dump. Shared with the
+    SE sister and run_bytesig_port.py via core/plans/pdb_publics.py."""
+    return load_bytesig_publics(str(PDB_PUBLICS))
 
 
 def _find_program(root, hints: list[str], stem: str = "Fallout4",
