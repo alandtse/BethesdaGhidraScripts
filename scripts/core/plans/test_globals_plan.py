@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Unit tests for globals_plan (globals harvester consensus logic).
+"""Unit tests for plans.globals_plan (globals harvester consensus logic).
+
+Combines the two previously-separate test sets (core/test_enrichment_plans.py's
+globals_plan coverage and commonlibvr/test_globals_plan.py) now that globals_plan.py
+itself turned out to be functionally identical between the two forks -- union of
+both, nothing dropped.
 
 Run: python -m pytest test_globals_plan.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import globals_plan as gp  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from plans import globals_plan as gp  # noqa: E402
 
 
 def test_aggregate_consensus_single_class():
@@ -58,6 +63,39 @@ def test_to_rows_orders_high_confidence_first():
     confidences = [r[2] for r in rows]
     assert confidences == ['high', 'medium', 'low']
     assert rows[0][0] == 0x2                                  # the consensus global first
+
+
+def test_aggregate_and_confidence():
+    obs = [
+        (0x1000, 'PlayerCharacter', 'FUN_a'),
+        (0x1000, 'PlayerCharacter', 'FUN_b'),
+        (0x2000, 'TESDataHandler', 'FUN_c'),         # single site -> medium
+        (0x3000, 'Actor', 'FUN_d'),                  # competing
+        (0x3000, 'Actor', 'FUN_e'),
+        (0x3000, 'TESObjectREFR', 'FUN_f'),          # minority
+    ]
+    agg = gp.aggregate_global_types(obs)
+    assert agg[0x1000]['type'] == 'PlayerCharacter'
+    assert gp.global_confidence(agg[0x1000]) == 'high'   # 2 sites, 1 class
+    assert gp.global_confidence(agg[0x2000]) == 'medium'  # 1 site
+    # 0x3000: Actor 2 of 3 -> majority but competing -> medium
+    assert agg[0x3000]['type'] == 'Actor'
+    assert gp.global_confidence(agg[0x3000]) == 'medium'
+
+
+def test_globals_low_confidence_even_split():
+    obs = [(0x9000, 'A', 'c1'), (0x9000, 'B', 'c2')]
+    agg = gp.aggregate_global_types(obs)
+    assert gp.global_confidence(agg[0x9000]) == 'low'
+
+
+def test_to_rows_orders_high_first():
+    obs = [
+        (0x2000, 'TESDataHandler', 'c'),                      # medium
+        (0x1000, 'PlayerCharacter', 'a'), (0x1000, 'PlayerCharacter', 'b'),  # high
+    ]
+    rows = gp.to_rows(gp.aggregate_global_types(obs))
+    assert rows[0][0] == 0x1000 and rows[0][2] == 'high'
 
 
 if __name__ == '__main__':

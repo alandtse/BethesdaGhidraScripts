@@ -1,56 +1,20 @@
-"""Unit tests for the pure enrichment planners (globals_plan, string_anchor_match).
+"""Unit tests for the pure string_anchor_match enrichment planner.
 No Ghidra required -- run with::
 
     python scripts/core/test_enrichment_plans.py
     # or: pytest scripts/core/test_enrichment_plans.py
 
-ctor_plan's tests moved to plans/test_ctor_plan.py as part of the DRY refactor's
-Phase 3 (ctor_plan.py itself turned out identical between core and commonlibvr, so
-it was merged into core/plans/ctor_plan.py rather than staying duplicated here).
+ctor_plan's and globals_plan's tests moved to plans/test_ctor_plan.py and
+plans/test_globals_plan.py as part of the DRY refactor's Phase 3 (both modules
+turned out identical between core and commonlibvr, so they were merged into
+core/plans/ rather than staying duplicated here).
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import globals_plan
 import string_anchor_match as sam
-
-
-# --------------------------------------------------------------------------
-# globals_plan
-# --------------------------------------------------------------------------
-def test_aggregate_and_confidence():
-    obs = [
-        (0x1000, 'PlayerCharacter', 'FUN_a'),
-        (0x1000, 'PlayerCharacter', 'FUN_b'),
-        (0x2000, 'TESDataHandler', 'FUN_c'),         # single site -> medium
-        (0x3000, 'Actor', 'FUN_d'),                  # competing
-        (0x3000, 'Actor', 'FUN_e'),
-        (0x3000, 'TESObjectREFR', 'FUN_f'),          # minority
-    ]
-    agg = globals_plan.aggregate_global_types(obs)
-    assert agg[0x1000]['type'] == 'PlayerCharacter'
-    assert globals_plan.global_confidence(agg[0x1000]) == 'high'   # 2 sites, 1 class
-    assert globals_plan.global_confidence(agg[0x2000]) == 'medium'  # 1 site
-    # 0x3000: Actor 2 of 3 -> majority but competing -> medium
-    assert agg[0x3000]['type'] == 'Actor'
-    assert globals_plan.global_confidence(agg[0x3000]) == 'medium'
-
-
-def test_globals_low_confidence_even_split():
-    obs = [(0x9000, 'A', 'c1'), (0x9000, 'B', 'c2')]
-    agg = globals_plan.aggregate_global_types(obs)
-    assert globals_plan.global_confidence(agg[0x9000]) == 'low'
-
-
-def test_to_rows_orders_high_first():
-    obs = [
-        (0x2000, 'TESDataHandler', 'c'),                      # medium
-        (0x1000, 'PlayerCharacter', 'a'), (0x1000, 'PlayerCharacter', 'b'),  # high
-    ]
-    rows = globals_plan.to_rows(globals_plan.aggregate_global_types(obs))
-    assert rows[0][0] == 0x1000 and rows[0][2] == 'high'
 
 
 # --------------------------------------------------------------------------

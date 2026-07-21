@@ -1,4 +1,4 @@
-"""Pure (Ghidra-free) logic for the GLOBALS harvester.
+"""Pure (Ghidra-free) logic for the globals harvester.
 
 Many engine singletons live in untyped global data (`DAT_*`, an `undefined8` slot).
 The decompiler can't propagate field accesses through an untyped global, so every
@@ -14,6 +14,10 @@ a per-global consensus type + confidence + a review rank -- the judgement call (
 the type) is then a human/LLM decision applied authoritatively, exactly like the field
 review queue. Kept Ghidra-free so the consensus logic is unit-testable; the driver does
 the decompile + symbol typing.
+
+Was independently forked as commonlibvr/globals_plan.py -- that copy turned out
+functionally identical (same logic), only the docstrings/comments diverged in wording.
+Merged here with no behavioral reconciliation needed.
 """
 import collections
 
