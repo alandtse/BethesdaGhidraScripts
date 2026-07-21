@@ -358,6 +358,71 @@ def test_select_write_targets_only_names_reuse_or_protect_never_selected():
     assert allowed == set()
 
 
+# The four tests below cover pure logic extracted from apply_enrich.py itself
+# (DRY refactor Phase 3) -- previously embedded inline, coupled to a live Ghidra
+# object, and untested.
+
+def test_is_placeholder_type_name_recognizes_known_placeholders():
+    for n in ('undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
+              'ulong', 'long', 'ulonglong', 'longlong'):
+        assert apply_plan.is_placeholder_type_name(n)
+    assert apply_plan.is_placeholder_type_name('undefined4')
+    assert apply_plan.is_placeholder_type_name('char[16]')
+
+
+def test_is_placeholder_type_name_none_is_placeholder():
+    assert apply_plan.is_placeholder_type_name(None)
+
+
+def test_is_placeholder_type_name_rejects_concrete_types():
+    assert not apply_plan.is_placeholder_type_name('TESForm')
+    assert not apply_plan.is_placeholder_type_name('NiAVObject *')
+    assert not apply_plan.is_placeholder_type_name('BSTArray<TESForm*>')
+
+
+def test_relocation_id_comment_both_ids():
+    assert apply_plan.relocation_id_comment(123, 456) == 'RELOCATION_ID(123, 456)'
+
+
+def test_relocation_id_comment_se_only():
+    assert apply_plan.relocation_id_comment(123, None) == 'REL::ID(123)'
+    assert apply_plan.relocation_id_comment(123, 0) == 'REL::ID(123)'
+
+
+def test_relocation_id_comment_ae_only():
+    assert apply_plan.relocation_id_comment(None, 456) == 'REL::ID(456)'
+    assert apply_plan.relocation_id_comment(0, 456) == 'REL::ID(456)'
+
+
+def test_relocation_id_comment_neither_returns_none():
+    assert apply_plan.relocation_id_comment(None, None) is None
+    assert apply_plan.relocation_id_comment(0, 0) is None
+
+
+def test_sig_key_combines_return_and_params():
+    assert apply_plan.sig_key('void', ['int', 'char *']) == ('void', ('int', 'char *'))
+
+
+def test_sig_key_no_params():
+    assert apply_plan.sig_key('bool', []) == ('bool', ())
+
+
+def test_sig_key_equal_for_same_signature_different_list_identity():
+    a = apply_plan.sig_key('void', ['int', 'float'])
+    b = apply_plan.sig_key('void', ['int', 'float'])
+    assert a == b
+
+
+def test_should_upgrade_signature_rejects_curated_sources():
+    assert not apply_plan.should_upgrade_signature('USER_DEFINED')
+    assert not apply_plan.should_upgrade_signature('IMPORTED')
+
+
+def test_should_upgrade_signature_allows_auto_inferred_sources():
+    assert apply_plan.should_upgrade_signature('DEFAULT')
+    assert apply_plan.should_upgrade_signature('ANALYSIS')
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

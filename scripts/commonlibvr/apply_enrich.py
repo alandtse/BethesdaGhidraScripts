@@ -381,13 +381,9 @@ def run():
 def _is_placeholder_dt(dt):
     """A field type that carries no real RE -- undefined bytes or a bare integer/char
     filler. Improve-only fills replace ONLY these; a concrete existing type is never
-    downgraded to a generated stub."""
-    if dt is None:
-        return True
-    n = dt.getName()
-    return (n in ('undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
-                  'ulong', 'long', 'ulonglong', 'longlong')
-            or n.startswith('undefined') or n.startswith('char['))
+    downgraded to a generated stub. Pure decision in apply_plan.is_placeholder_type_name;
+    this just extracts the type name from the live Ghidra object."""
+    return apply_plan.is_placeholder_type_name(dt.getName() if dt is not None else None)
 
 
 def _fill_struct(s, size, gfields, resolve_type, make_padding, _U16, _U32, _U64, _U8):
@@ -553,21 +549,12 @@ def _create_vtable_structs(gns, dtm, cat):
 
 def _upgrade_sig(f):
     """True if it is safe to overwrite this function's signature with CommonLib's.
-
-    Upgrade when the current signature is auto-derived -- either absent
-    (DefaultDataType / undefined return) or inferred by Ghidra's analyzer
-    (signature source DEFAULT or ANALYSIS). NEVER touch a USER_DEFINED or
-    IMPORTED (PDB) signature: those are hand-curated or authoritative, and a
-    generated CommonLib prototype must not clobber them.
-    """
-    from ghidra.program.model.symbol import SourceType
+    Pure decision in apply_plan.should_upgrade_signature; this just extracts the
+    signature source's enum name from the live Ghidra object, falling back to a
+    return-type heuristic if the source itself is unavailable."""
     try:
-        src = f.getSignatureSource()
-        if src in (SourceType.USER_DEFINED, SourceType.IMPORTED):
-            return False
-        return True   # DEFAULT / ANALYSIS -> auto-inferred, safe to upgrade
+        return apply_plan.should_upgrade_signature(f.getSignatureSource().name())
     except Exception:
-        # Fall back to the return-type heuristic if source is unavailable.
         try:
             rt = f.getSignature().getReturnType()
             return rt.getClass().getSimpleName() == 'DefaultDataType' or \
@@ -641,14 +628,7 @@ def run_symbols():
     vkey = {'svr': 'v', 'se': 's', 'ae': 'a'}.get(VERSION, 'a')
 
     def relid(s):
-        si, ai = s.get('si'), s.get('ai')
-        if si and ai:
-            return 'RELOCATION_ID(%d, %d)' % (si, ai)
-        if si:
-            return 'REL::ID(%d)' % si
-        if ai:
-            return 'REL::ID(%d)' % ai
-        return None
+        return apply_plan.relocation_id_comment(s.get('si'), s.get('ai'))
 
     if SYMBOLS_ONLY:
         matched_names = {s['n'] for s in SYMBOLS} & SYMBOLS_ONLY
@@ -714,11 +694,12 @@ def run_symbols():
 
 def _sig_key(sig):
     """Normalized comparable key for a Ghidra FunctionSignature: return type +
-    ordered param type names. Ignores parameter names and cosmetic spacing."""
+    ordered param type names. Ignores parameter names and cosmetic spacing. Pure
+    logic in apply_plan.sig_key; this just extracts names from the live object."""
     try:
         ret = sig.getReturnType().getName()
-        ps = tuple(p.getDataType().getName() for p in sig.getArguments())
-        return (ret, ps)
+        ps = [p.getDataType().getName() for p in sig.getArguments()]
+        return apply_plan.sig_key(ret, ps)
     except Exception:
         return None
 

@@ -261,3 +261,61 @@ def select_fill_targets(structs, classify_fn, live, create_struct, stage_struct,
         if register is not None:
             register(st, dt)
     return fill_list, staging
+
+
+# The four functions below were extracted from apply_enrich.py itself (DRY refactor
+# Phase 3): each mixed a small amount of pure decision logic with a live Ghidra object
+# as its only input, so the object's one or two needed attributes are now taken as
+# plain values instead -- the pure decision is unit-testable, and apply_enrich.py's
+# original function becomes a thin wrapper extracting those values from the real
+# object and delegating here.
+
+_PLACEHOLDER_TYPE_NAMES = frozenset((
+    'undefined', 'uint', 'int', 'byte', 'sbyte', 'ushort', 'short',
+    'ulong', 'long', 'ulonglong', 'longlong'))
+
+
+def is_placeholder_type_name(name):
+    """A field type NAME that carries no real RE -- undefined bytes or a bare
+    integer/char filler. `name` is None (no type at all) or a Ghidra DataType's
+    `.getName()` string. Improve-only fills replace ONLY these; a concrete existing
+    type is never downgraded to a generated stub."""
+    if name is None:
+        return True
+    return (name in _PLACEHOLDER_TYPE_NAMES
+            or name.startswith('undefined') or name.startswith('char['))
+
+
+def relocation_id_comment(si, ai):
+    """Render a CommonLib REL::ID/RELOCATION_ID source-code reference from a
+    symbol's SE id (`si`) and AE id (`ai`) -- either may be None/falsy. Returns None
+    if neither id is present (nothing to comment)."""
+    if si and ai:
+        return 'RELOCATION_ID(%d, %d)' % (si, ai)
+    if si:
+        return 'REL::ID(%d)' % si
+    if ai:
+        return 'REL::ID(%d)' % ai
+    return None
+
+
+def sig_key(return_type_name, param_type_names):
+    """Normalized comparable key for a function signature: return type name +
+    ordered param type names, as a hashable tuple. Ignores parameter names and
+    cosmetic spacing -- two signatures with the same key are the same signature for
+    conflict-detection purposes."""
+    return (return_type_name, tuple(param_type_names))
+
+
+def should_upgrade_signature(source_type_name):
+    """True if it is safe to overwrite a function's signature with CommonLib's,
+    given its current `SourceType` name (`f.getSignatureSource().toString()` /
+    `.name()` -- whatever Ghidra's SourceType enum stringifies to, compared by name
+    so this stays Ghidra-free).
+
+    Upgrade when the current signature is auto-derived: NEVER touch a USER_DEFINED
+    or IMPORTED (PDB) signature -- those are hand-curated or authoritative, and a
+    generated CommonLib prototype must not clobber them. DEFAULT/ANALYSIS (or any
+    other auto-inferred source) is safe to upgrade.
+    """
+    return source_type_name not in ('USER_DEFINED', 'IMPORTED')
