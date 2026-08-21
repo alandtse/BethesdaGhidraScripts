@@ -49,7 +49,9 @@ def run():
     fm = cp.getFunctionManager()
     base = cp.getImageBase()
     nm = cp.getName().lower()
-    vkey = 'v' if 'vr' in nm else ('a' if ('1170' in nm or 'ae' in nm) else 's')
+    vkey = 'v' if 'vr' in nm else (
+        'a9' if ('1799' in nm or '7.99' in nm) else
+        ('a' if ('1170' in nm or 'ae' in nm) else 's'))
     trusted = (SourceType.USER_DEFINED, SourceType.IMPORTED)
 
     symbols = _load_symbols()

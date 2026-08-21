@@ -48,6 +48,47 @@ def test_load_address_library_missing_file_returns_empty():
     assert lr.RULES.load_address_library(r'Z:\does\not\exist.bin') == {}
 
 
+def _write_format5_bin(path, entries):
+    """entries: list of (id, offset); id is the dense array index. Matches
+    AddressLibrary.load_bin_v5's 96-byte header + dense uint32_t[] decoder."""
+    max_id = max(id_ for id_, _ in entries)
+    arr = [0] * (max_id + 1)
+    for id_, off in entries:
+        arr[id_] = off
+    with open(path, 'wb') as f:
+        f.write(struct.pack('<i', 5))               # format
+        f.write(struct.pack('<4I', 1, 7, 99, 0))     # version
+        f.write(b'SkyrimSE.exe'.ljust(64, b'\x00'))  # name
+        f.write(struct.pack('<i', 8))                # pointerSize
+        f.write(struct.pack('<i', 0))                # dataFormat
+        f.write(struct.pack('<i', len(arr)))         # offsetCount
+        f.write(struct.pack('<{}I'.format(len(arr)), *arr))
+
+
+def test_load_bin_v5_reads_dense_format5_array():
+    from address_library import AddressLibrary
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, 'versionlib-1-7-99-0.bin')
+        _write_format5_bin(path, [(1, 0x1022), (2, 0x102d), (100, 0x1000)])
+        db = AddressLibrary.load_bin_v5(path)
+    assert db == {1: 0x1022, 2: 0x102d, 100: 0x1000}
+
+
+def test_load_bin_v5_missing_file_returns_empty():
+    from address_library import AddressLibrary
+    assert AddressLibrary.load_bin_v5(r'Z:\does\not\exist.bin') == {}
+
+
+def test_load_bin_v5_rejects_non_format5_file():
+    from address_library import AddressLibrary
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, 'not-v5.bin')
+        with open(path, 'wb') as f:
+            f.write(struct.pack('<i', 2))  # format 2, not 5
+            f.write(b'\x00' * 92)
+        assert AddressLibrary.load_bin_v5(path) == {}
+
+
 def test_format_relocation_dual_id_macro():
     assert lr.RULES.format_relocation({'SE': 12345, 'AE': 67890}) == 'RELOCATION_ID(12345, 67890)'
 

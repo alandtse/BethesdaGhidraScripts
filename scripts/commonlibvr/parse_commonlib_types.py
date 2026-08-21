@@ -109,8 +109,9 @@ def _build_address_library():
     lib.ae_db = lib.load_bin(os.path.join(_ADDRLIB_SSE, 'versionlib-1-6-1170-0.bin'))
     vr_csv = _VR_CSV if os.path.isfile(_VR_CSV) else _VR_CSV_FALLBACK
     lib.vr_db = AddressLibrary.load_csv(vr_csv)
-    print('Address DBs: SE {}, AE {}, VR {} (from {})'.format(
-        len(lib.se_db), len(lib.ae_db), len(lib.vr_db), vr_csv))
+    lib.ae1799_db = AddressLibrary.load_bin_v5(os.path.join(_ADDRLIB_SSE, 'versionlib-1-7-99-0.bin'))
+    print('Address DBs: SE {}, AE {}, VR {}, AE1799 {} (from {})'.format(
+        len(lib.se_db), len(lib.ae_db), len(lib.vr_db), len(lib.ae1799_db), vr_csv))
     return lib
 
 
@@ -154,6 +155,7 @@ def _build_symbols(addr_lib):
         if fs.get('se_off'): sym['s'] = fs['se_off']
         if fs.get('ae_off'): sym['a'] = fs['ae_off']
         if fs.get('vr_off'): sym['v'] = fs['vr_off']
+        if fs.get('ae1799_off'): sym['a9'] = fs['ae1799_off']
         symbols.append(sym)
 
     for lbl in label_syms:
@@ -161,6 +163,7 @@ def _build_symbols(addr_lib):
         if lbl.get('se_off'): sym['s'] = lbl['se_off']
         if lbl.get('ae_off'): sym['a'] = lbl['ae_off']
         if lbl.get('vr_off'): sym['v'] = lbl['vr_off']
+        if lbl.get('ae1799_off'): sym['a9'] = lbl['ae1799_off']
         symbols.append(sym)
 
     # Normalize __ -> :: and attach address-library IDs (si/ai) by reverse lookup.
@@ -170,11 +173,14 @@ def _build_symbols(addr_lib):
             s['n'] = _re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
     se_rva_to_id = {v: k for k, v in addr_lib.se_db.items()}
     ae_rva_to_id = {v: k for k, v in addr_lib.ae_db.items()}
+    ae1799_rva_to_id = {v: k for k, v in addr_lib.ae1799_db.items()}
     for s in symbols:
         si = se_rva_to_id.get(s.get('s'))
         ai = ae_rva_to_id.get(s.get('a'))
+        ai9 = ae1799_rva_to_id.get(s.get('a9'))
         if si is not None: s['si'] = si
         if ai is not None: s['ai'] = ai
+        if ai9 is not None: s['ai9'] = ai9
 
     funcs = [s for s in symbols if s['t'] == 'func']
     n_v = sum(1 for s in symbols if s.get('v'))

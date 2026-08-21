@@ -125,6 +125,7 @@ class AddressLibrary:
         self.se_db: Dict[int, int] = {}
         self.ae_db: Dict[int, int] = {}
         self.vr_db: Dict[int, int] = {}
+        self.ae1799_db: Dict[int, int] = {}
 
     def load_bin(self, file_path: str) -> Dict[int, int]:
         if not os.path.exists(file_path):
@@ -164,6 +165,24 @@ class AddressLibrary:
         return db
 
     @staticmethod
+    def load_bin_v5(file_path: str) -> Dict[int, int]:
+        """Load AE 1.7.99+'s format-5 address library: a fixed 96-byte header
+        (format int32, version uint32[4], name char[64], pointerSize int32,
+        dataFormat int32, offsetCount int32) followed by a dense
+        uint32_t[offsetCount] array, direct-indexed by id (0 = absent).
+        """
+        if not os.path.exists(file_path):
+            return {}
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        fmt = struct.unpack_from('<i', data, 0)[0]
+        if fmt != 5:
+            return {}
+        offset_count = struct.unpack_from('<i', data, 92)[0]
+        arr = struct.unpack_from('<{}I'.format(offset_count), data, 96)
+        return {i: off for i, off in enumerate(arr) if off != 0}
+
+    @staticmethod
     def load_csv(file_path: str, skip_meta: bool = True) -> Dict[int, int]:
         """Read an 'id,offset' CSV file (header + optional metadata row).
 
@@ -200,3 +219,4 @@ class AddressLibrary:
         self.se_db = self.load_bin(os.path.join(sse_dir, 'version-1-5-97-0.bin'))
         self.ae_db = self.load_bin(os.path.join(sse_dir, 'versionlib-1-6-1170-0.bin'))
         self.vr_db = self.load_csv(os.path.join(sse_dir, 'version-1-4-15-0.csv'))
+        self.ae1799_db = self.load_bin_v5(os.path.join(sse_dir, 'versionlib-1-7-99-0.bin'))

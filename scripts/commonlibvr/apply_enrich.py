@@ -625,7 +625,7 @@ def run_symbols():
         if vt[0] in live:
             created['vtbl:' + vt[0]] = live[vt[0]]
 
-    vkey = {'svr': 'v', 'se': 's', 'ae': 'a'}.get(VERSION, 'a')
+    vkey = {'svr': 'v', 'se': 's', 'ae': 'a', 'ae1799': 'a9'}.get(VERSION, 'a')
 
     def relid(s):
         return apply_plan.relocation_id_comment(s.get('si'), s.get('ai'))
@@ -770,7 +770,7 @@ def run_sigconflict():
 
     apply_go = os.environ.get('CLVR_SIGCONFLICT', 'dry').lower() == 'go'
     cap = int(os.environ.get('CLVR_SIGCONFLICT_MAX', '0') or 0)
-    vkey = {'svr': 'v', 'se': 's', 'ae': 'a'}.get(VERSION, 'a')
+    vkey = {'svr': 'v', 'se': 's', 'ae': 'a', 'ae1799': 'a9'}.get(VERSION, 'a')
     out_csv = IMPORT_PATH + '.sigconflict.csv'
 
     decomp = DecompInterface()

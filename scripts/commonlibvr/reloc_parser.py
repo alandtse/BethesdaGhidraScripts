@@ -166,8 +166,35 @@ def collect_relocations(
             seen_labels.add(key)
             deduped_labels.append(lbl)
 
+    _attach_ae1799(deduped_funcs, addr_lib)
+    _attach_ae1799(deduped_labels, addr_lib)
+
     return (deduped_funcs, deduped_labels, offset_id_map,
             all_static_methods, se_offset_map, ae_offset_map)
+
+
+def _attach_ae1799(syms: List[dict], addr_lib) -> None:
+    """Attach an ``ae1799_off`` to each symbol that has an ``ae_off``.
+
+    AE 1.7.99 reuses the same AE id as 1.6.353-1.6.1179 (single
+    ``RELOCATION_ID(se, ae)``/``VariantID(se, ae, vr)`` declaration, no
+    separate macro arg -- see CommonLibVR-ng PR #298/#299), so the 1.7.99 RVA
+    for a given symbol is found by reverse-mapping its known ``ae_off`` back
+    to the shared id via ``addr_lib.ae_db``, then looking that id up in
+    ``addr_lib.ae1799_db`` (format-5 address library, a separate physical
+    binary's RVA space).
+    """
+    ae_off_to_id = {off: aid for aid, off in addr_lib.ae_db.items()}
+    for s in syms:
+        ae_off = s.get('ae_off')
+        if not ae_off:
+            continue
+        aid = ae_off_to_id.get(ae_off)
+        if aid is None:
+            continue
+        ae1799_off = addr_lib.ae1799_db.get(aid)
+        if ae1799_off:
+            s['ae1799_off'] = ae1799_off
 
 
 def collect_src_relocations(src_dir, addr_lib, offset_id_map,
@@ -201,4 +228,6 @@ def collect_src_relocations(src_dir, addr_lib, offset_id_map,
     if verbose:
         print('  Attached VR offsets to {} of {} src functions'.format(
             vr_attached, len(func_syms)))
+
+    _attach_ae1799(func_syms, addr_lib)
     return func_syms

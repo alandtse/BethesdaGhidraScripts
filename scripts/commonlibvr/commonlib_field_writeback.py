@@ -40,7 +40,7 @@ _spec = _ilu.spec_from_file_location('clvr_field_writeback_plan',
 wp = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(wp)
 
-_RT = {'SE': 'se', 'AE': 'ae', 'VR': 'vr'}
+_RT = {'SE': 'se', 'AE': 'ae', 'VR': 'vr', 'AE1799': 'ae1799'}
 
 # a member type CommonLib uses as a not-yet-resolved placeholder -> safe to retype.
 # A concrete class/template type means CommonLib already RE'd it -> leave it alone.

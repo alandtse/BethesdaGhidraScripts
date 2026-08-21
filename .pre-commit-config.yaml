@@ -13,7 +13,9 @@ repos:
       - id: check-merge-conflict
       - id: mixed-line-ending
       - id: check-added-large-files
-        args: ["--maxkb=2000"]
+        # AE 1.7.99's format-5 address library is a dense per-id array (not
+        # delta-encoded like format 1/2), so it's genuinely ~2.2MB.
+        args: ["--maxkb=2500"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.12
