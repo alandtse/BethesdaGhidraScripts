@@ -18,7 +18,7 @@ import csv
 import json
 import os
 
-RUNTIMES = ('se', 'ae', 'vr')
+RUNTIMES = ('se', 'ae', 'vr', 'ae1799')
 
 
 def classify_symbol(present, deltas):

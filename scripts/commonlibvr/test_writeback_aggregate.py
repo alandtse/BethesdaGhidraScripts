@@ -11,9 +11,9 @@ import writeback_aggregate as wa  # noqa: E402
 
 
 def test_reconcile_when_delta_in_all_mapped():
-    # mapped in all three, NAME_DELTA everywhere -> one CommonLib name fix
-    v, st = wa.classify_symbol({'se', 'ae', 'vr'},
-                               {'se': 'NAME_DELTA', 'ae': 'NAME_DELTA', 'vr': 'NAME_DELTA'})
+    # mapped in all four, NAME_DELTA everywhere -> one CommonLib name fix
+    v, st = wa.classify_symbol({'se', 'ae', 'vr', 'ae1799'},
+                               {'se': 'NAME_DELTA', 'ae': 'NAME_DELTA', 'vr': 'NAME_DELTA', 'ae1799': 'NAME_DELTA'})
     assert v == 'RECONCILE'
     assert wa.absent_runtimes(st) == []
 
@@ -28,20 +28,20 @@ def test_runtime_specific_points_at_diverging_runtime():
 
 
 def test_iterative_coverage_se_ae_only():
-    # CommonLib mapped SE+AE only (VR not yet added); both match -> nothing to fix,
-    # but VR is an open coverage candidate
+    # CommonLib mapped SE+AE only (VR/AE1799 not yet added); both match ->
+    # nothing to fix, but VR/AE1799 are open coverage candidates
     v, st = wa.classify_symbol({'se', 'ae'}, {})
     assert v == 'MATCH'
-    assert wa.absent_runtimes(st) == ['vr']
+    assert wa.absent_runtimes(st) == ['vr', 'ae1799']
 
 
 def test_runtime_specific_with_partial_coverage():
-    # mapped SE+VR only; SE matches, VR disagrees -> VR suspect, AE simply unmapped
+    # mapped SE+VR only; SE matches, VR disagrees -> VR suspect, AE/AE1799 simply unmapped
     v, st = wa.classify_symbol({'se', 'vr'}, {'vr': 'NAME_DELTA'})
     assert v == 'RUNTIME_SPECIFIC'
     delta, trusted = wa.suspect_runtimes(st)
     assert delta == ['vr'] and trusted == ['se']
-    assert wa.absent_runtimes(st) == ['ae']
+    assert wa.absent_runtimes(st) == ['ae', 'ae1799']
 
 
 def test_apply_gap_only():
@@ -62,8 +62,8 @@ def test_aggregate_joins_by_name():
     delta = {'se': {}, 'ae': {}, 'vr': {'A::f': 'NAME_DELTA'}}
     out = wa.aggregate({'A::f', 'B::g'}, present, delta)
     assert out['A::f'][0] == 'RUNTIME_SPECIFIC'   # VR-only delta
-    assert out['B::g'][0] == 'MATCH'              # SE/AE match, VR unmapped
-    assert wa.absent_runtimes(out['B::g'][1]) == ['vr']
+    assert out['B::g'][0] == 'MATCH'              # SE/AE match, VR/AE1799 unmapped
+    assert wa.absent_runtimes(out['B::g'][1]) == ['vr', 'ae1799']
 
 
 if __name__ == '__main__':

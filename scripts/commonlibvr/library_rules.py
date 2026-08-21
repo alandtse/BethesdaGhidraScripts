@@ -32,11 +32,16 @@ SCRIPT_DIR = os.environ.get(
 TYPES_CAT = '/types.h'
 
 ENV_PREFIX = 'CLVR'
-RUNTIMES = ['SE', 'AE', 'VR']
+# AE1799 tracks Skyrim 1.7.99's address-library format-5 + struct-layout
+# break as its own version, so RE propagation covers it distinctly from
+# 1.6.353-1.6.1179's shared AE layout (see CommonLibVR-ng PR #298 for the
+# verified layout diffs: AttackBlockHandler, PlayerCharacter, SkyrimVM).
+RUNTIMES = ['SE', 'AE', 'VR', 'AE1799']
 VERSION_TUPLES = {
     'SE': (1, 5, 97, 0),
     'AE': (1, 6, 1170, 0),
     'VR': (1, 4, 15, 0),
+    'AE1799': (1, 7, 99, 0),
 }
 INCLUDE_PATHS = [
     r'E:\Documents\source\repos\BethesdaGhidraScripts\extern\CommonLibVR\include',
