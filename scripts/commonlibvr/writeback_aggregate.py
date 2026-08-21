@@ -15,10 +15,24 @@ The classify/aggregate functions are pure (no Ghidra, no I/O); the runner at the
 bottom does the file join. Unit-tested.
 """
 import csv
+import importlib.util as _ilu
 import json
 import os
 
-RUNTIMES = ('se', 'ae', 'vr', 'ae1799')
+# Uniquely-named load (not a bare `import library_rules`): this basename is
+# shared with every other library's own library_rules.py, and a bare import
+# would alias whichever one lands in sys.modules first when multiple such
+# modules are imported in the same process (see commonlibvr/reloc_parser.py's
+# identical concern).
+_spec = _ilu.spec_from_file_location(
+    'clvr_writeback_library_rules',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'library_rules.py'))
+_lr = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_lr)
+
+# Lowercased view of library_rules.py's RUNTIMES -- the single source of truth
+# for which runtimes this pipeline tracks (previously duplicated here).
+RUNTIMES = tuple(rt.lower() for rt in _lr.RUNTIMES)
 
 
 def classify_symbol(present, deltas):
