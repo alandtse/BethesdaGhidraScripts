@@ -20,7 +20,6 @@ normalization is a separate step); commonlib_delta.classify_delta already has th
 SIG_DELTA path, tested, for when that lands.
 """
 import csv
-import json
 import os
 import sys
 
@@ -36,10 +35,26 @@ _spec.loader.exec_module(cd)
 
 
 def _load_symbols():
+    """Extract SYMBOLS from a generated CommonLibImport_CLVR_*.py.
+
+    The generator emits either a bare JSON literal (``SYMBOLS = [...]``) or,
+    for large files, ``SYMBOLS = _json_sym.loads('...')`` (a call, not a
+    literal -- see ghidra_import_gen.py) after its own ``import json as
+    _json_sym`` line. A plain ``json.loads()`` on the line's tail only
+    handles the first form; exec the real source up through the SYMBOLS
+    line (in a throwaway namespace) so both forms resolve correctly.
+    """
     with open(IMPORT_PATH) as f:
-        for line in f:
-            if line.startswith('SYMBOLS = '):
-                return json.loads(line[len('SYMBOLS = '):])
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if line.startswith('SYMBOLS = '):
+            # Some module-level lines (e.g. `dtm = currentProgram.getDataTypeManager()`)
+            # run eagerly, so this needs the same Ghidra globals _load_generated_ns()
+            # injects -- pull them from this module's own globals (the caller running
+            # commonlib_writeback.py's source is expected to have set them there).
+            ns = dict(globals())
+            exec(compile(''.join(lines[:i + 1]), IMPORT_PATH, 'exec'), ns)
+            return ns['SYMBOLS']
     raise RuntimeError('SYMBOLS not found in ' + IMPORT_PATH)
 
 
