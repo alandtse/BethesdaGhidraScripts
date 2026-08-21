@@ -43,18 +43,59 @@ def _load_symbols():
     raise RuntimeError('SYMBOLS not found in ' + IMPORT_PATH)
 
 
+_VKEYS = ('s', 'a', 'v', 'a9')
+
+
+def _detect_vkey(cp, fm, base, symbols):
+    """Which offset key (s/a/v/a9) matches the currently open program.
+
+    The program's display name is not a reliable signal on its own -- a
+    renamed/typo'd import (e.g. an AE 1.7.99 dump saved as "...1.7.79.exe")
+    can defeat any substring check. Sample up to 200 known offsets per key
+    and see which one resolves to real functions in THIS program most
+    often; the name only breaks ties when two keys are close.
+    """
+    nm = cp.getName().lower()
+    name_hint = 'v' if 'vr' in nm else (
+        'a9' if ('1799' in nm or '7.99' in nm) else
+        ('a' if ('1170' in nm or 'ae' in nm) else 's'))
+
+    samples = {k: [] for k in _VKEYS}
+    for s in symbols:
+        if s.get('t') != 'func':
+            continue
+        for k in _VKEYS:
+            off = s.get(k)
+            if off and len(samples[k]) < 200:
+                samples[k].append(off)
+        if all(len(v) >= 200 for v in samples.values()):
+            break
+
+    hits = {}
+    for k, offs in samples.items():
+        n = sum(1 for off in offs if fm.getFunctionAt(base.add(int(off))) is not None)
+        hits[k] = n / len(offs) if offs else 0.0
+
+    best = max(hits, key=hits.get)
+    # A clear winner (or nothing sampled) -- trust the data. A near-tie
+    # (within 10%) falls back to the name hint, which is cheap and usually
+    # right when the data itself is ambiguous (e.g. a mostly-unanalyzed
+    # program with few resolvable functions yet).
+    runner_up = max((v for k, v in hits.items() if k != best), default=0.0)
+    if hits[best] - runner_up < 0.1:
+        return name_hint
+    return best
+
+
 def run():
     from ghidra.program.model.symbol import SourceType
     cp = currentProgram  # noqa: F821
     fm = cp.getFunctionManager()
     base = cp.getImageBase()
-    nm = cp.getName().lower()
-    vkey = 'v' if 'vr' in nm else (
-        'a9' if ('1799' in nm or '7.99' in nm) else
-        ('a' if ('1170' in nm or 'ae' in nm) else 's'))
     trusted = (SourceType.USER_DEFINED, SourceType.IMPORTED)
 
     symbols = _load_symbols()
+    vkey = _detect_vkey(cp, fm, base, symbols)
     rows = []
     counts = {}
     for s in symbols:
@@ -86,4 +127,8 @@ def run():
     print('  NAME_DELTA + MISSING_IN_GHIDRA logged: %d -> %s' % (len(rows), OUT_CSV))
 
 
-run()
+if __name__ == '__main__':
+    # Guards against a plain `import commonlib_writeback` (e.g. for testing
+    # _detect_vkey) triggering a live Ghidra run -- see apply_enrich.py's
+    # identical guard/comment for the incident this mirrors.
+    run()

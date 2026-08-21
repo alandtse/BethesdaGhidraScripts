@@ -73,6 +73,15 @@ base.VERSIONS = {
         'defines': ['-DENABLE_SKYRIM_AE=1'] + _EXTRA_INCLUDES,   # -> EXCLUSIVE_SKYRIM_AE / FLAT
         'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_AE.py'),
     },
+    'ae1799': {
+        # Same compiled layout as 'ae' -- AE 1.7.99's struct diffs are
+        # runtime-versioned accessors (RUNTIME_MEMBER_ACCESSOR_VERSIONED),
+        # not a separate #define/build. Only the address layer differs
+        # (symbols carry a distinct 'a9'/'ai9' offset+id from ae1799_db),
+        # so this reuses 'ae's defines under its own output file/VERSION tag.
+        'defines': ['-DENABLE_SKYRIM_AE=1'] + _EXTRA_INCLUDES,
+        'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_AE1799.py'),
+    },
     'svr': {
         'defines': ['-DENABLE_SKYRIM_VR=1'] + _EXTRA_INCLUDES,   # -> EXCLUSIVE_SKYRIM_VR (true VR layout)
         'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_VR.py'),

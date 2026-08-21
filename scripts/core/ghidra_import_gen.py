@@ -1205,7 +1205,7 @@ def _import_symbols():
     # still runs but no function symbols get applied (use byte-signature
     # porting from AE as a separate post-pass).
     version_key = {
-        'se': 's', 'ae': 'a', 'svr': 'v',
+        'se': 's', 'ae': 'a', 'svr': 'v', 'ae1799': 'a9',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
         'f4_221': '221',
         'sf': 'sf',
@@ -1356,8 +1356,8 @@ def _build_rva_to_id():
             rva, rid = struct.unpack_from('<II', blob, i)
             rva_to_id[rva] = rid
     else:
-        version_key = 's' if VERSION == 'se' else 'a'
-        id_key = 'si' if VERSION == 'se' else 'ai'
+        version_key = 's' if VERSION == 'se' else ('a9' if VERSION == 'ae1799' else 'a')
+        id_key = 'si' if VERSION == 'se' else ('ai9' if VERSION == 'ae1799' else 'ai')
         for s in SYMBOLS:
             rva = s.get(version_key)
             rid = s.get(id_key)
@@ -1559,7 +1559,7 @@ def _import_fallback_symbols():
     # still runs but no function symbols get applied (use byte-signature
     # porting from AE as a separate post-pass).
     version_key = {
-        'se': 's', 'ae': 'a', 'svr': 'v',
+        'se': 's', 'ae': 'a', 'svr': 'v', 'ae1799': 'a9',
         'f4_og': 'og', 'f4_ng': 'ng', 'f4_ae': 'a', 'f4_vr': 'v',
         'f4_221': '221',
         'sf': 'sf',
