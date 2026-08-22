@@ -31,6 +31,18 @@ sys.path.insert(0, os.path.join(SCRIPTS_DIR, 'core'))
 sys.path.insert(0, SSE_DIR)
 import parse_commonlib_types as base  # noqa: E402
 
+# This dir's own library_rules.py, loaded by explicit path under a unique module
+# name (a bare `import library_rules` would risk resolving to commonlibsse's own
+# library_rules.py given SSE_DIR is on sys.path above -- see clvr_config.py's
+# identical concern). EXTRA_AE_VARIANTS is the single table the next AE version
+# bump needs to extend (see library_rules.py's own docstring on that list).
+import importlib.util as _ilu  # noqa: E402
+_lr_spec = _ilu.spec_from_file_location(
+    'clvr_parse_types_library_rules', os.path.join(SCRIPT_DIR, 'library_rules.py'))
+_library_rules = _ilu.module_from_spec(_lr_spec)
+_lr_spec.loader.exec_module(_library_rules)
+EXTRA_AE_VARIANTS = _library_rules.EXTRA_AE_VARIANTS
+
 CLVR_INCLUDE = os.path.join(PROJECT_DIR, 'extern', 'CommonLibVR', 'include')
 OPENVR_INC = os.path.join(PROJECT_DIR, 'extern', 'CommonLibVR', 'extern', 'openvr', 'headers')
 VCPKG_INC = os.environ.get(
@@ -73,20 +85,22 @@ base.VERSIONS = {
         'defines': ['-DENABLE_SKYRIM_AE=1'] + _EXTRA_INCLUDES,   # -> EXCLUSIVE_SKYRIM_AE / FLAT
         'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_AE.py'),
     },
-    'ae1799': {
-        # Same compiled layout as 'ae' -- AE 1.7.99's struct diffs are
-        # runtime-versioned accessors (RUNTIME_MEMBER_ACCESSOR_VERSIONED),
-        # not a separate #define/build. Only the address layer differs
-        # (symbols carry a distinct 'a9'/'ai9' offset+id from ae1799_db),
-        # so this reuses 'ae's defines under its own output file/VERSION tag.
-        'defines': ['-DENABLE_SKYRIM_AE=1'] + _EXTRA_INCLUDES,
-        'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_AE1799.py'),
-    },
     'svr': {
         'defines': ['-DENABLE_SKYRIM_VR=1'] + _EXTRA_INCLUDES,   # -> EXCLUSIVE_SKYRIM_VR (true VR layout)
         'output': os.path.join(base.OUTPUT_DIR, 'CommonLibImport_CLVR_VR.py'),
     },
 }
+# Extra AE point releases (library_rules.EXTRA_AE_VARIANTS, e.g. 'ae1799') compile
+# with the SAME defines as 'ae' -- their struct diffs are runtime-versioned accessors
+# (RUNTIME_MEMBER_ACCESSOR_VERSIONED), not a separate #define/build. Only the address
+# layer differs (a distinct '<key>_off'/'<id_key>' from that variant's own address
+# library), so each just gets its own output file/VERSION tag reusing 'ae's defines.
+for _variant in EXTRA_AE_VARIANTS:
+    base.VERSIONS[_variant['key']] = {
+        'defines': ['-DENABLE_SKYRIM_AE=1'] + _EXTRA_INCLUDES,
+        'output': os.path.join(
+            base.OUTPUT_DIR, 'CommonLibImport_CLVR_{}.py'.format(_variant['key'].upper())),
+    }
 
 
 # --- address layer: CommonLibVR reloc parser + multi-runtime address DBs ---
@@ -118,9 +132,17 @@ def _build_address_library():
     lib.ae_db = lib.load_bin(os.path.join(_ADDRLIB_SSE, 'versionlib-1-6-1170-0.bin'))
     vr_csv = _VR_CSV if os.path.isfile(_VR_CSV) else _VR_CSV_FALLBACK
     lib.vr_db = AddressLibrary.load_csv(vr_csv)
-    lib.ae1799_db = AddressLibrary.load_bin_v5(os.path.join(_ADDRLIB_SSE, 'versionlib-1-7-99-0.bin'))
-    print('Address DBs: SE {}, AE {}, VR {}, AE1799 {} (from {})'.format(
-        len(lib.se_db), len(lib.ae_db), len(lib.vr_db), len(lib.ae1799_db), vr_csv))
+
+    summary = ['SE {}'.format(len(lib.se_db)), 'AE {}'.format(len(lib.ae_db)),
+               'VR {} (from {})'.format(len(lib.vr_db), vr_csv)]
+    for variant in EXTRA_AE_VARIANTS:
+        path = os.path.join(_ADDRLIB_SSE, variant['filename'])
+        # load_bin_v5 is a staticmethod (dense uint32[] format); load_bin is a
+        # regular instance method (legacy delta/varint format) -- not interchangeable.
+        db = AddressLibrary.load_bin_v5(path) if variant['format'] == 'v5' else lib.load_bin(path)
+        setattr(lib, variant['key'] + '_db', db)
+        summary.append('{} {}'.format(variant['key'].upper(), len(db)))
+    print('Address DBs: ' + ', '.join(summary))
     return lib
 
 
@@ -164,7 +186,10 @@ def _build_symbols(addr_lib):
         if fs.get('se_off'): sym['s'] = fs['se_off']
         if fs.get('ae_off'): sym['a'] = fs['ae_off']
         if fs.get('vr_off'): sym['v'] = fs['vr_off']
-        if fs.get('ae1799_off'): sym['a9'] = fs['ae1799_off']
+        for variant in EXTRA_AE_VARIANTS:
+            off = fs.get(variant['key'] + '_off')
+            if off:
+                sym[variant['sym_key']] = off
         symbols.append(sym)
 
     for lbl in label_syms:
@@ -172,7 +197,10 @@ def _build_symbols(addr_lib):
         if lbl.get('se_off'): sym['s'] = lbl['se_off']
         if lbl.get('ae_off'): sym['a'] = lbl['ae_off']
         if lbl.get('vr_off'): sym['v'] = lbl['vr_off']
-        if lbl.get('ae1799_off'): sym['a9'] = lbl['ae1799_off']
+        for variant in EXTRA_AE_VARIANTS:
+            off = lbl.get(variant['key'] + '_off')
+            if off:
+                sym[variant['sym_key']] = off
         symbols.append(sym)
 
     # Normalize __ -> :: and attach address-library IDs (si/ai) by reverse lookup.
@@ -182,14 +210,19 @@ def _build_symbols(addr_lib):
             s['n'] = _re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
     se_rva_to_id = {v: k for k, v in addr_lib.se_db.items()}
     ae_rva_to_id = {v: k for k, v in addr_lib.ae_db.items()}
-    ae1799_rva_to_id = {v: k for k, v in addr_lib.ae1799_db.items()}
+    variant_rva_to_id = {
+        variant['key']: {v: k for k, v in getattr(addr_lib, variant['key'] + '_db').items()}
+        for variant in EXTRA_AE_VARIANTS
+    }
     for s in symbols:
         si = se_rva_to_id.get(s.get('s'))
         ai = ae_rva_to_id.get(s.get('a'))
-        ai9 = ae1799_rva_to_id.get(s.get('a9'))
         if si is not None: s['si'] = si
         if ai is not None: s['ai'] = ai
-        if ai9 is not None: s['ai9'] = ai9
+        for variant in EXTRA_AE_VARIANTS:
+            vid = variant_rva_to_id[variant['key']].get(s.get(variant['sym_key']))
+            if vid is not None:
+                s[variant['id_key']] = vid
 
     funcs = [s for s in symbols if s['t'] == 'func']
     n_v = sum(1 for s in symbols if s.get('v'))

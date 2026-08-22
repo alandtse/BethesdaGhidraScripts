@@ -32,7 +32,11 @@ from ghidra.program.model.data import (
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import plan_cascade_fix  # noqa: E402
-from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT  # noqa: E402
+from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT, EXTRA_AE_VARIANTS  # noqa: E402
+
+# VERSION ('svr'/'se'/'ae'/'ae1799'/...) -> SYMBOLS offset key ('v'/'s'/'a'/'a9'/...).
+VKEY_MAP = {'svr': 'v', 'se': 's', 'ae': 'a'}
+VKEY_MAP.update({variant['key']: variant['sym_key'] for variant in EXTRA_AE_VARIANTS})
 sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
 from engine.tx import transaction  # noqa: E402
 
@@ -625,7 +629,7 @@ def run_symbols():
         if vt[0] in live:
             created['vtbl:' + vt[0]] = live[vt[0]]
 
-    vkey = {'svr': 'v', 'se': 's', 'ae': 'a', 'ae1799': 'a9'}.get(VERSION, 'a')
+    vkey = VKEY_MAP.get(VERSION, 'a')
 
     def relid(s):
         return apply_plan.relocation_id_comment(s.get('si'), s.get('ai'))
@@ -770,7 +774,7 @@ def run_sigconflict():
 
     apply_go = os.environ.get('CLVR_SIGCONFLICT', 'dry').lower() == 'go'
     cap = int(os.environ.get('CLVR_SIGCONFLICT_MAX', '0') or 0)
-    vkey = {'svr': 'v', 'se': 's', 'ae': 'a', 'ae1799': 'a9'}.get(VERSION, 'a')
+    vkey = VKEY_MAP.get(VERSION, 'a')
     out_csv = IMPORT_PATH + '.sigconflict.csv'
 
     decomp = DecompInterface()

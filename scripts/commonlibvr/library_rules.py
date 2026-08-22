@@ -47,6 +47,38 @@ INCLUDE_PATHS = [
     r'E:\Documents\source\repos\BethesdaGhidraScripts\extern\CommonLibVR\include',
 ]
 
+# Extra AE point-release variants beyond the four baseline RUNTIMES above -- an AE
+# point release (like 1.7.99) that changed the address-library on-disk FORMAT (not
+# the compiled struct layout: same '-DENABLE_SKYRIM_AE=1' defines, see VERSIONS in
+# parse_commonlib_types.py) reuses the shared AE RELOCATION_ID/VariantID id-space, so
+# its RVA is found by reverse-mapping a known ae_off to that id, then looking the id
+# up in this variant's own address-library file (`reloc_parser._attach_extra_ae_variants`).
+#
+#   key       - internal short name; address-library attribute is '<key>_db'
+#   sym_key   - SYMBOLS dict offset field (single letter/short code, e.g. 'a9')
+#   id_key    - SYMBOLS dict address-library-id field (e.g. 'ai9')
+#   filename  - versionlib-*.bin under addresslibrary/sse/
+#   format    - 'v5' (dense uint32[] format, AddressLibrary.load_bin_v5) or 'v2'
+#               (legacy delta/varint format, AddressLibrary.load_bin)
+#   version   - (major, minor, patch, sub) tuple, informational
+#   vt_match  - substrings matched against a Version Tracking destination program's
+#               name (case-sensitive substring, first match wins) -- include every
+#               spelling Ghidra might show (a stale cached Program name can lag an
+#               on-disk rename; see test_vt_plan.py's ae1799_by_stale_cached_name)
+#   label     - human-readable "SE->X" label for logging
+EXTRA_AE_VARIANTS = [
+    {
+        'key': 'ae1799',
+        'sym_key': 'a9',
+        'id_key': 'ai9',
+        'filename': 'versionlib-1-7-99-0.bin',
+        'format': 'v5',
+        'version': (1, 7, 99, 0),
+        'vt_match': ('1.7.99', '1.7.79', '1799'),
+        'label': 'SE->AE1799',
+    },
+]
+
 
 class CommonLibVRRules:
     """Satisfies core.rules.base.LibraryRules. Grammar/format methods

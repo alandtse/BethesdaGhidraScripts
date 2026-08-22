@@ -144,6 +144,38 @@ The program is modified **in-memory only** — the MCP/transaction layer can't s
 CommonLib in 429/913 conflicts (incl. 175/260 PDB overrides); phase 4 reparented ~14.3k
 functions and produced ~2k GhidraClasses.
 
+### 5b. Extra AE point releases — one table, not one-off code (`library_rules.EXTRA_AE_VARIANTS`)
+An AE point release that changes the address-library on-disk FORMAT without changing
+the compiled struct layout (e.g. AE 1.7.99, which moved to a dense format-5
+`versionlib-*.bin`) reuses the SAME `RELOCATION_ID`/`VariantID` id-space as the rest
+of the AE line -- its RVA for a given symbol is found by reverse-mapping a known AE
+offset to that shared id, then looking the id up in the variant's own address
+library. `library_rules.EXTRA_AE_VARIANTS` is the single table this is driven from
+(key, `sym_key`/`id_key` SYMBOLS fields, address-library filename/format, VT
+destination-name match strings); `reloc_parser.py` (`_attach_extra_ae_variants`),
+`parse_commonlib_types.py` (`VERSIONS`, `_build_address_library`, `_build_symbols`),
+`vt_plan.py` (`classify_destination`), `commonlib_writeback.py` (`_VKEYS`/
+`_detect_vkey`), and `apply_enrich.py` (`VKEY_MAP`) all read it. **The next AE version
+bump should only need one new entry in that table** -- add the filename/format/
+version tuple/VT-match strings and re-run the pipeline; no other file should need a
+code change. `commonlib_field_writeback.py`'s `_RT` and `writeback_aggregate.py`'s
+`RUNTIMES` instead derive from `library_rules.RUNTIMES` (the plain 4-item runtime
+list), which also needs the new key added alongside `VERSION_TUPLES`.
+
+### 5c. RTTI vtable recovery for a new program (`recover_rtti_vtables.py`)
+A Python port of `ghidraTools/RecoverRttiVtablesScript.java` (the MCP `scripts` tool
+can't invoke that by path -- it only sees Ghidra-install script dirs) for running the
+same RTTI-ground-truth vtable naming (see §16) via eval_python. Needed once per NEW
+program this pipeline targets (most recently AE 1.7.99). Dry-run by default,
+`RTTI_APPLY=go` to write. Two hard-won gotchas baked in (see its own docstring):
+`MemoryBlock.getBytes(Address, byte[])` silently returns all-zero data if the byte[]
+is a plain Python bytearray instead of a real `jpype.JArray(jpype.JByte)` -- no error,
+just wrong answers -- and it deliberately never calls `CreateFunctionCmd` to create
+new destructor functions (only renames ones that already exist), because doing so
+under the MCP's own outer transaction risked a synchronous-reanalysis deadlock in
+practice. Budget a generous `timeout_seconds` (low-single-digit minutes for discovery,
+roughly another minute for the naming pass over several thousand classes).
+
 ### 6. Version Tracking — exact cross-version matches from ids (`version_track.py`)
 CommonLib's `RELOCATION_ID(se, ae)` / `VariantID(se, ae, vr)` give each symbol's exact address in
 every runtime; the generated SYMBOLS carry them as `s`/`a`/`v` offsets. `version_track.py` turns

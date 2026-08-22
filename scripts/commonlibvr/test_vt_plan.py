@@ -76,6 +76,34 @@ def test_classify_destination_unmapped_runtime_is_none():
     assert vt_plan.classify_destination('SkyrimSE.exe') is None
 
 
+def test_classify_destination_ae1799_by_name():
+    assert vt_plan.classify_destination('SkyrimSE.1.7.99.exe') == ('a9', 'SE->AE1799')
+
+
+def test_classify_destination_ae1799_by_stale_cached_name():
+    # Ghidra's Program.getName() can lag a domain-file rename until reopened
+    # (observed: renaming the on-disk exe from a typo'd 1.7.79 didn't retarget
+    # the already-open Program's cached name) -- match on both spellings.
+    assert vt_plan.classify_destination('SkyrimSE.1.7.79.exe') == ('a9', 'SE->AE1799')
+
+
+def test_classify_destination_is_table_driven():
+    # Proves the next AE version bump only needs a new EXTRA_AE_VARIANTS entry --
+    # no vt_plan.py code change -- by adding a second, hypothetical variant at test
+    # time and confirming it's matched ahead of the generic AE fallback.
+    saved = vt_plan.EXTRA_AE_VARIANTS
+    try:
+        vt_plan.EXTRA_AE_VARIANTS = saved + [
+            {'sym_key': 'a10', 'label': 'SE->AEFuture', 'vt_match': ('1.8.42',)},
+        ]
+        assert vt_plan.classify_destination('SkyrimSE.1.8.42.exe') == ('a10', 'SE->AEFuture')
+        # existing entries still resolve correctly alongside the new one
+        assert vt_plan.classify_destination('SkyrimSE.1.7.99.exe') == ('a9', 'SE->AE1799')
+        assert vt_plan.classify_destination('SkyrimAE.exe') == ('a', 'SE->AE')
+    finally:
+        vt_plan.EXTRA_AE_VARIANTS = saved
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())

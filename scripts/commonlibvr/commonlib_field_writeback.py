@@ -40,7 +40,15 @@ _spec = _ilu.spec_from_file_location('clvr_field_writeback_plan',
 wp = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(wp)
 
-_RT = {'SE': 'se', 'AE': 'ae', 'VR': 'vr', 'AE1799': 'ae1799'}
+_lr_spec = _ilu.spec_from_file_location('clvr_field_writeback_library_rules',
+                                        os.path.join(SCRIPT_DIR, 'library_rules.py'))
+_lr = _ilu.module_from_spec(_lr_spec)
+_lr_spec.loader.exec_module(_lr)
+
+# Runtime tag, as it appears in the generated CommonLibImport_CLVR_<TAG>.py filename
+# (e.g. 'AE1799' -> 'CommonLibImport_CLVR_AE1799.py.resolved_fields.csv') -> that
+# runtime's lowercase key used elsewhere in this module's per-runtime rows.
+_RT = {rt: rt.lower() for rt in _lr.RUNTIMES}
 
 # a member type CommonLib uses as a not-yet-resolved placeholder -> safe to retype.
 # A concrete class/template type means CommonLib already RE'd it -> leave it alone.

@@ -24,7 +24,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
+from clvr_config import IMPORT_PATH, SCRIPT_DIR, EXTRA_AE_VARIANTS  # noqa: E402
 OUT_CSV = os.environ.get('CLVR_WRITEBACK_CSV', IMPORT_PATH + '.writeback.csv')
 
 import importlib.util as _ilu  # noqa: E402
@@ -58,11 +58,12 @@ def _load_symbols():
     raise RuntimeError('SYMBOLS not found in ' + IMPORT_PATH)
 
 
-_VKEYS = ('s', 'a', 'v', 'a9')
+_VKEYS = ('s', 'a', 'v') + tuple(variant['sym_key'] for variant in EXTRA_AE_VARIANTS)
 
 
 def _detect_vkey(cp, fm, base, symbols):
-    """Which offset key (s/a/v/a9) matches the currently open program.
+    """Which offset key (s/a/v/<variant sym_key>...) matches the currently open
+    program.
 
     The program's display name is not a reliable signal on its own -- a
     renamed/typo'd import (e.g. an AE 1.7.99 dump saved as "...1.7.79.exe")
@@ -71,9 +72,10 @@ def _detect_vkey(cp, fm, base, symbols):
     often; the name only breaks ties when two keys are close.
     """
     nm = cp.getName().lower()
-    name_hint = 'v' if 'vr' in nm else (
-        'a9' if ('1799' in nm or '7.99' in nm) else
-        ('a' if ('1170' in nm or 'ae' in nm) else 's'))
+    name_hint = 'v' if 'vr' in nm else next(
+        (variant['sym_key'] for variant in EXTRA_AE_VARIANTS
+         if any(m.lower() in nm for m in variant['vt_match'])),
+        'a' if ('1170' in nm or 'ae' in nm) else 's')
 
     samples = {k: [] for k in _VKEYS}
     for s in symbols:

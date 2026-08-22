@@ -9,6 +9,16 @@ or is absent (seed -- inject an exact accepted match).
 
 Kept separate from the Ghidra driver so the decision logic is unit-testable.
 """
+import importlib.util
+import os
+
+# This dir's own library_rules.py (uniquely-named load: the basename is shared with
+# every other library's library_rules.py -- see clvr_config.py's identical concern).
+_LR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'library_rules.py')
+_lr_spec = importlib.util.spec_from_file_location('clvr_vt_plan_library_rules', _LR_PATH)
+_library_rules = importlib.util.module_from_spec(_lr_spec)
+_lr_spec.loader.exec_module(_library_rules)
+EXTRA_AE_VARIANTS = _library_rules.EXTRA_AE_VARIANTS
 
 
 def classify_destination(dest_program_name):
@@ -18,6 +28,9 @@ def classify_destination(dest_program_name):
     """
     if 'VR' in dest_program_name:
         return 'v', 'SE->VR'
+    for variant in EXTRA_AE_VARIANTS:
+        if any(m in dest_program_name for m in variant['vt_match']):
+            return variant['sym_key'], variant['label']
     if '1170' in dest_program_name or 'AE' in dest_program_name:
         return 'a', 'SE->AE'
     return None

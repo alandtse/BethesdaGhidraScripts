@@ -38,6 +38,14 @@ _spec = importlib.util.spec_from_file_location('commonlibsse_reloc_parser', _BAS
 base_rp = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(base_rp)
 
+# This dir's own library_rules.py (uniquely-named load: the basename is shared with
+# every other library's library_rules.py -- see clvr_config.py's identical concern).
+_LR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'library_rules.py')
+_lr_spec = importlib.util.spec_from_file_location('clvr_reloc_parser_library_rules', _LR_PATH)
+_library_rules = importlib.util.module_from_spec(_lr_spec)
+_lr_spec.loader.exec_module(_library_rules)
+EXTRA_AE_VARIANTS = _library_rules.EXTRA_AE_VARIANTS
+
 # REL::VariantID(se, ae, vr) — single declaration form used by RTTI / NiRTTI:
 #   constexpr REL::VariantID RTTI_AlchemyItem(513850, 392218, 0x1ed6d60);
 _VARIANT_DECL_RE = re.compile(
@@ -166,35 +174,44 @@ def collect_relocations(
             seen_labels.add(key)
             deduped_labels.append(lbl)
 
-    _attach_ae1799(deduped_funcs, addr_lib)
-    _attach_ae1799(deduped_labels, addr_lib)
+    _attach_extra_ae_variants(deduped_funcs, addr_lib)
+    _attach_extra_ae_variants(deduped_labels, addr_lib)
 
     return (deduped_funcs, deduped_labels, offset_id_map,
             all_static_methods, se_offset_map, ae_offset_map)
 
 
-def _attach_ae1799(syms: List[dict], addr_lib) -> None:
-    """Attach an ``ae1799_off`` to each symbol that has an ``ae_off``.
+def _attach_extra_ae_variants(syms: List[dict], addr_lib) -> None:
+    """Attach a ``<variant>_off`` to each symbol that has an ``ae_off``, for every
+    entry in ``library_rules.EXTRA_AE_VARIANTS`` (e.g. AE 1.7.99).
 
-    AE 1.7.99 reuses the same AE id as 1.6.353-1.6.1179 (single
-    ``RELOCATION_ID(se, ae)``/``VariantID(se, ae, vr)`` declaration, no
-    separate macro arg -- see CommonLibVR-ng PR #298/#299), so the 1.7.99 RVA
-    for a given symbol is found by reverse-mapping its known ``ae_off`` back
-    to the shared id via ``addr_lib.ae_db``, then looking that id up in
-    ``addr_lib.ae1799_db`` (format-5 address library, a separate physical
-    binary's RVA space).
+    Each such AE point release reuses the same AE id as the rest of the AE line
+    (single ``RELOCATION_ID(se, ae)``/``VariantID(se, ae, vr)`` declaration, no
+    separate macro arg -- see CommonLibVR-ng PR #298/#299), so its RVA for a given
+    symbol is found by reverse-mapping the known ``ae_off`` back to the shared id
+    via ``addr_lib.ae_db``, then looking that id up in the variant's own
+    ``addr_lib.<key>_db`` (a separate physical binary's RVA space -- e.g. a
+    different address-library on-disk format). Adding support for the next such
+    variant is a new entry in ``EXTRA_AE_VARIANTS``, not a new function here.
     """
+    if not EXTRA_AE_VARIANTS:
+        return
     ae_off_to_id = {off: aid for aid, off in addr_lib.ae_db.items()}
-    for s in syms:
-        ae_off = s.get('ae_off')
-        if not ae_off:
+    for variant in EXTRA_AE_VARIANTS:
+        db = getattr(addr_lib, variant['key'] + '_db', None)
+        if db is None:
             continue
-        aid = ae_off_to_id.get(ae_off)
-        if aid is None:
-            continue
-        ae1799_off = addr_lib.ae1799_db.get(aid)
-        if ae1799_off:
-            s['ae1799_off'] = ae1799_off
+        off_field = variant['key'] + '_off'
+        for s in syms:
+            ae_off = s.get('ae_off')
+            if not ae_off:
+                continue
+            aid = ae_off_to_id.get(ae_off)
+            if aid is None:
+                continue
+            variant_off = db.get(aid)
+            if variant_off:
+                s[off_field] = variant_off
 
 
 def collect_src_relocations(src_dir, addr_lib, offset_id_map,
@@ -229,5 +246,5 @@ def collect_src_relocations(src_dir, addr_lib, offset_id_map,
         print('  Attached VR offsets to {} of {} src functions'.format(
             vr_attached, len(func_syms)))
 
-    _attach_ae1799(func_syms, addr_lib)
+    _attach_extra_ae_variants(func_syms, addr_lib)
     return func_syms
