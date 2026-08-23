@@ -579,6 +579,19 @@ def _safe_eol_comment(cu, text):
         cu.setComment(0, text + '\n' + existing)
 
 
+def _set_name_verified(f, name, source):
+    """f.setName(name, source), then read the name back and print a loud warning
+    if it doesn't match verbatim. Ghidra's own API has been observed (once, cause
+    unconfirmed) to persist a function name that differs from what was passed --
+    e.g. a 'Class::Method' request landing as 'Class:Method' -- with no exception
+    raised, so a caller has no other way to detect it."""
+    f.setName(name, source)
+    actual = f.getName()
+    if actual != name:
+        print('WARNING: setName mismatch at {}: requested {!r}, got {!r}'.format(
+            f.getEntryPoint(), name, actual))
+
+
 def run_symbols():
     """Enrich-safe symbol + vtable pass (separate from the types pass):
       - apply VTABLE_/RTTI_ labels (additive),
@@ -674,7 +687,7 @@ def run_symbols():
                     continue
                 cur = f.getName()
                 if cur.startswith('FUN_') or cur.startswith('sub_'):
-                    f.setName(nm, SourceType.USER_DEFINED)
+                    _set_name_verified(f, nm, SourceType.USER_DEFINED)
                     named += 1
                 rc = relid(s)
                 if rc:
@@ -948,12 +961,12 @@ def run_classes():
                 if target_ns is not global_ns:
                     f.setParentNamespace(target_ns)
                 try:
-                    f.setName(leaf, SourceType.USER_DEFINED)
+                    _set_name_verified(f, leaf, SourceType.USER_DEFINED)
                 except DuplicateNameException:
                     # leaf already taken in this namespace (overload/static) --
                     # disambiguate with the address, matching the vtable-walk style.
-                    f.setName('%s_%X' % (leaf, f.getEntryPoint().getOffset()),
-                              SourceType.USER_DEFINED)
+                    _set_name_verified(f, '%s_%X' % (leaf, f.getEntryPoint().getOffset()),
+                                        SourceType.USER_DEFINED)
                 reparented += 1
             except Exception:
                 errors += 1

@@ -622,6 +622,19 @@ CONFLICT = DataTypeConflictHandler.REPLACE_HANDLER
 created = {}  # full_name -> DataType
 
 
+def _set_name_verified(f, name, source):
+    """f.setName(name, source), then read the name back and print a loud warning
+    if it doesn't match verbatim. Ghidra's own API has been observed (once, cause
+    unconfirmed) to persist a function name that differs from what was passed --
+    e.g. a 'Class::Method' request landing as 'Class:Method' -- with no exception
+    raised, so a caller has no other way to detect it."""
+    f.setName(name, source)
+    actual = f.getName()
+    if actual != name:
+        print('WARNING: setName mismatch at {}: requested {!r}, got {!r}'.format(
+            f.getEntryPoint(), name, actual))
+
+
 def _find_existing_elsewhere(name, category):
     """A same-named data type already living in a DIFFERENT category (a prior
     /types.h import, a PDB-derived type, a Demangler/auto_structs stub, ...).
@@ -1279,7 +1292,7 @@ def _import_symbols():
                 if f:
                     curr_name = f.getName()
                     if curr_name.startswith('FUN_') or curr_name.startswith('sub_'):
-                        f.setName(final_name, SourceType.USER_DEFINED)
+                        _set_name_verified(f, final_name, SourceType.USER_DEFINED)
 
                     comment_parts = []
                     se_id = s.get('si')
@@ -1448,7 +1461,7 @@ def _import_vtable_names():
                     comment_parts.append('VTABLE ' + class_full_name + '::' + slot_name)
                     comment_parts.append('Slot offset: +0x{:X}'.format(slot_off))
                     comment_parts.append('Source: ' + PROJECT_NAME + ' vtable walk')
-                    func.setName(class_short + '::' + slot_name, SourceType.USER_DEFINED)
+                    _set_name_verified(func, class_short + '::' + slot_name, SourceType.USER_DEFINED)
                     cu = currentProgram.getListing().getCodeUnitAt(func_addr)
                     if cu:
                         cu.setComment(0, '\\n'.join(comment_parts))
@@ -1532,7 +1545,7 @@ def _import_vtable_names():
                     if not (curr.startswith('FUN_') or curr.startswith('sub_')):
                         continue
                     func_name = 'Func{}{}'.format(slot_idx, sec_suffix)
-                    func.setName(class_short + '::' + func_name, SourceType.USER_DEFINED)
+                    _set_name_verified(func, class_short + '::' + func_name, SourceType.USER_DEFINED)
                     func_rva = func_addr.getOffset() - base_addr.getOffset()
                     cu = currentProgram.getListing().getCodeUnitAt(func_addr)
                     if cu:
@@ -1600,7 +1613,7 @@ def _import_fallback_symbols():
             if f:
                 curr = f.getName()
                 if curr.startswith('FUN_') or curr.startswith('sub_'):
-                    f.setName(sname, SourceType.USER_DEFINED)
+                    _set_name_verified(f, sname, SourceType.USER_DEFINED)
                     sig_target = f
                     was_renamed = True
                 elif curr == sname:
