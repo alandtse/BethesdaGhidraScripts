@@ -77,6 +77,16 @@ EXTRA_AE_VARIANTS = [
         'vt_match': ('1.7.99', '1.7.79', '1799'),
         'label': 'SE->AE1799',
     },
+    {
+        'key': 'ae1104',
+        'sym_key': 'a4',
+        'id_key': 'ai4',
+        'filename': 'versionlib-1-7-104-0.bin',
+        'format': 'v5',
+        'version': (1, 7, 104, 0),
+        'vt_match': ('1.7.104', '1104'),
+        'label': 'SE->AE1104',
+    },
 ]
 
 
