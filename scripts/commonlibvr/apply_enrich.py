@@ -594,6 +594,19 @@ def _set_name_verified(f, name, source):
 
 def run_symbols():
     """Enrich-safe symbol + vtable pass (separate from the types pass):
+
+    RUN ghidraTools' RecoverRttiVtablesScript.java ON THE TARGET PROGRAM FIRST if it
+    hasn't had a real RTTI pass (a freshly-added/less-common runtime especially --
+    confirmed on SkyrimSE.1.7.104.exe, 2026-08-30). This pass's own VTABLE_ labels
+    come from an address-library CSV id->address lookup, not from walking the
+    binary's actual RTTI, and that lookup can be silently wrong for less-mature
+    runtimes -- it created ~4000 garbage-address VTABLE_ duplicates (same name,
+    wrong address, slot 0 resolving to non-code) that then had to be swept and
+    deleted by hand. RecoverRttiVtablesScript finds vtables via Complete Object
+    Locator self-reference (ground truth, no CSV), so running it first either
+    prevents the collision or leaves an easy tell (two addresses under one VTABLE_
+    name -- keep whichever one's slot 0 resolves to a real function).
+
       - apply VTABLE_/RTTI_ labels (additive),
       - name functions ONLY where currently FUN_/sub_ (never clobber a real name),
       - set EOL comments only if absent (prepend, never overwrite),
