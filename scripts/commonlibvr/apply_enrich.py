@@ -32,6 +32,7 @@ from ghidra.program.model.data import (
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from layout_diff import plan_cascade_fix  # noqa: E402
+from clvr_ghidra_util import set_name_verified as _set_name_verified  # noqa: E402
 from clvr_config import IMPORT_PATH, SCRIPT_DIR, TYPES_CAT, EXTRA_AE_VARIANTS  # noqa: E402
 
 # VERSION ('svr'/'se'/'ae'/'ae1799'/...) -> SYMBOLS offset key ('v'/'s'/'a'/'a9'/...).
@@ -579,19 +580,6 @@ def _safe_eol_comment(cu, text):
         cu.setComment(0, text + '\n' + existing)
 
 
-def _set_name_verified(f, name, source):
-    """f.setName(name, source), then read the name back and print a loud warning
-    if it doesn't match verbatim. Ghidra's own API has been observed (once, cause
-    unconfirmed) to persist a function name that differs from what was passed --
-    e.g. a 'Class::Method' request landing as 'Class:Method' -- with no exception
-    raised, so a caller has no other way to detect it."""
-    f.setName(name, source)
-    actual = f.getName()
-    if actual != name:
-        print('WARNING: setName mismatch at {}: requested {!r}, got {!r}'.format(
-            f.getEntryPoint(), name, actual))
-
-
 def run_symbols():
     """Enrich-safe symbol + vtable pass (separate from the types pass):
 
@@ -808,7 +796,7 @@ def run_sigconflict():
 
     rows = []
     evaluated = wins_cand = wins_exist = conflicts = 0
-    with transaction(cp, 'CommonLibVR signature conflict resolution'):
+    with transaction(cp, 'CommonLibVR signature conflict resolution', apply_go):
         for s in SYMBOLS:
             if s.get('t') != 'func':
                 continue
@@ -911,6 +899,16 @@ def run_classes():
     for vt in VTABLES:
         class_names.add(vt[1].split('::')[-1])
 
+    # Classes CommonLib does not know still have an RTTI-derived VTABLE_<Class> label
+    # (recover_rtti_vtables.py); their flat `Class::Role` names (e.g. from the `roles`
+    # phase) belong in a class namespace too.
+    for s in st.getSymbolIterator('VTABLE_*', True):
+        vn = s.getName()[len('VTABLE_'):]
+        if vn.endswith('_0'):
+            vn = vn[:-2]
+        if vn and not any(c in vn for c in '<>:, *'):
+            class_names.add(vn)
+
     ns_cache = {}
 
     def get_ns(chain, class_index):
@@ -935,7 +933,7 @@ def run_classes():
 
     reparented = classes_seen = errors = 0
     sample = []
-    with transaction(cp, 'CommonLibVR class population'):
+    with transaction(cp, 'CommonLibVR class population', apply_go):
         # B: reparent flat Class::Method functions
         from ghidra.util.exception import DuplicateNameException
         for f in fm.getFunctions(True):
@@ -945,6 +943,12 @@ def run_classes():
             # (short name 'Class_Method' inside class Class).
             nm = f.getName(True)
             short = f.getName()
+            # A qualified short name that repeats its own parent namespace ('Class::m' inside
+            # class Class, as the `roles` phase writes for already-placed methods) is
+            # authoritative: do not read the doubled prefix as a nested namespace.
+            _par = f.getParentNamespace()
+            if _par is not global_ns and short.startswith(_par.getName() + '::'):
+                nm = short
             if '::' not in nm and '__' not in nm:
                 continue
             # compiler-generated, not real class methods -- leave them alone.
@@ -1052,6 +1056,37 @@ def run_classes():
         print('   ' + s)
 
 
+def run_roles():
+    """Binary-derived naming of the functions around each class's vtable (delegates to
+    apply_vtable_roles.py): `Class::dtor_deleting`, `Class::~Class`, `Class::CreateClone`,
+    `Class::Create` and `Class::ctor` as flat names. Run AFTER recover_rtti_vtables.py (its
+    RTTI labels are the class source) and BEFORE `classes` (which reparents the flat names
+    into namespaces) and `thiscall` (which types `this`).
+
+    Dry-run by default; set CLVR_ROLES=go to apply. Decision logic is in
+    core/plans/vtable_roles_plan.py (unit-tested).
+    """
+    path = os.path.join(SCRIPT_DIR, 'apply_vtable_roles.py')
+    g = dict(globals())
+    g['__name__'] = '__main__'
+    with open(path) as fh:
+        code = fh.read()
+    exec(compile(code, path, 'exec'), g)
+
+
+def run_repair():
+    """Re-place scrambled flat structs by their hex-offset member suffixes (delegates to
+    apply_struct_repair.py). Dry-run by default; set CLVR_REPAIR=go to apply. Decision logic is
+    in core/plans/struct_repair_plan.py (unit-tested). Run after `types`, before `symbols`.
+    """
+    path = os.path.join(SCRIPT_DIR, 'apply_struct_repair.py')
+    g = dict(globals())
+    g['__name__'] = '__main__'
+    with open(path) as fh:
+        code = fh.read()
+    exec(compile(code, path, 'exec'), g)
+
+
 def run_thiscall():
     """Post-classes phase: normalize class members to proper `__thiscall` (delegates
     to seed_this.py).
@@ -1089,6 +1124,10 @@ if __name__ == '__main__':
         run_symbols()
     elif _PHASE == 'sigconflict':
         run_sigconflict()
+    elif _PHASE == 'roles':
+        run_roles()
+    elif _PHASE == 'repair':
+        run_repair()
     elif _PHASE == 'classes':
         run_classes()
     elif _PHASE == 'thiscall':

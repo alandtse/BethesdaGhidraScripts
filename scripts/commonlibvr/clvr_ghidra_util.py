@@ -104,3 +104,18 @@ def param0_class_name(func):
     if not ps:
         return ''
     return ps[0].getDataType().getName().rstrip('64').rstrip(' *')
+
+
+def set_name_verified(f, name, source):
+    """f.setName(name, source), then read the name back and print a loud warning
+    if it doesn't match verbatim. Ghidra's own API has been observed (once, cause
+    unconfirmed) to persist a function name that differs from what was passed --
+    e.g. a 'Class::Method' request landing as 'Class:Method' -- with no exception
+    raised, so a caller has no other way to detect it. Returns True when verbatim."""
+    f.setName(name, source)
+    actual = f.getName()
+    if actual != name:
+        print('WARNING: setName mismatch at {}: requested {!r}, got {!r}'.format(
+            f.getEntryPoint(), name, actual))
+        return False
+    return True

@@ -23,12 +23,16 @@ never a bare Python bytearray. (`bytes(jarr)` uses the buffer protocol and is fa
 manually iterating the array element-by-element, e.g. ``bytes(x & 0xFF for x in
 jarr)``, works but is 100-1000x slower -- large enough to look like a hang.)
 
-Also does NOT call CreateFunctionCmd to create new destructor functions at
-undiscovered addresses (unlike the Java original) -- under the MCP's own outer
-transaction, a command that can trigger synchronous re-analysis risked a deadlock in
-practice. This only renames destructors where a function ALREADY exists at the
-target address; it never creates one. If dtor coverage matters, run Ghidra's own
-function-creation/analysis first, then this script.
+Destructors are NOT named here. This script used to rename the function at each primary
+vtable's slot 0 to ``<Class>__dtor``, but slot 0 is the (scalar) deleting-destructor
+*wrapper*, not the destructor: the real one is the wrapper's callee. That mislabelled the
+wrapper in every program this ran on. Function naming around the vtable now belongs to the
+`roles` phase (apply_vtable_roles.py, rules in core/plans/vtable_roles_plan.py), which runs
+after this script.
+
+Also prunes stray ``VTABLE_`` labels (labels not at an RTTI vtable although the same class has a
+correct label at one -- the wrong-address duplicates a seeded import leaves behind): counted
+in every run, deleted only with RTTI_APPLY=go and RTTI_PRUNE=go.
 
 Run inside Ghidra via eval_python against the target program -- relies on
 eval_python's own outer transaction (see that MCP tool's own docs); run() opens
@@ -42,11 +46,15 @@ budget a generous timeout_seconds (this repo's own AE1799 run needed ~1200s+).
 import os
 import re
 import struct
+import sys
 
 # Ghidra/JPype imports are deliberately deferred into the functions that need them
 # (not top-level) so this module -- specifically clean_demangled_name(), the pure
 # logic -- stays importable and unit-testable outside a live Ghidra process. See
 # test_recover_rtti_vtables.py.
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'core'))
+from plans import vtable_roles_plan as vr_plan  # noqa: E402
 
 APPLY = os.environ.get('RTTI_APPLY', 'dry').lower() == 'go'
 
@@ -208,36 +216,44 @@ def _to_addr(cp, a):
         return None
 
 
-def _name_destructor(cp, blocks, fm, vt, readable, apply):
-    """Rename an already-EXISTING FUN_/sub_/thunk_ function at the vtable's meta
-    pointer to <readable>__dtor. Never creates a new function (see module
-    docstring). Eligibility is checked (and counted) even in dry-run; only the
-    actual write is gated on `apply`."""
-    blk = _block_of(blocks, vt)
+def _slot0_is_function(cp, blocks, addr):
+    """True when the qword at `addr` is the entry of a known function: the address is shaped like
+    a vtable (a COL-less secondary or non-RTTI table), so its label is not provably stale."""
+    blk = _block_of(blocks, addr)
     if blk is None:
         return False
-    off = vt - blk[0]
-    d = blk[1]
-    if off + 8 > len(d):
+    q = struct.unpack_from('<Q', blk[1], addr - blk[0])[0]
+    if not 0 < q < (1 << 47):
         return False
-    h = struct.unpack_from('<Q', d, off)[0]
-    hb = _block_of(blocks, h)
-    if hb is None or not hb[2]:
-        return False
-    f = fm.getFunctionAt(_to_addr(cp, h))
-    if f is None:
-        return False
-    n = f.getName()
-    if not (n.startswith('FUN_') or n.startswith('sub_') or n.startswith('thunk_')):
-        return False
-    if not apply:
-        return True
-    from ghidra.program.model.symbol import SourceType
-    try:
-        f.setName(re.sub(r'[^A-Za-z0-9]', '_', readable) + '__dtor', SourceType.USER_DEFINED)
-        return True
-    except Exception:
-        return False
+    a = _to_addr(cp, q)
+    return a is not None and cp.getFunctionManager().getFunctionAt(a) is not None
+
+
+def _prune_stale_labels(cp, symtab, by_class, blocks):
+    """Delete stray `VTABLE_` labels that are not at an RTTI vtable while the same class
+    already has a correct label at one (see plans.vtable_roles_plan.stale_vtable_labels).
+    Counted in dry-run; RTTI_PRUNE=go deletes. Labels of classes with no RTTI vtable are kept,
+    and so are labels at vtable-shaped addresses (first slot is a function): those may be real
+    tables RTTI discovery cannot see."""
+    real = set()
+    for group in by_class.values():
+        for (vaddr, _sub_off, _name) in group:
+            real.add(vaddr)
+    labels = {}
+    for s in symtab.getSymbolIterator('VTABLE_*', True):
+        labels.setdefault(s.getAddress().getOffset(), []).append(s.getName())
+    candidates = vr_plan.stale_vtable_labels(labels, real)
+    stale = [(off, name) for off, name in candidates if not _slot0_is_function(cp, blocks, off)]
+    print("Stale VTABLE_ candidates: {}; {} kept as vtable-shaped.".format(
+        len(candidates), len(candidates) - len(stale)))
+    deleted = 0
+    if os.environ.get('RTTI_PRUNE', 'dry').lower() == 'go' and APPLY:
+        for off, name in stale:
+            for s in symtab.getSymbols(_to_addr(cp, off)):
+                if s.getName() == name and s.delete():
+                    deleted += 1
+    print("Stale VTABLE_ duplicates: {} found, {} deleted (RTTI_APPLY=go and RTTI_PRUNE=go to delete).".format(
+        len(stale), deleted))
 
 
 def run(current_program, monitor):
@@ -250,6 +266,13 @@ def run(current_program, monitor):
     if 'x86' not in lang_id or cp.getDefaultPointerSize() != 8:
         print("This script targets x64 Windows PE binaries only.")
         return
+
+    if APPLY:
+        # these writes do not go through engine.tx.transaction: take the undo point and target
+        # check explicitly
+        from engine.tx import backup_program, check_target
+        check_target(cp)
+        backup_program(cp, 'recover_rtti_vtables', monitor)
 
     image_base = cp.getImageBase().getOffset()
     blocks = _cache_blocks(cp, monitor)
@@ -264,9 +287,8 @@ def run(current_program, monitor):
 
     demangler = MicrosoftDemangler()
     symtab = cp.getSymbolTable()
-    fm = cp.getFunctionManager()
 
-    renamed = created = unchanged = dtors = undemangled = 0
+    renamed = created = unchanged = undemangled = 0
     for td_addr, group in by_class.items():
         monitor.checkCancelled()
         group.sort(key=lambda v: v[1])
@@ -300,16 +322,11 @@ def run(current_program, monitor):
                         pass
                 else:
                     created += 1
-            # Slot 0 is only the scalar-deleting destructor on the PRIMARY vtable
-            # (sub_off == 0); on a secondary/interface vtable it's that base's own
-            # first virtual method, and misnaming it here would silently corrupt an
-            # unrelated function.
-            if sub_off == 0 and _name_destructor(cp, blocks, fm, vaddr, readable, APPLY):
-                dtors += 1
 
     print("VTABLE labels ({}): {} renamed, {} created, {} already correct, "
-          "{} destructors, {} undemanglable.".format(
-              'APPLIED' if APPLY else 'DRY-RUN', renamed, created, unchanged, dtors, undemangled))
+          "{} undemanglable.".format(
+              'APPLIED' if APPLY else 'DRY-RUN', renamed, created, unchanged, undemangled))
+    _prune_stale_labels(cp, symtab, by_class, blocks)
 
 
 # Only auto-run when exec'd via eval_python (which injects these as globals) --

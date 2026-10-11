@@ -125,10 +125,20 @@ idempotent, and each is **dry-run by default** with its own `*=go` flag to write
 | order | `CLVR_PHASE` | what it does | apply flag |
 |---|---|---|---|
 | 1 | `types` (default) | create/replace types per `conflict_report.classify` | `CLVR_APPLY=go` |
+| 1b | `repair` | re-place scrambled flat structs by their hex-offset member suffixes (delegates to `apply_struct_repair.py`; rules in `core/plans/struct_repair_plan.py`); rollback record `<import>.repair.json` | `CLVR_REPAIR=go` |
 | 2 | `symbols` | label + name FUN_/sub_ functions, apply CommonLib sigs, vtable-slot + fallback naming. Upgrades auto-inferred (DEFAULT/ANALYSIS) sigs; never clobbers USER_DEFINED/IMPORTED | (writes in-txn) |
 | 3 | `sigconflict` | where a CommonLib sig **differs** from an existing USER_DEFINED/IMPORTED one, decompile both ways and keep the cleaner (`decompile_score`) | `CLVR_SIGCONFLICT=go` |
+| 3b | `roles` | name the functions around each RTTI vtable from the binary alone (delegates to `apply_vtable_roles.py`; rules in `core/plans/vtable_roles_plan.py`): `Class::dtor_deleting` (slot 0), `Class::~Class`, `Class::CreateClone` (slot 23), `Class::Create`, `Class::ctor`. Only placeholder names are replaced. Run after `recover_rtti_vtables.py`; rollback record `<import>.roles.csv` | `CLVR_ROLES=go` |
 | 4 | `classes` | reparent flat `Class::Method` names into namespaces, create/promote GhidraClass per class, re-point straggler vftable fields | `CLVR_CLASSES=go` |
 | 5 | `thiscall` | normalize class members to proper `__thiscall` (delegates to `seed_this.py`): convert the `__fastcall`-with-explicit-`this` the symbols phase applies into `__thiscall` (auto-typed `this`), and seed a typed `this` on the non-id-bound tail | `CLVR_SEED=go` |
+
+**Undo point.** Every applying phase goes through `engine.tx.transaction`, which first snapshots
+the program's *saved* state to `$CLVR_BACKUP_DIR` (default `~/.clvr_backups`) as
+`<program>.<timestamp>.<label>.gzf` (one per saved version; never twice for the same state). A
+program with unsaved changes is refused ("File > Save first") so the snapshot is exactly the
+pre-run state; `CLVR_BACKUP=skip` disables it. To undo: close the program in Ghidra and
+File > Import the `.gzf` (or `DomainFile` unpack) over it. The per-phase `*.roles.csv` /
+`*.repair.json` records remain as finer-grained, name-level rollbacks.
 
 Phase 5 **must** follow phase 4 — the GhidraClass↔struct association `classes` creates is what lets
 `__thiscall` auto-type `this`. The symbols phase deliberately leaves members as
@@ -175,6 +185,10 @@ new destructor functions (only renames ones that already exist), because doing s
 under the MCP's own outer transaction risked a synchronous-reanalysis deadlock in
 practice. Budget a generous `timeout_seconds` (low-single-digit minutes for discovery,
 roughly another minute for the naming pass over several thousand classes).
+It no longer names slot-0 functions: slot 0 is the *deleting* destructor wrapper, so the old
+`<Class>__dtor` label was wrong; the `roles` phase now owns destructor/ctor naming. It also reports
+stale duplicate `VTABLE_` labels (labels away from an RTTI vtable when the class has a real one);
+`RTTI_APPLY=go RTTI_PRUNE=go` deletes them.
 
 ### 6. Version Tracking — exact cross-version matches from ids (`version_track.py`)
 CommonLib's `RELOCATION_ID(se, ae)` / `VariantID(se, ae, vr)` give each symbol's exact address in
