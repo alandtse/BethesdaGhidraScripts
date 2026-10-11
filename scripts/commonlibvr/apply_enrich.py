@@ -1074,6 +1074,19 @@ def run_roles():
     exec(compile(code, path, 'exec'), g)
 
 
+def run_rebase():
+    """Rebuild VR flat structs on their RTTI parent (delegates to apply_vr_rebase.py). Needs the
+    SE program's facts: CLVR_REBASE=export on SE, then CLVR_REBASE_SE_JSON=<file> and
+    CLVR_REBASE=dry|go on VR. Decision logic is in core/plans/vr_rebase_plan.py (unit-tested).
+    """
+    path = os.path.join(SCRIPT_DIR, 'apply_vr_rebase.py')
+    g = dict(globals())
+    g['__name__'] = '__main__'
+    with open(path) as fh:
+        code = fh.read()
+    exec(compile(code, path, 'exec'), g)
+
+
 def run_repair():
     """Re-place scrambled flat structs by their hex-offset member suffixes (delegates to
     apply_struct_repair.py). Dry-run by default; set CLVR_REPAIR=go to apply. Decision logic is
@@ -1128,6 +1141,8 @@ if __name__ == '__main__':
         run_roles()
     elif _PHASE == 'repair':
         run_repair()
+    elif _PHASE == 'rebase':
+        run_rebase()
     elif _PHASE == 'classes':
         run_classes()
     elif _PHASE == 'thiscall':

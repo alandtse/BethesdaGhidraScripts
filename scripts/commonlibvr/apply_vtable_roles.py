@@ -22,7 +22,6 @@ Run order: recover_rtti_vtables -> this phase -> `classes` -> `thiscall`.
 """
 import csv
 import os
-import struct
 import sys
 from collections import Counter
 
@@ -31,81 +30,15 @@ from clvr_config import IMPORT_PATH, SCRIPT_DIR  # noqa: E402
 sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT_DIR), 'core'))
 from engine.tx import transaction  # noqa: E402
 from plans import vtable_roles_plan as vr  # noqa: E402
+from rtti_facts import Facts, base_names, rr, u64  # noqa: E402
 
 import importlib.util as _ilu  # noqa: E402
-_rspec = _ilu.spec_from_file_location('clvr_recover_rtti', os.path.join(SCRIPT_DIR, 'recover_rtti_vtables.py'))
-rr = _ilu.module_from_spec(_rspec)
-_rspec.loader.exec_module(rr)
 _gspec = _ilu.spec_from_file_location('clvr_ghidra_util', os.path.join(SCRIPT_DIR, 'clvr_ghidra_util.py'))
 gu = _ilu.module_from_spec(_gspec)
 _gspec.loader.exec_module(gu)
 
 APPLY = os.environ.get('CLVR_ROLES', 'dry').lower() == 'go'
 ROLES_CSV = os.environ.get('CLVR_ROLES_CSV', IMPORT_PATH + '.roles.csv')
-
-
-def _u32(blocks, a):
-    blk = rr._block_of(blocks, a)
-    return struct.unpack_from('<I', blk[1], a - blk[0])[0] if blk else None
-
-
-def _u64(blocks, a):
-    blk = rr._block_of(blocks, a)
-    return struct.unpack_from('<Q', blk[1], a - blk[0])[0] if blk else None
-
-
-def _base_names(blocks, image_base, vaddr):
-    """RTTI type-descriptor names of the class and all its bases (COL -> class hierarchy)."""
-    col = _u64(blocks, vaddr - 8)
-    chd = _u32(blocks, col + 0x10) if col else None
-    if chd is None:
-        return []
-    chd += image_base
-    n = _u32(blocks, chd + 8) or 0
-    arr = image_base + (_u32(blocks, chd + 0x0C) or 0)
-    out = []
-    for i in range(min(n, 40)):
-        bcd = image_base + (_u32(blocks, arr + 4 * i) or 0)
-        td = image_base + (_u32(blocks, bcd) or 0)
-        out.append(rr._cstring(blocks, td + 0x10) or '')
-    return out
-
-
-class Facts(object):
-    """Function facts for the planner, built on demand and cached per entry."""
-
-    def __init__(self, cp):
-        self.cp = cp
-        self.fm = cp.getFunctionManager()
-        self.listing = cp.getListing()
-        self.cache = {}
-
-    def func_name(self, addr):
-        f = self.fm.getFunctionAt(addr)
-        return f.getName() if f is not None else None
-
-    def of(self, f):
-        key = f.getEntryPoint().getOffset()
-        hit = self.cache.get(key)
-        if hit is not None:
-            return hit
-        insns = []
-        entries = set()
-        for ins in self.listing.getInstructions(f.getBody(), True):
-            text = str(ins)
-            refs = [r.getToAddress().getOffset() for r in ins.getReferencesFrom()]
-            flows = []
-            if text.startswith(('CALL', 'JMP')):
-                for fl in (ins.getFlows() or []):
-                    flows.append(self.func_name(fl))
-                    tf = self.fm.getFunctionAt(fl)
-                    if tf is not None:
-                        entries.add(tf.getEntryPoint().getOffset())
-            insns.append((text, refs, flows))
-        hit = {'entry': key, 'func': f, 'insns': insns, 'bytes': int(f.getBody().getNumAddresses()),
-               'name': f.getName(), 'callees': entries}
-        self.cache[key] = hit
-        return hit
 
 
 def _target_name(f, cls, role, global_ns):
@@ -140,8 +73,8 @@ def run(cp, monitor):
     slot0 = {}
     slot23 = {}
     for vaddr, _raw in primaries:
-        slot0[vaddr] = _u64(blocks, vaddr)
-        slot23[vaddr] = _u64(blocks, vaddr + 8 * 23)
+        slot0[vaddr] = u64(blocks, vaddr)
+        slot23[vaddr] = u64(blocks, vaddr + 8 * 23)
     slot0_owners = Counter(slot0.values())
     slot23_owners = Counter(slot23.values())
 
@@ -189,7 +122,7 @@ def run(cp, monitor):
         s23 = slot23[vaddr]
         roles, stats = vr.plan_class_roles(
             vaddr, refs, w['entry'], s23, slot23_owners[s23] if s23 else 0, w['callees'], size,
-            vr.is_niobject(_base_names(blocks, image_base, vaddr)), {x for x in slot0.values() if x})
+            vr.is_niobject(base_names(blocks, image_base, vaddr)), {x for x in slot0.values() if x})
         for k, v in stats.items():
             skipped[k] += v
         per_class.append((cls, vaddr, w, first_callee, roles, refs))
