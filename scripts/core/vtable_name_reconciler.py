@@ -32,6 +32,8 @@ Output
 ------
 Prints a per-class reconciliation report:
   - ``reconciled``: name overwritten (was a stale CommonLib-style label)
+  - ``failed``    : the rename could not be put in effect; the slot still
+                    carries its stale name and is not counted as reconciled
   - ``ok``        : already matches AST expectation (no action)
   - ``unnamed``   : ``FUN_``/``sub_`` placeholder, deferred to main import
   - ``manual``    : non-CommonLib name (no ``::``), left alone
@@ -48,6 +50,51 @@ from typing import Dict, List, Optional, Tuple
 
 REPO_DIR    = Path(__file__).resolve().parent.parent.parent
 GHIDRA_DIR  = REPO_DIR / "tools" / "ghidra"
+
+
+def _promote_existing_symbol(program, func_addr, wanted):
+    """Make an already-present symbol named *wanted* the primary one at *func_addr*.
+
+    ``setName`` refuses when that name already sits at the address as a
+    non-primary label (typically from the CommonLib import pass), which leaves the
+    function under its stale primary name. Returns True when the address ends up
+    primarily named *wanted*.
+    """
+    for symbol in program.getSymbolTable().getSymbols(func_addr):
+        if str(symbol.getName()) == wanted or str(symbol.getName(True)) == wanted:
+            if not symbol.isPrimary():
+                symbol.setPrimary()
+            return True
+    return False
+
+
+def _rename_slot(func, func_addr, program, target, expected_name, curr, SourceType):
+    """Put the bound CommonLib slot name in effect; True when the slot now carries it.
+
+    A function already inside a class namespace takes the leaf (``expected_name``):
+    the flat ``Class::method`` form there would double the class prefix.
+    """
+    namespace = func.getParentNamespace()
+    in_class_ns = namespace is not None and not namespace.isGlobal()
+    wanted = expected_name if in_class_ns else target
+    try:
+        func.setName(wanted, SourceType.USER_DEFINED)
+    except Exception as exc:  # noqa: BLE001
+        try:
+            if not _promote_existing_symbol(program, func_addr, wanted):
+                print('  WARN setName failed on 0x{:X}: {}'.format(func_addr.getOffset(), exc))
+                return False
+        except Exception as promote_exc:  # noqa: BLE001
+            print('  WARN setName failed on 0x{:X}: {} (promoting the existing symbol failed: {})'
+                  .format(func_addr.getOffset(), exc, promote_exc))
+            return False
+    cu = program.getListing().getCodeUnitAt(func_addr)
+    if cu:
+        existing = cu.getComment(0) or ''
+        note = 'Reconciled from stale name: ' + curr
+        if note not in existing:
+            cu.setComment(0, note + ('\n' + existing if existing else ''))
+    return True
 
 
 def _extract_vtables_from_import_script(script_path: Path
@@ -217,7 +264,7 @@ def main():
             mem = program.getMemory()
             af = program.getAddressFactory().getDefaultAddressSpace()
 
-            totals = {'reconciled': 0, 'ok': 0, 'unnamed': 0, 'manual': 0,
+            totals = {'reconciled': 0, 'failed': 0, 'ok': 0, 'unnamed': 0, 'manual': 0,
                       'no_vtable': 0, 'no_func': 0, 'read_fail': 0}
 
             tx = program.startTransaction('Vtable name reconciler') if not args.dry_run else None
@@ -275,20 +322,10 @@ def main():
                         if args.dry_run:
                             print('  DRY {} @ 0x{:X} : {!r} -> {!r}'.format(
                                 class_short, func_addr.getOffset(), curr, target))
-                        else:
-                            try:
-                                func.setName(target, SourceType.USER_DEFINED)
-                                listing = program.getListing()
-                                cu = listing.getCodeUnitAt(func_addr)
-                                if cu:
-                                    existing = cu.getComment(0) or ''
-                                    note = 'Reconciled from stale name: ' + curr
-                                    if note not in existing:
-                                        cu.setComment(0, note + ('\n' + existing if existing else ''))
-                            except Exception as e:
-                                print('  WARN setName failed on 0x{:X}: {}'.format(
-                                    func_addr.getOffset(), e))
-                                continue
+                        elif not _rename_slot(func, func_addr, program, target,
+                                              expected_name, curr, SourceType):
+                            totals['failed'] += 1
+                            continue
                         totals['reconciled'] += 1
             finally:
                 if tx is not None:
@@ -298,7 +335,7 @@ def main():
 
             print()
             print('=== Reconciler summary ===')
-            for k in ('reconciled', 'ok', 'unnamed', 'manual', 'no_vtable', 'no_func', 'read_fail'):
+            for k in ('reconciled', 'failed', 'ok', 'unnamed', 'manual', 'no_vtable', 'no_func', 'read_fail'):
                 print('  {:<12} {}'.format(k, totals[k]))
             if args.dry_run:
                 print('(dry-run: no changes written)')
