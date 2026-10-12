@@ -67,6 +67,17 @@ def _static_map():
     return out
 
 
+def _is_deleting_wrapper(cp, f):
+    """Slot-0 deleting-destructor shape: a short body testing the flag bit, loading the size, and
+    making at least two calls (the real destructor and the free)."""
+    if f.getBody().getNumAddresses() > 80:
+        return False
+    ins = [str(i) for i in cp.getListing().getInstructions(f.getBody(), True)]
+    return (any(s.startswith('TEST ') and s.endswith(',0x1') for s in ins)
+            and any(s.startswith('MOV EDX,0x') for s in ins)
+            and len([s for s in ins if s.startswith('CALL')]) >= 2)
+
+
 def _deleting_dtor_signatures(cp, dtm, fm, gns):
     """Give every class `dtor_deleting` the `Class* (Class* this, uint a_flags)` shape (dry-run counts)."""
     from ghidra.program.model.symbol import SymbolType, SourceType
@@ -86,14 +97,15 @@ def _deleting_dtor_signatures(cp, dtm, fm, gns):
             if struct is None or not sp.needs_deleting_dtor_signature(
                     cls, f.getName(), src.name() if hasattr(src, 'name') else str(src),
                     [p.getDataType().getName() for p in f.getParameters()],
-                    f.getReturnType().getName()):
+                    f.getReturnType().getName(), _is_deleting_wrapper(cp, f)):
                 continue
             n += 1
             if not APPLY:
                 continue
+            keep = SourceType.USER_DEFINED if src == SourceType.USER_DEFINED else SourceType.ANALYSIS
             f.setCallingConvention('__thiscall')
-            f.setReturnType(dtm.getPointer(struct, 8), SourceType.ANALYSIS)
-            f.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, True, SourceType.ANALYSIS,
+            f.setReturnType(dtm.getPointer(struct, 8), keep)
+            f.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, True, keep,
                                 [ParameterImpl('a_flags', UnsignedIntegerDataType.dataType, cp)])
     return n
 

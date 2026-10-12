@@ -69,10 +69,14 @@ if __name__ == '__main__':
     sys.exit(1 if failed else 0)
 
 
-def test_deleting_dtor_signature_needed_until_flags_and_return_are_set():
+def test_deleting_dtor_signature_normalises_verified_wrappers_only():
     need = sp.needs_deleting_dtor_signature
-    assert need('Foo', 'dtor_deleting', 'ANALYSIS', ['Foo *'], 'void')
-    assert need('Foo', 'dtor_deleting', 'DEFAULT', ['Foo *', 'uint'], 'void')
-    assert not need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *', 'uint'], 'Foo *')
-    assert not need('Foo', 'dtor_deleting', 'IMPORTED', ['Foo *'], 'void')
-    assert not need('Foo', '~Foo', 'DEFAULT', ['Foo *'], 'void')
+    assert need('Foo', 'dtor_deleting', 'ANALYSIS', ['Foo *'], 'void', True)
+    assert need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *', 'Foo *'], 'undefined', True)
+    assert need('Foo', 'dtor_deleting', 'DEFAULT', ['Foo *', 'uint'], 'void', True)
+    assert not need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *', 'uint'], 'Foo *', True)
+    assert not need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *'], 'void', False)
+    assert not need('Foo', 'dtor_deleting', 'IMPORTED', ['Foo *'], 'void', True)
+    assert not need('Foo', '~Foo', 'DEFAULT', ['Foo *'], 'void', True)
+    assert not need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *64', 'uint'], 'Foo *64', True)
+    assert not need('VirtualMachine', 'dtor_deleting', 'USER_DEFINED', ['BSScript::Internal::VirtualMachine *'], 'undefined', True)

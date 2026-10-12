@@ -71,10 +71,21 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source,
     return ('set', 'ok')
 
 
-def needs_deleting_dtor_signature(cls, leaf, sig_source, param_types, return_type):
-    """True when a `dtor_deleting` slot-0 wrapper lacks `Class* (Class* this, uint a_flags)`.
-    `param_types` are the type names of the explicit parameters including `this`."""
-    if leaf != 'dtor_deleting' or sig_source in _PROTECTED_SOURCES:
+def _plain(typename):
+    """`Foo *64` and `Foo *` are the same pointer; drop Ghidra's width suffix."""
+    return (typename or '').replace('*64', '*')
+
+
+def needs_deleting_dtor_signature(cls, leaf, sig_source, param_types, return_type, is_wrapper):
+    """True when a verified slot-0 deleting-destructor wrapper (`is_wrapper`) does not already have
+    `Class* (Class* this, uint a_flags)`. The wrapper takes only the deleting flag, so any other
+    parameter list is a decompiler or hand-made artifact and is replaced; PDB-imported ones are kept.
+    `param_types` are the type names of the explicit parameters including `this`; a `this` typed to a
+    different struct is left alone."""
+    if leaf != 'dtor_deleting' or not is_wrapper or sig_source in _PROTECTED_SOURCES:
         return False
-    want_params = [cls + ' *', 'uint']
-    return list(param_types) != want_params or return_type != cls + ' *'
+    this = cls + ' *'
+    params = [_plain(t) for t in param_types]
+    if not params or params[0] != this:
+        return False    # `this` is typed to another struct (e.g. a namespaced twin): leave for review
+    return params != [this, 'uint'] or _plain(return_type) != this
