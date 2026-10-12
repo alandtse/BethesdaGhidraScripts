@@ -69,3 +69,12 @@ def should_set_thiscall(class_known, leaf, current_convention, sig_source,
     if already_has_typed_this:
         return ('convert', 'has-explicit-this')   # remove this + set __thiscall
     return ('set', 'ok')
+
+
+def needs_deleting_dtor_signature(cls, leaf, sig_source, param_types, return_type):
+    """True when a `dtor_deleting` slot-0 wrapper lacks `Class* (Class* this, uint a_flags)`.
+    `param_types` are the type names of the explicit parameters including `this`."""
+    if leaf != 'dtor_deleting' or sig_source in _PROTECTED_SOURCES:
+        return False
+    want_params = [cls + ' *', 'uint']
+    return list(param_types) != want_params or return_type != cls + ' *'

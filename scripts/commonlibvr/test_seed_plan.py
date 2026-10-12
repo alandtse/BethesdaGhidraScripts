@@ -67,3 +67,12 @@ if __name__ == '__main__':
             failed += 1; print('FAIL', fn.__name__); traceback.print_exc()
     print('\n{}/{} passed'.format(len(fns) - failed, len(fns)))
     sys.exit(1 if failed else 0)
+
+
+def test_deleting_dtor_signature_needed_until_flags_and_return_are_set():
+    need = sp.needs_deleting_dtor_signature
+    assert need('Foo', 'dtor_deleting', 'ANALYSIS', ['Foo *'], 'void')
+    assert need('Foo', 'dtor_deleting', 'DEFAULT', ['Foo *', 'uint'], 'void')
+    assert not need('Foo', 'dtor_deleting', 'USER_DEFINED', ['Foo *', 'uint'], 'Foo *')
+    assert not need('Foo', 'dtor_deleting', 'IMPORTED', ['Foo *'], 'void')
+    assert not need('Foo', '~Foo', 'DEFAULT', ['Foo *'], 'void')

@@ -67,6 +67,37 @@ def _static_map():
     return out
 
 
+def _deleting_dtor_signatures(cp, dtm, fm, gns):
+    """Give every class `dtor_deleting` the `Class* (Class* this, uint a_flags)` shape (dry-run counts)."""
+    from ghidra.program.model.symbol import SymbolType, SourceType
+    from ghidra.program.model.data import CategoryPath, UnsignedIntegerDataType
+    from ghidra.program.model.listing import Function, ParameterImpl
+    n = 0
+    with transaction(cp, 'dtor_deleting-signature', APPLY):
+        for f in fm.getFunctions(True):
+            parent = f.getParentNamespace()
+            if parent is gns or parent.getSymbol() is None or f.getName() != 'dtor_deleting':
+                continue
+            if parent.getSymbol().getSymbolType() != SymbolType.CLASS:
+                continue
+            cls = parent.getName()
+            struct = dtm.getDataType(CategoryPath('/types.h'), cls)
+            src = f.getSignatureSource()
+            if struct is None or not sp.needs_deleting_dtor_signature(
+                    cls, f.getName(), src.name() if hasattr(src, 'name') else str(src),
+                    [p.getDataType().getName() for p in f.getParameters()],
+                    f.getReturnType().getName()):
+                continue
+            n += 1
+            if not APPLY:
+                continue
+            f.setCallingConvention('__thiscall')
+            f.setReturnType(dtm.getPointer(struct, 8), SourceType.ANALYSIS)
+            f.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, True, SourceType.ANALYSIS,
+                                [ParameterImpl('a_flags', UnsignedIntegerDataType.dataType, cp)])
+    return n
+
+
 def run():
     from ghidra.program.model.symbol import SymbolType, SourceType
     from ghidra.program.model.data import CategoryPath, Pointer, FunctionDefinitionDataType
@@ -193,7 +224,10 @@ def run():
             if len(sample) < 15 and kind in ('convert', 'thiscall', 'fallback'):
                 sample.append('%s::%s  [%s]' % (cls, leaf, tag))
 
+    dtor_sigs = _deleting_dtor_signatures(cp, dtm, fm, gns)
+
     print('thiscall-set (%s): %s' % (cp.getName(), 'APPLIED' if APPLY else 'DRY-RUN (no changes made)'))
+    print('  dtor_deleting signatures %s: %d' % ('set' if APPLY else 'to set', dtor_sigs))
     if APPLY:
         print('  gap-fill: auto-this=%d, explicit-fallback=%d' % (via_thiscall, via_fallback))
         print('  convert (remove this + __thiscall): %d   ANOMALIES(restored)=%d' % (converted, anomalies))

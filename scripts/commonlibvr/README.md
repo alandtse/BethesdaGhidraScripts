@@ -131,7 +131,7 @@ idempotent, and each is **dry-run by default** with its own `*=go` flag to write
 | 3 | `sigconflict` | where a CommonLib sig **differs** from an existing USER_DEFINED/IMPORTED one, decompile both ways and keep the cleaner (`decompile_score`) | `CLVR_SIGCONFLICT=go` |
 | 3b | `roles` | name the functions around each RTTI vtable from the binary alone (delegates to `apply_vtable_roles.py`; rules in `core/plans/vtable_roles_plan.py`): `Class::dtor_deleting` (slot 0), `Class::~Class`, `Class::CreateClone` (slot 23), `Class::Create`, `Class::ctor`. Only placeholder names are replaced. Run after `recover_rtti_vtables.py`; rollback record `<import>.roles.csv` | `CLVR_ROLES=go` |
 | 4 | `classes` | reparent flat `Class::Method` names into namespaces, create/promote GhidraClass per class, re-point straggler vftable fields | `CLVR_CLASSES=go` |
-| 5 | `thiscall` | normalize class members to proper `__thiscall` (delegates to `seed_this.py`): convert the `__fastcall`-with-explicit-`this` the symbols phase applies into `__thiscall` (auto-typed `this`), and seed a typed `this` on the non-id-bound tail | `CLVR_SEED=go` |
+| 5 | `thiscall` | normalize class members to proper `__thiscall` (delegates to `seed_this.py`): convert the `__fastcall`-with-explicit-`this` the symbols phase applies into `__thiscall` (auto-typed `this`), and seed a typed `this` on the non-id-bound tail; also types each class `dtor_deleting` as `Class* (Class* this, uint a_flags)` | `CLVR_SEED=go` |
 
 **Undo point.** Every applying phase goes through `engine.tx.transaction`, which first snapshots
 the program's *saved* state to `$CLVR_BACKUP_DIR` (default `~/.clvr_backups`) as
