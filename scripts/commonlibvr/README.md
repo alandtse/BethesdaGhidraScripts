@@ -468,6 +468,27 @@ any existing `VTABLE_*` (incl. a half-mangled import) to the authoritative reada
 multiple-inheritance subobjects by COL offset. Export back to `Offsets_VTABLE.h` re-mangles readable ->
 `_`/`__` (deterministic in that direction).
 
+### 17. One struct at a time — `--only` and `dump_struct.py`
+
+A full import is ~9 MB and re-types everything. To bring a single CommonLib struct into Ghidra, or just
+read its layout:
+
+```
+python scripts/commonlibvr/parse_commonlib_types.py se ae svr --only BSShaderManager::State
+python scripts/commonlibvr/dump_struct.py BSShaderManager::State --version vr --range 0xA0:0xC4
+```
+
+- `--only A,B` writes `CommonLibImport_CLVR_<VER>_only.py` with just those structs plus what they embed by
+  value (bases, by-value members, array elements, enums, their vtables). Pointer targets are not followed
+  and become generic pointers. It implies `--types-only` and never overwrites the full script. Run the
+  `_only` script in Ghidra like any other import script.
+- Names match a full name or a trailing `::` suffix. A name that matches several structs (`State` is both
+  `BSGraphics::State` and `BSShaderManager::State`) is an error that lists the candidates; add the outer
+  scope or pass `--size` to `dump_struct.py`.
+- Generated scripts carry `STRUCT_FULL_NAMES`, parallel to `STRUCTS`, because `STRUCTS` only holds the bare
+  name. `dump_struct.py` reads either script type without clang; `--json` and `--reng` (a
+  `reng.define_struct` call, untyped) are the machine-readable forms.
+
 ## Status
 - [x] Additive submodule + junction; powerof3 path untouched
 - [x] Per-runtime define set validated (VR layout correct)

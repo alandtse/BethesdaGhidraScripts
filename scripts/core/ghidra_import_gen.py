@@ -1680,6 +1680,76 @@ run()
 # Script generation
 # ---------------------------------------------------------------------------
 
+def _by_value_deps(type_str: str) -> Optional[Tuple[str, str]]:
+    """Return ('struct'|'enum', full_name) for a field type that embeds another
+    type by value (directly or as an array element); None for builtins and
+    pointers, which never need the target to exist to lay the field out."""
+    t = type_str
+    while t.startswith('arr:'):
+        t = t[4:]
+        head, sep, tail = t.rpartition(':')
+        if sep and tail.isdigit():
+            t = head
+    if t.startswith('struct:'):
+        return 'struct', t[7:]
+    if t.startswith('enum:'):
+        name = t[5:]
+        head, sep, tail = name.rpartition(':')
+        if sep and tail.isdigit() and not head.endswith(':'):
+            name = head
+        return 'enum', name
+    return None
+
+
+def select_types(structs: dict, enums: dict, vtable_structs: dict,
+                 only: List[str]) -> Tuple[dict, dict, dict]:
+    """Restrict the type tables to ``only`` plus everything they embed by value.
+
+    ``only`` entries match a struct's ``full_name`` exactly or as a trailing
+    ``::``-qualified suffix (``BSShaderManager::State`` selects
+    ``RE::BSShaderManager::State``). An entry matching zero or several structs
+    raises ValueError listing the candidates, so a bare ``State`` never silently
+    picks the wrong type. Pointer targets are not followed: a pointer to an
+    unselected type is emitted as a generic pointer, same as an unresolved type.
+    """
+    roots = []
+    for want in only:
+        hits = [fn for fn in structs
+                if fn == want or fn.endswith('::' + want)]
+        exact = [fn for fn in hits if fn == want]
+        if exact:
+            hits = exact
+        if len(hits) != 1:
+            detail = ', '.join('{} ({} bytes)'.format(fn, structs[fn]['size'])
+                               for fn in sorted(hits)) or 'no match'
+            raise ValueError('--only {!r} is not unique: {}'.format(want, detail))
+        roots.append(hits[0])
+
+    keep_structs, keep_enums = set(), set()
+    pending = list(roots)
+    while pending:
+        fn = pending.pop()
+        if fn in keep_structs:
+            continue
+        keep_structs.add(fn)
+        st = structs[fn]
+        deps = [('struct', b) for b in st['bases']]
+        deps += [d for d in (_by_value_deps(f['type']) for f in st['fields']) if d]
+        for kind, name in deps:
+            if kind == 'enum':
+                if name in enums:
+                    keep_enums.add(name)
+            elif name in structs and name not in keep_structs:
+                pending.append(name)
+
+    return (
+        {k: v for k, v in structs.items() if k in keep_structs},
+        {k: v for k, v in enums.items() if k in keep_enums},
+        {k: v for k, v in vtable_structs.items()
+         if v['class_full_name'] in keep_structs},
+    )
+
+
 def generate_script(
     enums: dict,
     structs: dict,
@@ -1781,6 +1851,15 @@ def generate_script(
         lines.append('    ({}, {}, {}, {}, {}, {}),'.format(
             repr(name), repr(size), repr(category),
             repr(deduped_fields), repr(bases), repr(has_vtable)))
+    lines.append(']')
+    lines.append('')
+
+    # Parallel to STRUCTS: STRUCTS carries only the bare name, so nested types
+    # (RE::BSShaderManager::State) are otherwise indistinguishable from
+    # same-named siblings. Kept separate so STRUCTS' tuple shape is unchanged.
+    lines.append('STRUCT_FULL_NAMES = [')
+    for st in sorted(structs.values(), key=lambda s: s['full_name']):
+        lines.append('    {},'.format(repr(st['full_name'])))
     lines.append(']')
     lines.append('')
 

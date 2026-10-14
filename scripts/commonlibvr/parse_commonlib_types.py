@@ -13,7 +13,10 @@ imported base parser at runtime.
 Type/vtable layer only for now: emitted with empty symbols ('[]'). The address layer
 (VariantID(se,ae,vr) 3-arg + VR addresslib from vr_address_tools) is a separate module.
 
-Usage:  python parse_commonlib_types.py [svr|se|ae ...]   (default: svr)
+Usage:  python parse_commonlib_types.py [svr|se|ae ...] [--types-only] [--only A,B]   (default: svr)
+        --only restricts the output to the named structs plus what they embed by value,
+        written to CommonLibImport_CLVR_<VER>_only.py with no symbols (implies --types-only).
+        Names match a full name or a trailing ::-suffix, e.g. BSShaderManager::State.
 Env:    BGS_VCPKG_INCLUDE  -> include dir with real DirectXMath.h + directxtk/SimpleMath.h
                               (State.h uses SimpleMath Vector4/Matrix as members, so the
                               real sizes are required for correct layout).
@@ -234,7 +237,13 @@ def _build_symbols(addr_lib):
 
 def main():
     versions = [v for v in sys.argv[1:] if v in base.VERSIONS] or ['svr']
-    types_only = '--types-only' in sys.argv
+    only = None
+    if '--only' in sys.argv:
+        i = sys.argv.index('--only')
+        only = [n for n in (sys.argv[i + 1] if i + 1 < len(sys.argv) else '').split(',') if n]
+        if not only:
+            sys.exit('--only needs a comma-separated list of struct names')
+    types_only = '--types-only' in sys.argv or bool(only)
     print('CommonLibVR source: {}'.format(CLVR_INCLUDE))
     print('Versions: {}{}'.format(', '.join(versions),
                                    ' (types only)' if types_only else ''))
@@ -246,7 +255,7 @@ def main():
         symbols_json = _build_symbols(addr_lib)
 
     for v in versions:
-        base.run_version(v, symbols_json)
+        base.run_version(v, symbols_json, only=only)
 
 
 if __name__ == '__main__':

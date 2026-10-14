@@ -164,7 +164,7 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
 
 def run_version(version, symbols_json, fallback_symbols_json='[]',
                 address_lib_map=None, pdb_structs=None, pdb_enums=None,
-                gog_variants=None):
+                gog_variants=None, only=None):
     from clang_types import collect_types, _setup_include_paths
 
     cfg = VERSIONS[version]
@@ -260,6 +260,16 @@ def run_version(version, symbols_json, fallback_symbols_json='[]',
     # the shared-header AST parse cannot otherwise see.  Fatal on mismatch.
     anchors_csv = os.path.join(SCRIPT_DIR, 'anchors', '{}.csv'.format(version))
     _verify_anchors_or_exit(version, vtable_structs, anchors_csv)
+
+    if only:
+        from ghidra_import_gen import select_types
+        structs, enums, vtable_structs = select_types(structs, enums, vtable_structs, only)
+        output_path = output_path.replace('.py', '_only.py')
+        symbols_json = fallback_symbols_json = '[]'
+        address_lib_map = None
+        gog_variants = None
+        print('--only {}: {} structs, {} enums, {} vtables'.format(
+            ', '.join(only), len(structs), len(enums), len(vtable_structs)))
 
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source, address_lib_map=address_lib_map)

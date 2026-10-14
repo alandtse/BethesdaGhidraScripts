@@ -86,6 +86,58 @@ def test_resolve_struct_name_degenerate_self_alias_falls_through():
     assert resolve(name) == 'SINK_DT'
 
 
+def _select_types():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('gig_under_test', _SRC_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.select_types
+
+
+def _st(full, fields=(), bases=()):
+    return {'full_name': full, 'name': full.split('::')[-1], 'size': 8,
+            'fields': [{'type': t} for t in fields], 'bases': list(bases)}
+
+
+def _tables():
+    structs = {s['full_name']: s for s in (
+        _st('RE::Outer::State', ['struct:RE::NiPoint2', 'arr:struct:RE::NiColorA:4',
+                                 'ptr:struct:RE::Far', 'enum:RE::Mode:1'], ['RE::Base']),
+        _st('RE::BSGraphics::State'),
+        _st('RE::NiPoint2'), _st('RE::NiColorA'), _st('RE::Far'), _st('RE::Base'),
+        _st('RE::Unrelated'))}
+    enums = {'RE::Mode': {'full_name': 'RE::Mode'}, 'RE::Other': {'full_name': 'RE::Other'}}
+    vts = {'a': {'class_full_name': 'RE::Base'}, 'b': {'class_full_name': 'RE::Unrelated'}}
+    return structs, enums, vts
+
+
+def test_select_types_follows_by_value_not_pointers():
+    structs, enums, vts = _tables()
+    s, e, v = _select_types()(structs, enums, vts, ['Outer::State'])
+    assert sorted(s) == ['RE::Base', 'RE::NiColorA', 'RE::NiPoint2', 'RE::Outer::State']
+    assert sorted(e) == ['RE::Mode']
+    assert [x['class_full_name'] for x in v.values()] == ['RE::Base']
+
+
+def test_select_types_ambiguous_bare_name_raises():
+    structs, enums, vts = _tables()
+    try:
+        _select_types()(structs, enums, vts, ['State'])
+    except ValueError as ex:
+        assert 'RE::Outer::State' in str(ex) and 'RE::BSGraphics::State' in str(ex)
+    else:
+        raise AssertionError('expected ValueError')
+
+
+def test_select_types_unknown_name_raises():
+    structs, enums, vts = _tables()
+    try:
+        _select_types()(structs, enums, vts, ['Nope'])
+    except ValueError:
+        return
+    raise AssertionError('expected ValueError')
+
+
 def _run():
     n = 0
     for name, fn in sorted(globals().items()):
