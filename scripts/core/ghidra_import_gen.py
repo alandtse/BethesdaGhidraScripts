@@ -92,6 +92,37 @@ def _resolve_base(by_name: dict, name: str):
     return None
 
 
+def _enum_emit_name(en):
+    """Name an enum is emitted under in ENUMS.
+
+    An enum nested in a class keeps its owner ('TESWeather::Flag'), so same-leaf
+    enums of different owners do not collapse into one Ghidra type. Namespace-level
+    enums keep the bare leaf.
+    """
+    ns = '::'.join(en['category'].strip('/').split('/')[1:])
+    full = en['full_name']
+    if ns and full.startswith(ns + '::'):
+        return full[len(ns) + 2:]
+    return en['name']
+
+
+def _enum_emit_names(enums):
+    """full_name -> emitted ENUMS name, qualified further only where names collide.
+
+    Enums in nested namespaces (std::_Strong_order::_Cpo::_St) share an owner-relative
+    name, and all land in one Ghidra category, so a colliding name keeps its namespace
+    path below the root namespace.
+    """
+    names = {fn: _enum_emit_name(en) for fn, en in enums.items()}
+    counts = {}
+    for n in names.values():
+        counts[n] = counts.get(n, 0) + 1
+    for fn, n in names.items():
+        if counts[n] > 1:
+            names[fn] = fn.split('::', 1)[1] if '::' in fn else fn
+    return names
+
+
 # ---------------------------------------------------------------------------
 # Vtable struct building
 # ---------------------------------------------------------------------------
@@ -1816,8 +1847,9 @@ def generate_script(
         return out
 
     lines.append('ENUMS = [')
+    emit_names = _enum_emit_names(enums)
     for en in sorted(enums.values(), key=lambda e: e['full_name']):
-        name = en['name']
+        name = emit_names[en['full_name']]
         size = en['size']
         category = en['category']
         values = _wrap_signed(en['values'])

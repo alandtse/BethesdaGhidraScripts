@@ -138,6 +138,49 @@ def test_select_types_unknown_name_raises():
     raise AssertionError('expected ValueError')
 
 
+def _enum_emit_ns():
+    """Extract the pure, generator-side enum naming helpers (module needs Ghidra to import)."""
+    with open(_SRC_PATH, 'r') as f:
+        text = f.read()
+    m = re.search(r'\ndef _enum_emit_name\(en\):.*?(?=\n\n\n# -{10})', text, re.DOTALL)
+    assert m, 'could not find _enum_emit_name in ghidra_import_gen.py'
+    ns = {}
+    exec(compile(m.group(0), _SRC_PATH, 'exec'), ns)
+    return ns
+
+
+def _enum_emit_name():
+    return _enum_emit_ns()['_enum_emit_name']
+
+
+def _en(full, leaf):
+    return {'full_name': full, 'name': leaf, 'category': '/CommonLibSSE/RE'}
+
+
+def test_enum_emit_name_namespace_level_keeps_leaf():
+    assert _enum_emit_name()(_en('RE::Mode', 'Mode')) == 'Mode'
+
+
+def test_enum_emit_name_class_nested_keeps_owner():
+    f = _enum_emit_name()
+    assert f(_en('RE::TESWeather::Flag', 'Flag')) == 'TESWeather::Flag'
+    assert f(_en('RE::Outer::Inner::Type', 'Type')) == 'Outer::Inner::Type'
+
+
+def test_enum_emit_names_qualify_only_collisions():
+    enums = {
+        'std::_Weak_order::_Cpo::_St': {'full_name': 'std::_Weak_order::_Cpo::_St', 'name': '_St',
+                                        'category': '/CommonLibSSE/std/_Weak_order'},
+        'std::_Strong_order::_Cpo::_St': {'full_name': 'std::_Strong_order::_Cpo::_St', 'name': '_St',
+                                          'category': '/CommonLibSSE/std/_Strong_order'},
+        'RE::TESWeather::Flag': _en('RE::TESWeather::Flag', 'Flag'),
+    }
+    names = _enum_emit_ns()['_enum_emit_names'](enums)
+    assert names['std::_Weak_order::_Cpo::_St'] == '_Weak_order::_Cpo::_St'
+    assert names['std::_Strong_order::_Cpo::_St'] == '_Strong_order::_Cpo::_St'
+    assert names['RE::TESWeather::Flag'] == 'TESWeather::Flag'
+
+
 def _run():
     n = 0
     for name, fn in sorted(globals().items()):

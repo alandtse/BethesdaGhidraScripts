@@ -284,10 +284,13 @@ def run():
         EnumDataType = gns['EnumDataType']
         import ghidra.program.model.data as _D
         live_enum = {}
+        live_enum_qualified = {}
         for d in dtm.getAllDataTypes():
             if isinstance(d, _D.Enum):
                 live_enum.setdefault(apply_plan.enum_parent_key(
                     d.getCategoryPath().getPath(), d.getName()), d)
+                if '::' in d.getName():
+                    live_enum_qualified.setdefault(d.getName(), d)
 
         def _register_enum(ename, ecat, dt):
             created[ename] = dt
@@ -300,6 +303,9 @@ def run():
         for en in ENUMS:
             ename, esize, ecat, evals = en
             ex = live_enum.get(apply_plan.enum_parent_key(ecat, ename))
+            if ex is None and '::' in ename:
+                # owner-qualified names are unique, so the type may live in any category
+                ex = live_enum_qualified.get(ename)
             ex_size = ex.getLength() if ex is not None else None
             ex_names = list(ex.getNames()) if ex is not None else []
             action, add_vals = apply_plan.classify_enum(esize, evals, ex_size, ex_names)
