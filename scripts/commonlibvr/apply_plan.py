@@ -382,3 +382,26 @@ def plan_demangle(mmap, existing_names):
         else:
             renames.append((name, proper))
     return renames, merges
+
+
+def split_merges_by_length(merges, lengths):
+    """Split (mangled, keeper) merge pairs into (same_length, different_length).
+
+    replaceDataType onto a type of another size resizes every struct that embeds the
+    replaced one, so only same-size pairs are safe to merge. `lengths` maps each name in
+    `merges` to its byte length."""
+    same, different = [], []
+    for mangled, keeper in merges:
+        (same if lengths[mangled] == lengths[keeper] else different).append((mangled, keeper))
+    return same, different
+
+
+def plan_namespace_demangle(sibling_names):
+    """Merge plan for the child namespaces of ONE parent: [(mangled, template)] for every
+    underscore-named sibling whose mangled form is exactly one template-named sibling.
+
+    A namespace is only ever merged into a twin under the same parent, so an ambiguous
+    mangle (two template names mangling alike) is dropped rather than guessed."""
+    names = set(sibling_names)
+    mmap = build_mangle_map({n for n in names if '<' in n})
+    return [(n, mmap[n]) for n in sorted(names) if '<' not in n and n in mmap]

@@ -18,6 +18,10 @@ NON-DESTRUCTIVE: only touches /types.h types whose name is exactly a known mangl
 rename is a pure relabel, merge rewires references to an existing identical type. Dry-run
 default (reports rename/merge counts + samples); CLVR_DEMANGLE=go to apply. replaceDataType
 is slow (rescans functions) -- merges run in batched transactions. Run per program.
+
+The same mangling applies to class/plain NAMESPACES (`Foo_Bar_` next to `Foo<Bar>`), which
+the PDB/RTTI import also creates; a second pass walks the whole namespace tree and merges
+each mangled namespace into its template-named twin under the same parent.
 """
 import csv
 import glob
@@ -121,15 +125,19 @@ def run():
     cp = currentProgram  # noqa: F821
     dtm = cp.getDataTypeManager()
 
-    # mangled Ghidra name -> proper CommonLib spelling (pure logic in apply_plan)
-    mmap = apply_plan.build_mangle_map(_proper_names())
-
     types_by_name = {}
     for dt in dtm.getAllDataTypes():
         if 'types.h' in str(dt.getCategoryPath()):
             types_by_name.setdefault(dt.getName(), dt)
 
+    # mangled Ghidra name -> proper CommonLib spelling (pure logic in apply_plan). Template
+    # types already in /types.h are proper spellings too, so wrappers outside _WRAPS converge.
+    propers = _proper_names() | {n for n in types_by_name if '<' in n}
+    mmap = apply_plan.build_mangle_map(propers)
+
     name_renames, name_merges = apply_plan.plan_demangle(mmap, types_by_name.keys())
+    lengths = {n: types_by_name[n].getLength() for pair in name_merges for n in pair}
+    name_merges, size_mismatch = apply_plan.split_merges_by_length(name_merges, lengths)
     renames = [(types_by_name[n], proper) for n, proper in name_renames]           # (dt, proper)
     merges = [(types_by_name[n], types_by_name[proper]) for n, proper in name_merges]  # (dt, keeper)
 
@@ -139,6 +147,9 @@ def run():
         print('   rename %s -> %s' % (dt.getName(), proper))
     for dt, keeper in merges[:6]:
         print('   merge  %s -> %s' % (dt.getName(), keeper.getName()))
+    print('  skipped %d merges whose types differ in size' % len(size_mismatch))
+    for name, keeper in size_mismatch[:6]:
+        print('   skip   %s (%d) -> %s (%d)' % (name, lengths[name], keeper, lengths[keeper]))
 
     if not APPLY:
         print('  set CLVR_DEMANGLE=go to apply.')
@@ -164,4 +175,63 @@ def run():
     print('  APPLIED: %d renamed, %d merged, %d errors' % (done_r, done_m, err))
 
 
+def _namespace_merge_plans(cp):
+    """[(old_symbol, twin_symbol)] for every mangled namespace that has a template-named
+    twin under the SAME parent, found by walking the whole namespace tree (class
+    namespaces and plain namespaces, at any depth)."""
+    from ghidra.program.model.symbol import SymbolType
+    st = cp.getSymbolTable()
+    gns = cp.getGlobalNamespace()
+    plans = []
+    stack = [gns]
+    while stack:
+        parent = stack.pop()
+        kids = {}
+        for s in st.getChildren(parent.getSymbol()):
+            if s.getSymbolType() in (SymbolType.NAMESPACE, SymbolType.CLASS):
+                kids.setdefault(s.getName(), s)
+        for old, twin in apply_plan.plan_namespace_demangle(kids.keys()):
+            plans.append((kids[old], kids[twin]))
+        stack.extend(s.getObject() for s in kids.values())
+    return plans
+
+
+def run_namespaces():
+    """Merge mangled namespaces (`Foo_Bar_`) into their template-named twin (`Foo<Bar>`):
+    move every member symbol across, then delete the emptied namespace."""
+    cp = currentProgram  # noqa: F821
+    st = cp.getSymbolTable()
+    plans = _namespace_merge_plans(cp)
+    print('demangle namespaces (%s): %d mangled namespaces with a template twin'
+          % (cp.getName(), len(plans)))
+    for old, twin in plans[:12]:
+        print('   merge  %s -> %s' % (old.getName(True), twin.getName()))
+    if not APPLY:
+        print('  set CLVR_DEMANGLE=go to apply.')
+        return
+
+    moved = err = deleted = kept = 0
+    with transaction(cp, 'demangle namespaces'):
+        for old, twin in plans:
+            twin_ns = twin.getObject()
+            for member in list(st.getChildren(old)):
+                try:
+                    member.setNamespace(twin_ns)
+                    moved += 1
+                except Exception:
+                    err += 1
+            if list(st.getChildren(old)):
+                kept += 1
+                continue
+            try:
+                old.delete()
+                deleted += 1
+            except Exception:
+                kept += 1
+                err += 1
+    print('  APPLIED: %d members moved, %d namespaces deleted, %d kept (members left), %d errors'
+          % (moved, deleted, kept, err))
+
+
 run()
+run_namespaces()

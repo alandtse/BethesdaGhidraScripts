@@ -481,6 +481,40 @@ def test_plan_demangle_ignores_self_mapped_names():
     assert renames == [] and merges == []
 
 
+def test_split_merges_by_length_separates_size_mismatches():
+    merges = [('A_x_', 'A<x>'), ('B_y_', 'B<y>')]
+    lengths = {'A_x_': 8, 'A<x>': 8, 'B_y_': 8, 'B<y>': 33360}
+    same, different = apply_plan.split_merges_by_length(merges, lengths)
+    assert same == [('A_x_', 'A<x>')]
+    assert different == [('B_y_', 'B<y>')]
+
+
+def test_split_merges_by_length_empty():
+    assert apply_plan.split_merges_by_length([], {}) == ([], [])
+
+
+def test_plan_namespace_demangle_pairs_underscore_name_with_template_sibling():
+    sibs = ['NativeFunction3_TESObjectREFR_bool_float_float_float_',
+            'NativeFunction3<TESObjectREFR,bool,float,float,float>', 'Plain']
+    assert apply_plan.plan_namespace_demangle(sibs) == [
+        ('NativeFunction3_TESObjectREFR_bool_float_float_float_',
+         'NativeFunction3<TESObjectREFR,bool,float,float,float>')]
+
+
+def test_plan_namespace_demangle_needs_a_template_twin():
+    assert apply_plan.plan_namespace_demangle(['Foo_Bar_', 'Plain']) == []
+
+
+def test_plan_namespace_demangle_drops_ambiguous_mangles():
+    sibs = ['Foo_A_B_', 'Foo<A,B>', 'Foo<A B>']
+    assert apply_plan.mangle_type_name('Foo<A,B>') == apply_plan.mangle_type_name('Foo<A B>')
+    assert apply_plan.plan_namespace_demangle(sibs) == []
+
+
+def test_plan_namespace_demangle_ignores_template_named_siblings():
+    assert apply_plan.plan_namespace_demangle(['Foo<A>', 'Bar<B>']) == []
+
+
 if __name__ == '__main__':
     import traceback
     fns = [v for k, v in sorted(globals().items())
