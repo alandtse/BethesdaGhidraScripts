@@ -205,7 +205,7 @@ def _vtbl_symbol(sym_table, class_short: str):
         ns = s.getParentNamespace()
         if ns is None or ns.isGlobal():
             continue
-        if ns.getName(True).replace('::', '__') == class_short:
+        if ns.getName(True) in (class_short, class_short.replace('__', '::')):
             return s
     return None
 

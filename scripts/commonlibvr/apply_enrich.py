@@ -1043,7 +1043,7 @@ def run_classes():
             tn = c0.getDataType().getName()
             if '_vtbl' in tn:
                 continue   # already wired to ours
-            if not ('__VFTable' in tn or tn in ('void *', 'ulonglong', 'undefined8')):
+            if not ('__VFTable' in tn or tn.endswith('::VFTable') or tn in ('void *', 'ulonglong', 'undefined8')):
                 continue   # leave anything else alone
             if apply_go:
                 try:

@@ -28,7 +28,7 @@ import re
 from collections import Counter
 
 AUTO_SUFFIX = re.compile(r'_([0-9A-Fa-f]{1,4})$')    # same shape as layout_diff._AUTO_SUFFIX
-_VTABLE_NAME = re.compile(r'(_vtbl(_\d+)?(\.conflict\d*)?$|__VFTable)')
+_VTABLE_NAME = re.compile(r'(_vtbl(_\d+)?(\.conflict\d*)?$|__VFTable|::VFTable$)')
 MIN_COVERAGE = 0.6
 
 
